@@ -1,0 +1,13 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: A3 Audio - Hardware
+Upstream-Contact: A3 Audio <contact@a3-audio.com>
+Source: https://github.com/a3-audio/a3-mixer
+Comment: https://a3-audio.com
+
+Files: hardware/*
+Copyright: 2023 A3 Audio <contact@a3-audio.com>
+License: CERN-OHL-S-2.0
+
+Files: engine/*
+Copyright: 2023 A3 Audio <contact@a3-audio.com>
+License: GPL-3.0-or-later
