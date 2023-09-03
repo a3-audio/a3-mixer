@@ -1,0 +1,11 @@
+[Unit]
+Description=A3 Mixer Controller
+After=network.target
+
+[Service]
+User=aaa
+Environment="PATH=/home/aaa/.local/bin:$PATH"
+ExecStart=/usr/bin/python3 /home/aaa/a3-mixer/engine/scripts/a3-mixer-set-display.py
+
+[Install]
+WantedBy=multi-user.target
