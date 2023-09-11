@@ -46,7 +46,7 @@ def disp_3():
   device_dev_3 = ssd1306(serial_dev_3, rotate=2)
   with canvas(device_dev_3) as draw:
     draw.rectangle(device_dev_3.bounding_box, outline = "white", fill = "black")
-    draw.text((15, 5), "Bluetooth", font = oled_font, fill = "white")
+    draw.text((15, 5), "Deck 3", font = oled_font, fill = "white")
 
 def disp_4():
   TCA9548A.I2C_setup(0x70,5)
@@ -54,7 +54,7 @@ def disp_4():
   device_dev_4 = ssd1306(serial_dev_4, rotate=2)
   with canvas(device_dev_4) as draw:
     draw.rectangle(device_dev_4.bounding_box, outline = "white", fill = "black")
-    draw.text((15, 5), "FX", font = oled_font, fill = "white")
+    draw.text((15, 5), "Deck 4", font = oled_font, fill = "white")
 
 def disp_5():
   TCA9548A.I2C_setup(0x70,6)

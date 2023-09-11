@@ -85,6 +85,7 @@ master_pots_to_osc_message = {
     "3": "/master/booth",
     "4": "/master/phones_mix",
     "5": "/master/phones_volume",
+    "6": "/master/return",
 }
 
 last_used_enc = 0
