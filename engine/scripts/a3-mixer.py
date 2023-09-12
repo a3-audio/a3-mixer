@@ -210,7 +210,7 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # print(f'time delta: {delta_time_ms}')
         # time_last_receive = current_time_ns
 
-#        print(line)
+        print(line)
 
         words = line.split(":")
 
