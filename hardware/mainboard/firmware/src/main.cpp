@@ -162,7 +162,7 @@ void readMux() // hc4051 multiplexer
       // potentiometer
       int analog = analogRead(multiplexer[track]);
       int difference = pots_sent[track][pin] - analog;
-      if(abs(difference) > 13) { // needs to be solved in hardware!
+      if(abs(difference) > 12) { // needs to be solved in hardware!
         pots_sent[track][pin] = analog;
         float sendValue = float(analog) / 1023.f;
         Serial.print("T");
