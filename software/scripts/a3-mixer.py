@@ -1,6 +1,6 @@
-# This file is a part of A³Pandemic. License is GPLv3: https://github.com/ambisonics-audio-association/Ambijockey/blob/main/COPYING
-# © Copyright 2021-2022 Patric Schmitz, Raphael Eismann, Jendrik Bradaczek
-#!/usr/bin/python
+# SPDX-FileCopyrightText: 2024 Patric Schmitz, Raphael Eismann
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 import sys
 import math

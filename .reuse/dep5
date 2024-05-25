@@ -8,10 +8,15 @@ Files: hardware/*
 Copyright: 2023 A3 Audio <contact@a3-audio.com>
 License: CERN-OHL-S-2.0
 
-Files: engine/*
+Files: software/*
 Copyright: 2023 A3 Audio <contact@a3-audio.com>
 License: GPL-3.0-or-later
 
 Files: platform-config/*
 Copyright: 2023 A3 Audio <contact@a3-audio.com>
 License: CC-BY-SA-4.0
+
+Files: README.md
+Copyright: 2023 A3 Audio <contact@a3-audio.com>
+License: CC-BY-SA-4.0
+

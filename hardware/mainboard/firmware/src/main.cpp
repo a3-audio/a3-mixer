@@ -1,6 +1,7 @@
-// This file is a part of A³Mix.
-// License is GPLv3: https://github.com/ambisonics-audio-association/Ambijockey/blob/main/COPYING
-// © Copyright 2021-2022 Raphael Eismann, Patric Schmitz
+// SPDX-FileCopyrightText: 2024 Patric Schmitz, Raphael Eismann
+//
+// SPDX-License-Identifier: CERN-OHL-S-2.0
+//
 // Made for A³Mix PCB v0.2
 
 #include <array>

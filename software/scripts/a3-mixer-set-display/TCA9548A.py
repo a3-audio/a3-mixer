@@ -1,4 +1,9 @@
 #!/usr/bin/python
+
+# SPDX-FileCopyrightText: 2024 Patric Schmitz, Raphael Eismann
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # intended for import to change channel of TCA9548A
 # import then call I2C_setup(multiplexer_addr,multiplexer_channel)
 
