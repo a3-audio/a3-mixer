@@ -20,7 +20,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-pixel_pin = board.D18
+pixel_pin = board.D19
 num_pixels = 14
 num_channel = 4
 
