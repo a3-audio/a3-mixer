@@ -20,7 +20,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-pixel_pin = board.D19
+pixel_pin = board.D18
 num_pixels = 14
 num_channel = 4
 
@@ -42,10 +42,10 @@ osc_core = SimpleUDPClient('192.168.43.50', 9000)
 osc_vu_receive_port = 7771
 
 vu_channel_to_led_count = {
-    0 : 8,
-    1 : 8,
-    2 : 8,
-    3 : 8,
+    0 : 12,
+    1 : 12,
+    2 : 12,
+    3 : 12,
     4 : 32,
     5 : 32,
     6 : 32,
