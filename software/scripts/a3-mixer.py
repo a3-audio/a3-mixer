@@ -36,7 +36,7 @@ button_leds_master = [0, 0, 0]
 fx_state = np.zeros(10)
 
 # OSC-Clients
-osc_core = SimpleUDPClient('192.168.43.50', 9000)
+osc_core = SimpleUDPClient('192.168.43.57', 9000)
 
 # OSC-Server
 osc_vu_receive_port = 7771
@@ -174,7 +174,7 @@ def led_handler_fx(address: str,
     button_leds_master[2] = 255 if high_pass else 0
     pixels[num_channel] = button_leds_master
     pixels.show()
-    #print("button_leds_master")
+    print("button_leds_master")
     #print(button_leds_master)
 
 def tap_handler(address: str,
