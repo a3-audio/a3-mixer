@@ -21,7 +21,7 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 pixel_pin = board.D12
-num_pixels = 8
+num_pixels = 14
 num_channel = 4
 
 ORDER = neopixel.GRB
@@ -42,10 +42,10 @@ osc_core = SimpleUDPClient('192.168.43.58', 9000)
 osc_vu_receive_port = 7772
 
 vu_channel_to_led_count = {
-    0 : 12,
-    1 : 12,
-    2 : 12,
-    3 : 12,
+    0 : 8,
+    1 : 8,
+    2 : 8,
+    3 : 8,
     4 : 32,
     5 : 32,
     6 : 32,
