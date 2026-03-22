@@ -20,8 +20,8 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-pixel_pin = board.D18
-num_pixels = 14
+pixel_pin = board.D12
+num_pixels = 8
 num_channel = 4
 
 ORDER = neopixel.GRB
@@ -36,10 +36,10 @@ button_leds_master = [0, 0, 0]
 fx_state = np.zeros(10)
 
 # OSC-Clients
-osc_core = SimpleUDPClient('192.168.43.57', 9000)
+osc_core = SimpleUDPClient('192.168.43.58', 9000)
 
 # OSC-Server
-osc_vu_receive_port = 7771
+osc_vu_receive_port = 7772
 
 vu_channel_to_led_count = {
     0 : 12,

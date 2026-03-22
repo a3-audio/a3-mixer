@@ -5,7 +5,7 @@ After=network.target
 [Service]
 #User=aaa
 Environment="PATH=/home/aaa/.local/bin:$PATH"
-ExecStart=/usr/bin/python3 /home/aaa/a3-mixer/software/scripts/a3-mixer.py
+ExecStart=/home/aaa/.venv/bin/python3 /home/aaa/a3-mixer/software/scripts/a3-mixer.py
 
 [Install]
 WantedBy=multi-user.target
