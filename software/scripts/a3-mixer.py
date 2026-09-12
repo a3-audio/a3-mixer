@@ -128,15 +128,21 @@ def vu_handler(address: str,
     send_vu_data(vu, peak_db, rms_db)
 
 def send_button_leds_data(channel: int, led_on, led_mode):
-    if led_mode == 0:
-        button_leds[channel][led_mode] = 0 if led_on else 255
-        pixels[channel] = button_leds[channel]
-        pixels.show()
-
-    elif led_mode > 0:
-        button_leds[channel][led_mode] = 255 if led_on else 0
-        pixels[channel] = button_leds[channel]
-        pixels.show()
+    # led_mode is the colour channel of the button's pixel: 0 red (pfl),
+    # 1 green (fx), 2 blue (3d).
+    #
+    # pfl used to have a branch of its own here, inverted -- `0 if led_on else
+    # 255`. A3 Core inverted it as well, on the way out, and the two cancelled:
+    # the desk was right and the wire carried the opposite of what its name
+    # said. That cost nothing while the desk was the only thing listening.
+    #
+    # Since 2026-09-12 every device is told the lamps, because a lamp is meant
+    # to show the status. So both inversions came out on the same day and this
+    # is one branch: `/channel/n/led/pfl` now means "this lamp is lit", and
+    # what reaches the pixel is unchanged.
+    button_leds[channel][led_mode] = 255 if led_on else 0
+    pixels[channel] = button_leds[channel]
+    pixels.show()
 
 def led_handler_channel(address: str,
                         *osc_arguments: List[Any]) -> None:
