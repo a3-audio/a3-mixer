@@ -260,14 +260,27 @@ def serial_handler(): # dispatch from serial stream and send to osc
 #        print(f'value: {value}')
 
         # Buttons
+        #
+        # A key with no address is ignored, exactly as an unmapped pot is
+        # below. It used to be a bare dict lookup, and that is how taking the
+        # 3D key out of the table on 2026-09-12 stopped the whole desk: the
+        # key is still on the panel, pressing it raised KeyError: '2' inside
+        # serial_handler, and that process died. The OSC server in the parent
+        # kept running, so systemd still called the service active -- a desk
+        # that had gone deaf to every pot and every button looked healthy.
+        # Measured: the last serial line before the traceback was T:0:B:2:1.
         if mode == "B":
             # the 4 channel strips
             channel_names = map(str, range(5))
             if track in channel_names:
-                osc_core.send_message("/channel/" + track + "/" +
-                                      button_per_channel_to_osc_param[index], value)
+                if index in button_per_channel_to_osc_param:
+                    osc_core.send_message("/channel/" + track + "/" +
+                                          button_per_channel_to_osc_param[index],
+                                          value)
             elif track == "fx" and value == "1":
-                osc_core.send_message("/fx/mode", button_fx_to_mode_name[index])
+                if index in button_fx_to_mode_name:
+                    osc_core.send_message("/fx/mode",
+                                          button_fx_to_mode_name[index])
 
         # The tap key. Press only -- a tap is the moment the finger goes
         # down, and sending the release as well would tap twice per press and
