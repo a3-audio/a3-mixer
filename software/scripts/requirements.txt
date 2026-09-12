@@ -1,0 +1,6 @@
+python-osc
+adafruit-blinka
+adafruit-circuitpython-neopixel
+pyserial
+smbus
+luma.oled

@@ -20,7 +20,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-pixel_pin = board.D18
+pixel_pin = board.D12
 num_pixels = 14
 num_channel = 4
 
@@ -39,7 +39,17 @@ fx_state = np.zeros(10)
 #
 # One host, two ports: A3 Core and the beat-analyzer run on the same machine,
 # so there is one address to change here rather than two that can drift apart.
-CORE_HOST = '192.168.43.50'
+#
+# **This line has been wrong more often than it has been right.** The two
+# branches that met in this merge carried 192.168.43.50 and 192.168.43.58, the
+# running copy on the desk carried a third, and none of them was reachable:
+# Core has been on 192.168.8.10 since the rig moved subnets. An address in
+# source is an address that goes stale between two gigs, and nothing reports
+# it -- OSC over UDP has no way of saying that nobody was listening.
+#
+# A3 Core learned this first and took --mixer as an argument. This wants the
+# same and does not have it yet.
+CORE_HOST = '192.168.8.10'
 osc_core = SimpleUDPClient(CORE_HOST, 9000)
 
 # The beat clock, addressed directly. A tap is timing, and timing does not
@@ -48,7 +58,7 @@ osc_core = SimpleUDPClient(CORE_HOST, 9000)
 osc_beatclock = SimpleUDPClient(CORE_HOST, 7775)
 
 # OSC-Server
-osc_vu_receive_port = 7771
+osc_vu_receive_port = 7772
 
 vu_channel_to_led_count = {
     0 : 8,
@@ -75,10 +85,18 @@ analog_pots_per_channel_to_osc_param = {
     "5": "volume",
 }
 
-# The channel strip's keys. There were three: "2" was the 3D switch, which is
-# gone from the panel in hardware v3.2 -- this line kept describing a key
-# nobody has. A3 Core's side of it (`/channel/n/4d`) went on 2026-09-12 too;
-# 3D per channel is A3 Motion's pot now, on `/channel/n/3d`.
+# The channel strip's keys. There were three: "2" was the 3D switch.
+#
+# **The key is still on the panel.** It is out of service in software, which
+# is a guard rather than a tidy-up: A3 Core's `3d` became the continuous blend
+# on 2026-09-12, so a momentary key putting the string "1" into it would drive
+# that blend to the stop for as long as a finger held it down, and drop it to
+# zero on release. Restoring this line restores that.
+#
+# Core's own boolean for the key (`/channel/n/4d`) went the same day, so there
+# is not even an address to point it at without building one. What the key
+# should do instead is open -- see
+# issues/a3-core-der-3d-taster-des-mixers-faehrt-die-blende.md.
 button_per_channel_to_osc_param = {
     "0": "pfl",
     "1": "fx",
@@ -140,8 +158,8 @@ def vu_handler(address: str,
 
 def send_button_leds_data(channel: int, led_on, led_mode):
     # led_mode is the colour channel of the button's pixel: 0 red (pfl),
-    # 1 green (fx). Blue was the 3D key, which is gone from the panel in
-    # hardware v3.2 along with its lamp.
+    # 1 green (fx), 2 blue (3d). The 3D lamp is still wired and still handled
+    # below; A3 Core simply stopped driving it when the flag behind it went.
     #
     # pfl used to have a branch of its own here, inverted -- `0 if led_on else
     # 255`. A3 Core inverted it as well, on the way out, and the two cancelled:
@@ -189,7 +207,7 @@ def led_handler_fx(address: str,
     button_leds_master[2] = 255 if high_pass else 0
     pixels[num_channel] = button_leds_master
     pixels.show()
-    #print("button_leds_master")
+    print("button_leds_master")
     #print(button_leds_master)
 
 def tap_handler(address: str,
