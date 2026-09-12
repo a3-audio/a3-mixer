@@ -36,7 +36,16 @@ button_leds_master = [0, 0, 0]
 fx_state = np.zeros(10)
 
 # OSC-Clients
-osc_core = SimpleUDPClient('192.168.43.50', 9000)
+#
+# One host, two ports: A3 Core and the beat-analyzer run on the same machine,
+# so there is one address to change here rather than two that can drift apart.
+CORE_HOST = '192.168.43.50'
+osc_core = SimpleUDPClient(CORE_HOST, 9000)
+
+# The beat clock, addressed directly. A tap is timing, and timing does not
+# want a relay in the middle -- A3 Motion's TAP key sends straight at the
+# analyzer for the same reason, bypassing even its own message queue.
+osc_beatclock = SimpleUDPClient(CORE_HOST, 7775)
 
 # OSC-Server
 osc_vu_receive_port = 7771
@@ -66,10 +75,13 @@ analog_pots_per_channel_to_osc_param = {
     "5": "volume",
 }
 
+# The channel strip's keys. There were three: "2" was the 3D switch, which is
+# gone from the panel in hardware v3.2 -- this line kept describing a key
+# nobody has. A3 Core's side of it (`/channel/n/4d`) went on 2026-09-12 too;
+# 3D per channel is A3 Motion's pot now, on `/channel/n/3d`.
 button_per_channel_to_osc_param = {
     "0": "pfl",
     "1": "fx",
-    "2": "3d",
 }
 
 button_fx_to_mode_name = {
@@ -88,7 +100,6 @@ master_pots_to_osc_message = {
     "6": "/master/return",
 }
 
-last_used_enc = 0
 
 # time_last_receive = 0
 
@@ -128,15 +139,22 @@ def vu_handler(address: str,
     send_vu_data(vu, peak_db, rms_db)
 
 def send_button_leds_data(channel: int, led_on, led_mode):
-    if led_mode == 0:
-        button_leds[channel][led_mode] = 0 if led_on else 255
-        pixels[channel] = button_leds[channel]
-        pixels.show()
-
-    elif led_mode > 0:
-        button_leds[channel][led_mode] = 255 if led_on else 0
-        pixels[channel] = button_leds[channel]
-        pixels.show()
+    # led_mode is the colour channel of the button's pixel: 0 red (pfl),
+    # 1 green (fx). Blue was the 3D key, which is gone from the panel in
+    # hardware v3.2 along with its lamp.
+    #
+    # pfl used to have a branch of its own here, inverted -- `0 if led_on else
+    # 255`. A3 Core inverted it as well, on the way out, and the two cancelled:
+    # the desk was right and the wire carried the opposite of what its name
+    # said. That cost nothing while the desk was the only thing listening.
+    #
+    # Since 2026-09-12 every device is told the lamps, because a lamp is meant
+    # to show the status. So both inversions came out on the same day and this
+    # is one branch: `/channel/n/led/pfl` now means "this lamp is lit", and
+    # what reaches the pixel is unchanged.
+    button_leds[channel][led_mode] = 255 if led_on else 0
+    pixels[channel] = button_leds[channel]
+    pixels.show()
 
 def led_handler_channel(address: str,
                         *osc_arguments: List[Any]) -> None:
@@ -154,9 +172,6 @@ def led_handler_channel(address: str,
         send_button_leds_data(int(channel), led_on, led_mode)
     elif led_type == "fx":
         led_mode = 1
-        send_button_leds_data(int(channel), led_on, led_mode)
-    elif led_type == "3d":
-        led_mode = 2
         send_button_leds_data(int(channel), led_on, led_mode)
 
 def led_handler_fx(address: str,
@@ -231,17 +246,21 @@ def serial_handler(): # dispatch from serial stream and send to osc
             elif track == "fx" and value == "1":
                 osc_core.send_message("/fx/mode", button_fx_to_mode_name[index])
 
-        if mode == "TAP":
-            osc_core.send_message("/tap", value)
+        # The tap key. Press only -- a tap is the moment the finger goes
+        # down, and sending the release as well would tap twice per press and
+        # halve the tempo.
+        #
+        # It used to go to A3 Core, on an address Core never subscribed to:
+        # the handler was there, its dispatcher.map line was commented out,
+        # and so was the rtmidi import it needed. Nobody noticed, because the
+        # key kept sending and UDP has no way of saying that nobody listened.
+        # Both ends are gone now and this goes where A3 Motion's TAP goes.
+        #
+        # int 1, not the string off the serial line: the analyzer reads
+        # /tap [i] as the beat within the bar and only understands i or f.
+        if mode == "TAP" and value == "1":
+            osc_beatclock.send_message("/tap", 1)
 
-        if mode == "EB": # Encoder Button
-                osc_core.send_message("/channel/" + track + "/encbtn", value)
-
-        if mode == "ENC": # Encoder
-                osc_core.send_message("/channel/" + track + "/enc", value)
-                global last_used_enc
-                if track != last_used_enc:
-                    last_used_enc = track
         
         # Potis
         if mode == "P":
