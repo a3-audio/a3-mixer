@@ -1,0 +1,24 @@
+{
+  "subpcb": {
+    "a3mix_v03.kicad_pcb": {
+      "anchor": "RV6"
+    }
+  },
+  "sheet": {
+    "": {
+      "checked": false
+    },
+    "/0294df79-c330-4790-8823-7f0f3fce45ba": {
+      "checked": false
+    },
+    "/4d3b4337-2e03-46d4-930f-674a8d1ba9d1": {
+      "checked": false
+    },
+    "/ddd275dd-1024-49a4-85be-42f5238fe0f4": {
+      "checked": false
+    },
+    "/e274741d-9520-4c17-94ea-8ce173ceb19e": {
+      "checked": false
+    }
+  }
+}
