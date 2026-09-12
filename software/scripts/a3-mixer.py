@@ -66,10 +66,14 @@ analog_pots_per_channel_to_osc_param = {
     "5": "volume",
 }
 
+# Die Kanaltasten. Es waren drei: "2" war der 3D-Taster, den es auf diesem
+# Blech nicht mehr gibt -- die Zeile beschrieb eine Taste, die niemand hat.
+#
+# Cores Seite davon (`/channel/n/4d`) ist am 2026-09-12 ebenfalls entfernt
+# worden; 3D je Kanal ist das Poti von A3 Motion, auf `/channel/n/3d`.
 button_per_channel_to_osc_param = {
     "0": "pfl",
     "1": "fx",
-    "2": "3d",
 }
 
 button_fx_to_mode_name = {
