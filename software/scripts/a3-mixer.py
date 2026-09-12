@@ -158,8 +158,13 @@ def vu_handler(address: str,
 
 def send_button_leds_data(channel: int, led_on, led_mode):
     # led_mode is the colour channel of the button's pixel: 0 red (pfl),
-    # 1 green (fx), 2 blue (3d). The 3D lamp is still wired and still handled
-    # below; A3 Core simply stopped driving it when the flag behind it went.
+    # 1 green (fx), 2 blue (3d).
+    #
+    # The blue one is wired to a lamp that nothing lights any more: A3 Core
+    # stopped sending /channel/n/led/3d when the flag behind it went, and
+    # led_handler_channel below no longer has a branch for it either. The
+    # colour channel stays named because the pixel has three and the key it
+    # belongs to is still on the panel -- see button_per_channel_to_osc_param.
     #
     # pfl used to have a branch of its own here, inverted -- `0 if led_on else
     # 255`. A3 Core inverted it as well, on the way out, and the two cancelled:
