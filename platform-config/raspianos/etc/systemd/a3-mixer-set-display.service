@@ -7,5 +7,12 @@ User=aaa
 Environment="PATH=/home/aaa/.local/bin:$PATH"
 ExecStart=/home/aaa/.venv/bin/python /home/aaa/a3-mixer/software/scripts/a3-mixer-set-display/a3-mixer-set-display.py
 
+# Ein einzelnes stummes Display beendet den Dienst nicht mehr; Status 1
+# heisst jetzt "kein einziges Display geantwortet", also Bus oder
+# Multiplexer -- und das ist ein Zustand, aus dem ein Neuversuch
+# herausfuehren kann.
+Restart=on-failure
+RestartSec=5
+
 [Install]
 WantedBy=multi-user.target
