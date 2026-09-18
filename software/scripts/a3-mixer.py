@@ -12,6 +12,7 @@ import numpy as np
 import board
 import neopixel
 
+import threading
 from multiprocessing import Process
 
 from pythonosc.udp_client import SimpleUDPClient
@@ -19,6 +20,8 @@ from pythonosc import osc_server
 from pythonosc import dispatcher
 
 from typing import List, Any
+
+from a3_mixer_recall import RecallRequest
 
 pixel_pin = board.D12
 num_pixels = 14
@@ -34,6 +37,12 @@ button_leds = [[0, 0, 0] for i in range(num_channel)]
 button_leds_master = [0, 0, 0]
 
 fx_state = np.zeros(10)
+
+# Was gerade gilt, beim Start einmal erfragt. Die Lampen kommen von A3 Core,
+# und Core schickt sie, wenn sich etwas ändert -- nach einem Start hat sich
+# nichts geändert, also blieben die LEDs dunkel, obwohl der Filter eines Kanals
+# an sein konnte. Siehe a3_mixer_recall.
+recall = RecallRequest()
 
 # OSC-Clients
 #
@@ -190,6 +199,9 @@ def led_handler_channel(address: str,
     led_mode = 0
 #    print(f'toggling {led_type} led for channel {channel}: {led_on}')
 
+    # Von Core gehört: die Frage nach dem Gesamtzustand ist beantwortet.
+    recall.answered()
+
     if led_type == "pfl":
         led_mode = 0
         send_button_leds_data(int(channel), led_on, led_mode)
@@ -200,6 +212,8 @@ def led_handler_channel(address: str,
 def led_handler_fx(address: str,
                    *osc_arguments: List[Any]) -> None:
 #    print(f'led_handler_fx: {address}')
+
+    recall.answered()
 
     led_fx_mode = osc_arguments[0]
 
@@ -329,6 +343,18 @@ if __name__ == '__main__':
     dispatcher.map("/channel/*/led/*", led_handler_channel)
     dispatcher.map("/fx/led", led_handler_fx)
     #dispatcher.map("/clock", tap_handler)
+
+    # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
+    # als das Pult, und die Lampen sind bis dahin dunkel.
+    def ask_for_the_state():
+        while True:
+            now = time.monotonic()
+            if recall.due(now):
+                osc_core.send_message(RecallRequest.ADDRESS, 1)
+                recall.asked(now)
+            time.sleep(1.0)
+
+    threading.Thread(target=ask_for_the_state, daemon=True).start()
 
     server = osc_server.BlockingOSCUDPServer((args.ip, args.port), dispatcher)
 #    print("Serving on {}".format(server.server_address))
