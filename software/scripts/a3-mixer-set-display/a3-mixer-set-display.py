@@ -6,18 +6,19 @@
 
 # -*- coding: utf-8 -*-
 
-"""Beschriftet die sechs OLED-Displays des Pults, einmal beim Start.
+"""Beschriftet die fünf OLED-Displays des Pults, einmal beim Start.
 
 Welche Displays es gibt, steht in display_panel.PANELS; hier steht nur, wie man
 eines wirklich anspricht. Der Schnitt ist der Grund, warum an der Tabelle etwas
 zu prüfen ist: dieses Modul lässt sich ohne die Pi-Hardware nicht importieren,
 jenes schon.
 
-Vorher waren es sechs fast gleiche Funktionen. Der Dienst war vom 2026-09-10
-bis zum 2026-09-18 tot, weil in der sechsten `i2c(port=0, ...)` stand -- der
-Multiplexer sitzt auf Bus 1 -- und weil sie auf `device_dev_5` zeichnete, eine
-Variable aus der Nachbarfunktion. Ein einziges stummes Display hat damit die
-anderen fünf mit dunkel gelassen, und `systemctl` sagte nur "failed".
+Vorher waren es sechs fast gleiche Funktionen für fünf Displays. Der Dienst war
+vom 2026-09-10 bis zum 2026-09-18 tot, weil die sechste ein Display ansprach,
+das es nicht gibt -- auf Multiplexer-Kanal 7, mit `i2c(port=0, ...)` (den Bus 0
+hat das Pult gar nicht) und einem Zeichnen auf `device_dev_5` aus der
+Nachbarfunktion. Ein einziges stummes Display hat damit die anderen vier mit
+dunkel gelassen, und `systemctl` sagte nur "failed".
 """
 
 import sys
@@ -53,9 +54,9 @@ if __name__ == '__main__':
     failed = draw_panels(PANELS, show, report)
 
     # Ein stummes Display ist eine Meldung, kein Grund zu sterben -- genau das
-    # hat den Dienst acht Tage lang unten gehalten. Sind aber *alle* sechs
-    # stumm, ist nicht ein Display kaputt, sondern der Bus oder der
-    # Multiplexer, und dann soll systemd es auch sagen.
+    # hat den Dienst acht Tage lang unten gehalten. Sind aber *alle* stumm, ist
+    # nicht ein Display kaputt, sondern der Bus oder der Multiplexer, und dann
+    # soll systemd es auch sagen.
     if len(failed) == len(PANELS):
         report("no display answered at all -- check the i2c bus and the TCA9548A")
         sys.exit(1)

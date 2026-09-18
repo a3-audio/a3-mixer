@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Sechs Displays, und eines darf die anderen fünf nicht mit ins Grab nehmen.
+"""Fünf Displays, und eines darf die anderen vier nicht mit ins Grab nehmen.
 
 Gefunden am 2026-09-12: `a3-mixer-set-display.service` war seit dem 2026-09-10
 tot, abgebrochen in der Initialisierung des sechsten Displays. Zwei Fehler in
@@ -28,7 +28,7 @@ sys.path.insert(
     0, str(Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer-set-display")
 )
 
-from display_panel import PANELS, draw_panels
+from display_panel import MULTIPLEXER_CHANNELS, PANELS, draw_panels
 
 
 class PanelTable(unittest.TestCase):
@@ -44,8 +44,25 @@ class PanelTable(unittest.TestCase):
         channels = [panel.channel for panel in PANELS]
         self.assertEqual(len(channels), len(set(channels)))
 
-    def test_there_are_six(self):
-        self.assertEqual(6, len(PANELS))
+    # Fuenf, nicht sechs. Das sechste war nie da: der Kopf des alten Skripts
+    # sagte "5 Oled Displays", die Adresskonstanten hiessen _2 bis _6, und
+    # disp_1..disp_5 benutzten die Multiplexer-Kanaele 2 bis 6. Nur disp_6
+    # griff auf Kanal 7 -- und daran ist der Dienst acht Tage lang gestorben.
+    # Vom Maintainer bestaetigt: "es gibt keinen kanal 7".
+    def test_there_are_five(self):
+        self.assertEqual(5, len(PANELS))
+
+    def test_the_channels_are_the_ones_the_multiplexer_has(self):
+        self.assertEqual(list(MULTIPLEXER_CHANNELS),
+                         [panel.channel for panel in PANELS])
+
+    def test_no_panel_claims_a_channel_that_does_not_exist(self):
+        for panel in PANELS:
+            self.assertIn(panel.channel, MULTIPLEXER_CHANNELS, panel.label)
+
+    def test_each_label_is_its_own(self):
+        labels = [panel.label for panel in PANELS]
+        self.assertEqual(len(labels), len(set(labels)))
 
 
 class OneDeadDisplay(unittest.TestCase):
@@ -61,9 +78,9 @@ class OneDeadDisplay(unittest.TestCase):
     def report(self, message):
         self.reported.append(message)
 
-    def test_the_other_five_are_still_drawn(self):
+    def test_the_others_are_still_drawn(self):
         draw_panels(PANELS, self.show, self.report)
-        self.assertEqual(5, len(self.drawn))
+        self.assertEqual(len(PANELS) - 1, len(self.drawn))
         self.assertNotIn("Deck 3", self.drawn)
 
     def test_the_dead_one_is_named_in_the_report(self):
@@ -75,7 +92,7 @@ class OneDeadDisplay(unittest.TestCase):
         failed = draw_panels(PANELS, self.show, self.report)
         self.assertEqual(["Deck 3"], [panel.label for panel in failed])
 
-    def test_all_six_are_attempted_even_if_the_first_one_dies(self):
+    def test_all_of_them_are_attempted_even_if_the_first_one_dies(self):
         attempted = []
 
         def every_one_fails(panel):
@@ -83,8 +100,8 @@ class OneDeadDisplay(unittest.TestCase):
             raise OSError("nothing on this bus at all")
 
         failed = draw_panels(PANELS, every_one_fails, self.report)
-        self.assertEqual(6, len(attempted))
-        self.assertEqual(6, len(failed))
+        self.assertEqual(len(PANELS), len(attempted))
+        self.assertEqual(len(PANELS), len(failed))
 
 
 class NothingWrong(unittest.TestCase):

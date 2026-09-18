@@ -11,12 +11,23 @@ Hardwarefrei mit Absicht: das Skript daneben lässt sich ohne luma, smbus und
 TCA9548A nicht einmal importieren, und dann wäre an dieser Tabelle nichts zu
 prüfen. Derselbe Schnitt wie bei a3_mixer_recall.
 
-Es waren sechs fast gleiche Funktionen, eine je Display, und das ist die
-Geschichte des Ausfalls vom 2026-09-10: in der sechsten stand `port=0` statt 1
-und ein Zeichnen auf `device_dev_5`, eine Variable, die es dort nicht gab.
-Beides sind Fehler, die eine Tabelle nicht machen kann -- es gibt nur noch eine
-Stelle, an der ein Port steht, und keine Variable, die aus einer
-Nachbarfunktion herüberlappt.
+Es waren sechs fast gleiche Funktionen fuer fuenf Displays, und das ist die
+ganze Geschichte des Ausfalls vom 2026-09-10: die sechste sprach ein Display
+an, das es nicht gibt.
+
+Drei Dinge sagten das schon im alten Skript, und alle drei standen unbeachtet
+nebeneinander: der Kopf sagte "5 Oled Displays"; die Adresskonstanten hiessen
+`SSD1306_I2C_ADDRESS_2` bis `_6`, also fuenf, benannt nach den
+Multiplexer-Kanaelen 2 bis 6; und `disp_1` bis `disp_5` benutzten genau diese
+Kanaele. Nur `disp_6` griff auf Kanal 7 -- ausserhalb der benannten Menge, mit
+`port=0` und einem Zeichnen auf `device_dev_5`, einer Variablen aus der
+Nachbarfunktion. Zwei kaputte Zeilen in einer Funktion, die nichts ansprach.
+
+Vom Maintainer bestaetigt am 2026-09-18: *"es gibt keinen kanal 7 soweit ich
+weiss"*.
+
+Als Tabelle kann das nicht wiederkommen: fuenf Zeilen, die Kanaele stehen
+einmal da, und ein Test besteht darauf, dass es die des Multiplexers sind.
 """
 
 from collections import namedtuple
@@ -32,13 +43,15 @@ Panel = namedtuple("Panel", "channel port address rotate label")
 #: einmal hier und nicht sechsmal verteilt.
 I2C_BUS = 1
 
+#: Die Kanaele des Multiplexers, an denen wirklich ein Display haengt.
+MULTIPLEXER_CHANNELS = (2, 3, 4, 5, 6)
+
 PANELS = (
     Panel(channel=2, port=I2C_BUS, address=0x3D, rotate=2, label="Deck 1"),
     Panel(channel=3, port=I2C_BUS, address=0x3D, rotate=2, label="Deck 2"),
     Panel(channel=4, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 3"),
     Panel(channel=5, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 4"),
     Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="Line In"),
-    Panel(channel=7, port=I2C_BUS, address=0x3D, rotate=0, label="Line In"),
 )
 
 
