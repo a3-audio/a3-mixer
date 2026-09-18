@@ -60,6 +60,17 @@ class PanelTable(unittest.TestCase):
         for panel in PANELS:
             self.assertIn(panel.channel, MULTIPLEXER_CHANNELS, panel.label)
 
+    # Vier Kanalzuege und der FX-Return, vom Maintainer aufgezaehlt:
+    # "es gibt 5 (kanal 1-4 und FX-Return)". Das fuenfte trug die Aufschrift
+    # "Line In" -- dieselbe Copy-Paste-Schicht, aus der auch das sechste
+    # Display kam, das es nie gab.
+    def test_the_fifth_is_the_fx_return(self):
+        self.assertEqual("FX Return", PANELS[-1].label)
+
+    def test_the_first_four_are_the_channel_strips(self):
+        self.assertEqual(["Deck 1", "Deck 2", "Deck 3", "Deck 4"],
+                         [panel.label for panel in PANELS[:4]])
+
     def test_each_label_is_its_own(self):
         labels = [panel.label for panel in PANELS]
         self.assertEqual(len(labels), len(set(labels)))

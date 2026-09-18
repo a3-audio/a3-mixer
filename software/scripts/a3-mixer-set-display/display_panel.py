@@ -44,6 +44,9 @@ Panel = namedtuple("Panel", "channel port address rotate label")
 I2C_BUS = 1
 
 #: Die Kanaele des Multiplexers, an denen wirklich ein Display haengt.
+#:
+#: Fuenf: die vier Kanalzuege und der FX-Return. Vom Maintainer am 2026-09-18
+#: aufgezaehlt -- *"es gibt 5 (kanal 1-4 und FX-Return)"*.
 MULTIPLEXER_CHANNELS = (2, 3, 4, 5, 6)
 
 PANELS = (
@@ -51,7 +54,7 @@ PANELS = (
     Panel(channel=3, port=I2C_BUS, address=0x3D, rotate=2, label="Deck 2"),
     Panel(channel=4, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 3"),
     Panel(channel=5, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 4"),
-    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="Line In"),
+    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="FX Return"),
 )
 
 
