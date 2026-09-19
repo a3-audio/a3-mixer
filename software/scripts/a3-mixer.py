@@ -23,6 +23,7 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 from a3_mixer_recall import RecallRequest
+from a3_mixer_panel import TAP, channel_button, led_colour
 from a3_mixer_watchdog import watch_child
 
 pixel_pin = board.D12
@@ -96,22 +97,19 @@ analog_pots_per_channel_to_osc_param = {
     "5": "volume",
 }
 
-# The channel strip's keys. There were three: "2" was the 3D switch.
+# The channel strip's keys live in a3_mixer_panel, where a test can reach them
+# -- this module needs board, neopixel and serial to import at all.
 #
-# **The key is still on the panel.** It is out of service in software, which
-# is a guard rather than a tidy-up: A3 Core's `3d` became the continuous blend
+# Rearranged on 2026-09-19: the 3D key, out of service since 2026-09-12 but
+# still on the panel, carries PFL now, and PFL's old key carries the tap. The
+# reason is the one lamp the three keys share: PFL sat on its red line, into
+# which the wrong resistors are soldered, and a cue lamp has to be readable in
+# the dark. The blue line of the dead 3D key is free and bright.
+#
+# What the 3D key must NOT do again: A3 Core's `3d` became the continuous blend
 # on 2026-09-12, so a momentary key putting the string "1" into it would drive
 # that blend to the stop for as long as a finger held it down, and drop it to
-# zero on release. Restoring this line restores that.
-#
-# Core's own boolean for the key (`/channel/n/4d`) went the same day, so there
-# is not even an address to point it at without building one. What the key
-# should do instead is open -- see
-# issues/a3-core-der-3d-taster-des-mixers-faehrt-die-blende.md.
-button_per_channel_to_osc_param = {
-    "0": "pfl",
-    "1": "fx",
-}
+# zero on release. It carries pfl now, which is a flag and takes exactly that.
 
 button_fx_to_mode_name = {
     "0": "high_pass",
@@ -168,14 +166,15 @@ def vu_handler(address: str,
     send_vu_data(vu, peak_db, rms_db)
 
 def send_button_leds_data(channel: int, led_on, led_mode):
-    # led_mode is the colour channel of the button's pixel: 0 red (pfl),
-    # 1 green (fx), 2 blue (3d).
+    # led_mode is the colour channel of the strip's one pixel: 0 red, 1 green,
+    # 2 blue. Which function lights which colour is a3_mixer_panel.LED_COLOUR,
+    # and since 2026-09-19 that is fx green and pfl *blue*.
     #
-    # The blue one is wired to a lamp that nothing lights any more: A3 Core
-    # stopped sending /channel/n/led/3d when the flag behind it went, and
-    # led_handler_channel below no longer has a branch for it either. The
-    # colour channel stays named because the pixel has three and the key it
-    # belongs to is still on the panel -- see button_per_channel_to_osc_param.
+    # Red is the line with the wrong resistors soldered into it, which is the
+    # whole reason pfl moved off it. Nothing lights red now: its key carries
+    # the tap, and a tap has no state to show. Whether the four tap keys
+    # should blink along with the beat the way A3 Motion's TAP does is open --
+    # it would take work at Core and here, and was not asked for.
     #
     # pfl used to have a branch of its own here, inverted -- `0 if led_on else
     # 255`. A3 Core inverted it as well, on the way out, and the two cancelled:
@@ -198,18 +197,14 @@ def led_handler_channel(address: str,
     channel = words[2]
     led_type = words[4]
     led_on = int(osc_arguments[0])
-    led_mode = 0
 #    print(f'toggling {led_type} led for channel {channel}: {led_on}')
 
     # Von Core gehört: die Frage nach dem Gesamtzustand ist beantwortet.
     recall.answered()
 
-    if led_type == "pfl":
-        led_mode = 0
-        send_button_leds_data(int(channel), led_on, led_mode)
-    elif led_type == "fx":
-        led_mode = 1
-        send_button_leds_data(int(channel), led_on, led_mode)
+    colour = led_colour(led_type)
+    if colour is not None:
+        send_button_leds_data(int(channel), led_on, colour)
 
 def led_handler_fx(address: str,
                    *osc_arguments: List[Any]) -> None:
@@ -289,9 +284,16 @@ def serial_handler(): # dispatch from serial stream and send to osc
             # the 4 channel strips
             channel_names = map(str, range(5))
             if track in channel_names:
-                if index in button_per_channel_to_osc_param:
-                    osc_core.send_message("/channel/" + track + "/" +
-                                          button_per_channel_to_osc_param[index],
+                function = channel_button(index)
+
+                if function == TAP:
+                    # Press only, and the same int the tap key sends -- see
+                    # the TAP branch below, which this deliberately mirrors
+                    # rather than reimplements.
+                    if value == "1":
+                        osc_beatclock.send_message("/tap", 1)
+                elif function is not None:
+                    osc_core.send_message("/channel/" + track + "/" + function,
                                           value)
             elif track == "fx" and value == "1":
                 if index in button_fx_to_mode_name:
