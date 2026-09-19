@@ -7,5 +7,11 @@ After=network.target
 Environment="PATH=/home/aaa/.local/bin:$PATH"
 ExecStart=/home/aaa/.venv/bin/python3 /home/aaa/a3-mixer/software/scripts/a3-mixer.py
 
+# Ein Absturz blieb bisher liegen: ohne Restart kommt der Dienst nicht
+# wieder, und weil der Eltern-Prozess den Tod seines Kindes jetzt mit
+# Status 1 quittiert, braucht genau das hier eine Antwort.
+Restart=on-failure
+RestartSec=2
+
 [Install]
 WantedBy=multi-user.target

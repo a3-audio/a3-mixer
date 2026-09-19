@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
 import sys
 import math
 import time
@@ -22,6 +23,7 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 from a3_mixer_recall import RecallRequest
+from a3_mixer_watchdog import watch_child
 
 pixel_pin = board.D12
 num_pixels = 14
@@ -331,6 +333,28 @@ if __name__ == '__main__':
 
     proc1 = Process(target=serial_handler)
     proc1.start()
+
+    # Stirbt der serielle Leser, geht dieser Prozess mit.
+    #
+    # Sonst bleibt das Pult halb lebendig: der OSC-Server hier lebt weiter,
+    # also meldet systemd den Unit als `active`, die LEDs und die VU-Meter
+    # kommen weiter an -- und kein Poti und keine Taste erreichen Core mehr.
+    # Am 2026-09-12 war das zwanzig Minuten lang so, und gesagt hat es nichts.
+    #
+    # os._exit statt sys.exit: das hier ist ein Thread, und sys.exit beendet
+    # nur ihn. Aufgeräumt werden muss nichts -- der Unit hat Restart=on-failure
+    # und kommt sauber neu hoch.
+    def stop_because_the_child_died(reason):
+        print(reason, file=sys.stderr)
+        sys.stderr.flush()
+        os._exit(1)
+
+    threading.Thread(
+        target=watch_child,
+        args=(proc1.is_alive, stop_because_the_child_died, time.sleep),
+        kwargs={"name": "serial reader"},
+        daemon=True,
+    ).start()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--ip", default="0.0.0.0", help="The ip to listen on for VU meter messages")

@@ -3,4 +3,8 @@
 # SPDX-License-Identifier: CC0-1.0
 
 hardware/mainboard/firmware/.pio
-engine/scripts/a3-mixer-set-display/__pycache__
+# Der Eintrag lautete `engine/scripts/a3-mixer-set-display/__pycache__` und
+# zeigte damit auf einen Ordner, den es seit der Umbenennung nach `software/`
+# nicht mehr gibt -- also lag der Bytecode unignoriert herum.
+__pycache__/
+*.pyc
