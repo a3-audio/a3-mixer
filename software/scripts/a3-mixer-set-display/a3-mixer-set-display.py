@@ -41,6 +41,26 @@ def show(panel):
     serial = i2c(port=panel.port, address=panel.address)
     device = ssd1306(serial, rotate=panel.rotate)
 
+    # Das Geschriebene soll stehenbleiben, wenn dieses Skript endet.
+    #
+    # luma meldet beim Beenden des Prozesses ein `cleanup()` an, und das tut
+    # ohne dieses Flag genau zwei Dinge: `hide()` und `clear()` -- Display aus,
+    # Inhalt weg. Fuer eine Anwendung, die laeuft und zeichnet, ist das
+    # richtig. Dieses Skript schreibt einmal die Beschriftung hin und endet;
+    # ohne `persist` loescht es beim Beenden das, wofuer es gestartet wurde.
+    #
+    # Sichtbar wurde es nur am letzten Display, und das ist der Multiplexer:
+    # die Aufraeum-Schreibvorgaenge *aller* Geraete gehen an den Kanal, auf dem
+    # er gerade steht, und das ist nach dem Durchlauf der letzte. Die anderen
+    # vier behalten ihr Bild, weil von ihnen laengst weggeschaltet wurde.
+    #
+    # Und deshalb ist es acht Tage lang niemandem aufgefallen: vorher ist das
+    # Skript an `disp_6` abgestuerzt, mit dem Multiplexer auf Kanal 7, wo
+    # nichts haengt. Der Absturz hat das letzte Display versehentlich
+    # geschuetzt -- ein sauberer Durchlauf hat es dann als erstes dunkel
+    # gemacht. Am Geraet gemessen am 2026-09-19: mit `persist` bleibt es an.
+    device.persist = True
+
     with canvas(device) as draw:
         draw.rectangle(device.bounding_box, outline="white", fill="black")
         draw.text((15, 5), panel.label, font=oled_font, fill="white")
