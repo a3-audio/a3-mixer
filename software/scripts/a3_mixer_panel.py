@@ -54,6 +54,21 @@ LED_COLOUR = {
 }
 
 
+#: Die Farblinie, auf der der Tap-Takt blitzt, und wie lange.
+#:
+#: Rot, also die Linie des Tap-Tasters selbst -- die Lampe, die blitzt, gehoert
+#: zu der Taste, die man drueckt. Sie ist auch die einzige, die frei ist: seit
+#: dem Umbau vom 2026-09-19 sitzt PFL auf blau und FX auf gruen, und rot (die
+#: mit den falschen Widerstaenden) zeigte nichts mehr an. Zu dunkel zum Lesen
+#: ist sie immer noch -- zum Blitzen reicht sie, denn ein Blitz wird nicht
+#: gelesen, sondern bemerkt.
+#:
+#: Die Dauer liegt unter einem Beat auch bei 200 BPM (300 ms), sonst wuerde aus
+#: dem Blitz ein Dauerlicht, und ueber der Wahrnehmungsschwelle im Dunkeln.
+TAP_FLASH_COLOUR = 0
+TAP_FLASH_SECONDS = 0.06
+
+
 def channel_button(index):
     """Was die Taste mit diesem Index tut, oder None.
 

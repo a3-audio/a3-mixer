@@ -23,7 +23,8 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 from a3_mixer_recall import RecallRequest
-from a3_mixer_panel import TAP, channel_button, led_colour
+from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
+                            channel_button, led_colour)
 from a3_mixer_watchdog import watch_child
 
 pixel_pin = board.D12
@@ -37,6 +38,11 @@ pixels = neopixel.NeoPixel(
 )
 
 button_leds = [[0, 0, 0] for i in range(num_channel)]
+
+# Seit der Takt die Tap-Lampen blitzen laesst, schreiben zwei Threads auf die
+# Pixelkette: der OSC-Server (Lampen, FX) und der Timer, der den Blitz wieder
+# ausmacht.
+_pixels_lock = threading.Lock()
 button_leds_master = [0, 0, 0]
 
 fx_state = np.zeros(10)
@@ -185,9 +191,10 @@ def send_button_leds_data(channel: int, led_on, led_mode):
     # to show the status. So both inversions came out on the same day and this
     # is one branch: `/channel/n/led/pfl` now means "this lamp is lit", and
     # what reaches the pixel is unchanged.
-    button_leds[channel][led_mode] = 255 if led_on else 0
-    pixels[channel] = button_leds[channel]
-    pixels.show()
+    with _pixels_lock:
+        button_leds[channel][led_mode] = 255 if led_on else 0
+        pixels[channel] = button_leds[channel]
+        pixels.show()
 
 def led_handler_channel(address: str,
                         *osc_arguments: List[Any]) -> None:
@@ -219,23 +226,39 @@ def led_handler_fx(address: str,
 
     high_pass = led_fx_mode == "high_pass"
 
-    button_leds_master[1] = 0 if high_pass else 255
-    button_leds_master[2] = 255 if high_pass else 0
-    pixels[num_channel] = button_leds_master
-    pixels.show()
+    with _pixels_lock:
+        button_leds_master[1] = 0 if high_pass else 255
+        button_leds_master[2] = 255 if high_pass else 0
+        pixels[num_channel] = button_leds_master
+        pixels.show()
     print("button_leds_master")
     #print(button_leds_master)
 
-def tap_handler(address: str,
-               *osc_arguments: List[Any]) -> None:
-    words = address.split("/")
-    tap = words[1]
+def _set_tap_lamps(on: bool) -> None:
+    with _pixels_lock:
+        for channel in range(num_channel):
+            button_leds[channel][TAP_FLASH_COLOUR] = 255 if on else 0
+            pixels[channel] = button_leds[channel]
+        pixels.show()
 
-    value = osc_arguments[0]
+def beat_handler(address: str,
+                 *osc_arguments: List[Any]) -> None:
+    """Der Takt blitzt auf den vier Tap-Tastern.
 
-    message = "TAP:" + str(value)
-    sendData(message)
-    print(message)
+    Alle vier gleich, weil alle vier dieselbe Taste sind: sie senden denselben
+    /tap, und eine Lampe, die nur auf einem Kanalzug blinkt, sagt etwas
+    Falsches darueber, welcher davon gemeint ist.
+
+    Auf der roten Linie, also der des Tap-Tasters selbst -- siehe
+    a3_mixer_panel.TAP_FLASH_COLOUR. Die anderen beiden tragen PFL und FX und
+    duerfen von einem Blitz nicht ueberschrieben werden.
+
+    Der Takt kam hier bis zum 2026-09-21 nie an: der beat-analyzer schickte
+    ihn an Port 7775, und das Pult lauscht auf 7772. Die 7775 ist der Port,
+    auf dem der Analyzer selbst lauscht.
+    """
+    _set_tap_lamps(True)
+    threading.Timer(TAP_FLASH_SECONDS, _set_tap_lamps, args=(False,)).start()
 
 # Serial communication
 #ser = serial.Serial('/dev/ttyACM0', 115200)
@@ -368,7 +391,7 @@ if __name__ == '__main__':
     dispatcher.map("/vu/*", vu_handler)
     dispatcher.map("/channel/*/led/*", led_handler_channel)
     dispatcher.map("/fx/led", led_handler_fx)
-    #dispatcher.map("/clock", tap_handler)
+    dispatcher.map("/beat", beat_handler)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.
