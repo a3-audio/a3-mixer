@@ -25,8 +25,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from a3_mixer_panel import (CHANNEL_BUTTONS, LED_COLOUR, TAP, channel_button,
-                            led_colour)
+from a3_mixer_panel import (CHANNEL_BUTTONS, LED_COLOUR, TAP,
+                            TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
+                            channel_button, led_colour)
 
 
 class WhatTheKeysDo(unittest.TestCase):
@@ -84,3 +85,34 @@ class WhichLampLights(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheTapLampBlinksWithTheBeat(unittest.TestCase):
+    """Und sie blinkt auf der Linie, die sonst niemand benutzt.
+
+    Angefordert am 2026-09-21: *„die tap buttons sollten eigentlich im takt
+    blinken."* Möglich wurde das erst durch den Umbau zwei Tage vorher: PFL
+    zog auf die blaue Linie, und die rote — die mit den falschen Widerständen,
+    zu dunkel zum Lesen — wurde frei. Zum Blitzen taugt sie, denn ein Blitz
+    wird nicht gelesen, er wird bemerkt.
+
+    Dass der Takt am Pult nie ankam, war ein zweiter Fehler und lag woanders:
+    der Analyzer schickte ihn an Port 7775, das Pult lauscht auf 7772.
+    """
+
+    def test_the_flash_uses_a_line_no_lamp_owns(self):
+        # Sonst überschriebe der Blitz alle 500 ms eine Statuslampe, und man
+        # sähe PFL flackern.
+        self.assertNotIn(TAP_FLASH_COLOUR, LED_COLOUR.values())
+
+    def test_the_flash_is_the_line_the_tap_key_sits_on(self):
+        # Die Lampe, die blitzt, gehört zu der Taste, die man drückt --
+        # sonst blinkt ein Knopf für einen anderen.
+        self.assertEqual(0, TAP_FLASH_COLOUR)
+        self.assertEqual(TAP, channel_button("0"))
+
+    # Lang genug, um im Dunkeln aufzufallen, kurz genug, um bei 200 BPM
+    # (300 ms Abstand) nicht zum Dauerlicht zu werden.
+    def test_the_flash_is_shorter_than_a_beat_at_any_tempo(self):
+        self.assertLess(TAP_FLASH_SECONDS, 60.0 / 200.0)
+        self.assertGreater(TAP_FLASH_SECONDS, 0.02)
