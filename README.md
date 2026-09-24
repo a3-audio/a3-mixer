@@ -1,6 +1,11 @@
-# A3-Mixer Controller
+# A³ Mixer
 
-**An open-source mixer controller for the [A3-Audio](https://a3-audio.github.io/) project.**
+**An open-source mixer controller for the [A³ Audio](https://a3-audio.github.io/) project.**
+
+**Runs on a Raspberry Pi 3B+ or newer**, which carries the OSC control scripts
+in `software/scripts/`; the panel's own I/O is handled by a microcontroller on
+the mainboard (`hardware/`). Moving that split onto a Raspberry Pi Pico board
+is a goal below, not the current state.
 
 After extensive experimentation and usability testing, we've decided to rebuild the controller from the ground up to better meet requirements.
 
