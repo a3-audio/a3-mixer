@@ -1,4 +1,4 @@
-# A3-Mixer Controller
+# A³ Mixer
 
 **An open-source mixer controller for the [A3-Audio](https://a3-audio.github.io/) project.**
 
