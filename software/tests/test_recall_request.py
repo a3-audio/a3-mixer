@@ -50,8 +50,6 @@ class WhenTheDeskAsks(unittest.TestCase):
         request.asked(60.0)
         self.assertFalse(request.due(65.0), "nobody is answering; stop asking")
 
-    def test_the_address_is_cores_own(self):
-        self.assertEqual(RecallRequest.ADDRESS, "/state/recall")
 
 
 class TheDeskActuallyAsks(unittest.TestCase):
@@ -60,6 +58,14 @@ class TheDeskActuallyAsks(unittest.TestCase):
                   / "scripts/a3-mixer.py").read_text()
         self.assertIn("RecallRequest", source)
         self.assertIn("answered()", source)
+
+    def test_it_asks_in_the_truths_words(self):
+        """The address is the one truth's, like every other the desk speaks
+        (2026-09-30) -- it used to be a constant on RecallRequest."""
+        source = (Path(__file__).resolve().parents[1]
+                  / "scripts/a3-mixer.py").read_text()
+        self.assertIn('osc.address("state.recall")', source)
+        self.assertFalse(hasattr(RecallRequest, "ADDRESS"))
 
 
 if __name__ == "__main__":

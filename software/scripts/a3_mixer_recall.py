@@ -27,9 +27,6 @@ prüfbar, ohne dass die Pi-Hardware (board, neopixel) vorhanden sein muss.
 class RecallRequest:
     """Die Frage nach dem Gesamtzustand, mit Geduld und einem Ende."""
 
-    #: Cores eigene Adresse dafür; siehe a3_core_recall.
-    ADDRESS = "/state/recall"
-
     DEFAULT_EVERY = 5.0
     DEFAULT_GIVE_UP_AFTER = 120.0
 
