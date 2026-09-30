@@ -21,6 +21,7 @@ second truth, and the desk's old literal for Core's address was wrong more
 often than it was right.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -77,7 +78,8 @@ VU_SLOTS = (
 #: Every address key the desk sends or listens for.
 KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
-    + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu")
+    + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
+       "device.hello")
 
 
 class TruthMissing(Exception):
@@ -85,8 +87,9 @@ class TruthMissing(Exception):
 
 
 class MixerOsc:
-    def __init__(self, data):
+    def __init__(self, data, digest=None):
         self._data = data
+        self._digest = digest
 
     # -- where ------------------------------------------------------------
 
@@ -150,6 +153,11 @@ class MixerOsc:
         name = meters[number - 1]
         return VU_SLOTS.index(name) if name in VU_SLOTS else None
 
+    def hello(self):
+        """(address, [name, sha256 of the copy]): the desk tells Core which
+        truth it speaks, and Core's window shows whether it is Core's own."""
+        return self.address("device.hello"), ["mixer", self._digest]
+
     def missing(self):
         """The keys the desk uses that the truth does not have."""
         return [key for key in KEYS_USED if key not in self._data["addresses"]]
@@ -161,4 +169,5 @@ def load(path=None):
     if not path.exists():
         raise TruthMissing(f"no a3-osc.json at {path} -- copy the Core's "
                            "/usr/share/a3/a3-osc.json there")
-    return MixerOsc(json.loads(path.read_text()))
+    raw = path.read_bytes()
+    return MixerOsc(json.loads(raw), hashlib.sha256(raw).hexdigest())

@@ -65,6 +65,7 @@ class TheDeskActuallyAsks(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1]
                   / "scripts/a3-mixer.py").read_text()
         self.assertIn('osc.address("state.recall")', source)
+        self.assertIn("osc.hello()", source)
         self.assertFalse(hasattr(RecallRequest, "ADDRESS"))
 
 

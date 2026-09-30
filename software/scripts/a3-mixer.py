@@ -398,6 +398,9 @@ if __name__ == '__main__':
         while True:
             now = time.monotonic()
             if recall.due(now):
+                # Which truth the desk speaks, with every question: a Core
+                # that comes up later still hears it.
+                osc_core.send_message(*osc.hello())
                 osc_core.send_message(osc.address("state.recall"), 1)
                 recall.asked(now)
             time.sleep(1.0)

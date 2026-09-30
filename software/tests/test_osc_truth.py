@@ -14,6 +14,7 @@ the meter names out of order -- so a pass can only come from reading the
 file. The real file is held against the desk in TheRealTruth.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -38,7 +39,7 @@ MADE_UP = {
     "addresses": {
         key: {"pattern": "/t/" + key + ("/{ch}" if key.startswith("channel.") else ""),
               **({"ch": [1, 4]} if key.startswith("channel.") else {})}
-        for key in KEYS if key != "vu"
+        for key in KEYS + ("device.hello",) if key != "vu"
     } | {"vu": {"pattern": "/t/vu/{n}", "n": [1, 40]}},
     "vu_meters": ["free", "main_top1", "in2_pre", "main_sub", "in1_pre",
                   "main_top2", "main_top3", "in4_pre", "main_top4", "in3_pre",
@@ -124,6 +125,20 @@ class WhichMeterIsWhichLed(unittest.TestCase):
         self.assertIsNone(osc.vu_slot(1))   # free
         self.assertIsNone(osc.vu_slot(14))  # main_top8
         self.assertIsNone(osc.vu_slot(0))
+
+
+class TheDeskSaysWhichTruth(unittest.TestCase):
+    """At start the desk names itself and the sha256 of its copy, so Core's
+    window can show whether the copy is Core's own (/device/hello)."""
+
+    def test_hello_names_the_desk_and_its_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a3-osc.json"
+            path.write_text(json.dumps(MADE_UP))
+            address, (name, digest) = a3_mixer_osc.load(path).hello()
+        self.assertEqual(address, "/t/device.hello")
+        self.assertEqual(name, "mixer")
+        self.assertEqual(digest, hashlib.sha256(json.dumps(MADE_UP).encode()).hexdigest())
 
 
 class FindingTheTruth(unittest.TestCase):
