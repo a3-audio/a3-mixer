@@ -26,6 +26,8 @@ from a3_mixer_recall import RecallRequest
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_watchdog import watch_child
+from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
+                          TruthMissing, load as load_osc_truth)
 
 pixel_pin = board.D12
 num_pixels = 14
@@ -53,30 +55,34 @@ fx_state = np.zeros(10)
 # an sein konnte. Siehe a3_mixer_recall.
 recall = RecallRequest()
 
-# OSC-Clients
+# OSC -- every address, port and IP out of the one truth, a3-core's
+# a3-osc.json, a copy of which the deploy puts beside this script. See
+# a3_mixer_osc.
 #
-# One host, two ports: A3 Core and the beat-analyzer run on the same machine,
-# so there is one address to change here rather than two that can drift apart.
+# Core's address was a literal here until 2026-09-30, and it was wrong more
+# often than it was right: two branches carried 192.168.43.50 and .58, the
+# desk a third, and none was reachable after the rig moved subnets. OSC over
+# UDP has no way of saying that nobody was listening.
 #
-# **This line has been wrong more often than it has been right.** The two
-# branches that met in this merge carried 192.168.43.50 and 192.168.43.58, the
-# running copy on the desk carried a third, and none of them was reachable:
-# Core has been on 192.168.8.10 since the rig moved subnets. An address in
-# source is an address that goes stale between two gigs, and nothing reports
-# it -- OSC over UDP has no way of saying that nobody was listening.
-#
-# A3 Core learned this first and took --mixer as an argument. This wants the
-# same and does not have it yet.
-CORE_HOST = '192.168.8.10'
-osc_core = SimpleUDPClient(CORE_HOST, 9000)
+# Without the truth, or with a word missing from it, the desk stops at once
+# and says why: a desk that cannot know where Core is has nothing to send,
+# and a key failing mid-set would kill the serial reader instead.
+try:
+    osc = load_osc_truth()
+except TruthMissing as missing:
+    sys.exit(f"a3-mixer: {missing}")
+if osc.missing():
+    sys.exit("a3-mixer: a3-osc.json has no " + ", ".join(osc.missing()))
+
+osc_core = SimpleUDPClient(*osc.core())
 
 # The beat clock, addressed directly. A tap is timing, and timing does not
 # want a relay in the middle -- A3 Motion's TAP key sends straight at the
 # analyzer for the same reason, bypassing even its own message queue.
-osc_beatclock = SimpleUDPClient(CORE_HOST, 7775)
+osc_beatclock = SimpleUDPClient(*osc.beatclock())
 
 # OSC-Server
-osc_vu_receive_port = 7772
+osc_vu_receive_port = osc.listen_port()
 
 vu_channel_to_led_count = {
     0 : 8,
@@ -93,15 +99,8 @@ vu_channel_to_led_count = {
     11 : 32,
 }
 
-# channel strips 1-4
-analog_pots_per_channel_to_osc_param = {
-    "0": "fx-send",
-    "1": "gain",
-    "2": "eq/high",
-    "3": "eq/mid",
-    "4": "eq/low",
-    "5": "volume",
-}
+# The pots' and keys' addresses are a3_mixer_osc's tables (CHANNEL_POTS,
+# CHANNEL_KEYS, MASTER_POTS), as the truth's keys.
 
 # The channel strip's keys live in a3_mixer_panel, where a test can reach them
 # -- this module needs board, neopixel and serial to import at all.
@@ -121,18 +120,6 @@ button_fx_to_mode_name = {
     "0": "high_pass",
     "1": "low_pass",
 }
-
-# master section pots mapping
-master_pots_to_osc_message = {
-    "0": "/master/volume",
-    "2": "/fx/frequency",
-    "1": "/fx/resonance",
-    "3": "/master/booth",
-    "4": "/master/phones_mix",
-    "5": "/master/phones_volume",
-    "6": "/master/return",
-}
-
 
 # time_last_receive = 0
 
@@ -154,8 +141,15 @@ def send_vu_data(vu: str, peak_db: float, rms_db: float):
 
 def vu_handler(address: str,
                *osc_arguments: List[Any]) -> None:
-    words = address.split("/")
-    vu = words[2]
+    # The meter's number is the channel map's; the firmware's slot is looked
+    # up by what the meter measures (a3_mixer_osc.VU_SLOTS).
+    found = osc.match(address)
+    if found is None:
+        return
+    slot = osc.vu_slot(found[1]["n"])
+    if slot is None:
+        return
+    vu = str(slot)
 
     peak = osc_arguments[0]
     rms = osc_arguments[1]
@@ -189,7 +183,7 @@ def send_button_leds_data(channel: int, led_on, led_mode):
     #
     # Since 2026-09-12 every device is told the lamps, because a lamp is meant
     # to show the status. So both inversions came out on the same day and this
-    # is one branch: `/channel/n/led/pfl` now means "this lamp is lit", and
+    # is one branch: the lamp's address now means "this lamp is lit", and
     # what reaches the pixel is unchanged.
     with _pixels_lock:
         button_leds[channel][led_mode] = 255 if led_on else 0
@@ -200,9 +194,11 @@ def led_handler_channel(address: str,
                         *osc_arguments: List[Any]) -> None:
 #    print(f'led_handler_channel: {address}')
 
-    words = address.split("/")
-    channel = words[2]
-    led_type = words[4]
+    found = osc.match(address)
+    if found is None or found[0] not in LAMPS:
+        return
+    channel = found[1]["ch"] - 1
+    led_type = LAMPS[found[0]]
     led_on = int(osc_arguments[0])
 #    print(f'toggling {led_type} led for channel {channel}: {led_on}')
 
@@ -211,7 +207,7 @@ def led_handler_channel(address: str,
 
     colour = led_colour(led_type)
     if colour is not None:
-        send_button_leds_data(int(channel), led_on, colour)
+        send_button_leds_data(channel, led_on, colour)
 
 def led_handler_fx(address: str,
                    *osc_arguments: List[Any]) -> None:
@@ -314,13 +310,14 @@ def serial_handler(): # dispatch from serial stream and send to osc
                     # the TAP branch below, which this deliberately mirrors
                     # rather than reimplements.
                     if value == "1":
-                        osc_beatclock.send_message("/tap", 1)
-                elif function is not None:
-                    osc_core.send_message("/channel/" + track + "/" + function,
-                                          value)
+                        osc_beatclock.send_message(osc.address("tap"), 1)
+                elif function in CHANNEL_KEYS:
+                    osc_core.send_message(
+                        osc.channel_address(CHANNEL_KEYS[function], int(track)),
+                        value)
             elif track == "fx" and value == "1":
                 if index in button_fx_to_mode_name:
-                    osc_core.send_message("/fx/mode",
+                    osc_core.send_message(osc.address("filter.mode"),
                                           button_fx_to_mode_name[index])
 
         # The tap key. Press only -- a tap is the moment the finger goes
@@ -336,7 +333,7 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # int 1, not the string off the serial line: the analyzer reads
         # /tap [i] as the beat within the bar and only understands i or f.
         if mode == "TAP" and value == "1":
-            osc_beatclock.send_message("/tap", 1)
+            osc_beatclock.send_message(osc.address("tap"), 1)
 
         
         # Potis
@@ -344,14 +341,15 @@ def serial_handler(): # dispatch from serial stream and send to osc
             # the 4 channel strips
             channel_names = map(str, range(4))
             if track in channel_names:
-                if index in analog_pots_per_channel_to_osc_param:
-                    osc_core.send_message("/channel/" + track + "/" +
-                                            analog_pots_per_channel_to_osc_param[index], value)
+                if index in CHANNEL_POTS:
+                    osc_core.send_message(
+                        osc.channel_address(CHANNEL_POTS[index], int(track)),
+                        value)
 
             # pots in the master section
             elif track == "master":
-                if index in master_pots_to_osc_message:
-                    osc_core.send_message(master_pots_to_osc_message[index], value)
+                if index in MASTER_POTS:
+                    osc_core.send_message(osc.address(MASTER_POTS[index]), value)
 
 
 if __name__ == '__main__':
@@ -388,10 +386,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     dispatcher = dispatcher.Dispatcher()
-    dispatcher.map("/vu/*", vu_handler)
-    dispatcher.map("/channel/*/led/*", led_handler_channel)
-    dispatcher.map("/fx/led", led_handler_fx)
-    dispatcher.map("/beat", beat_handler)
+    dispatcher.map(osc.subscription("vu"), vu_handler)
+    for lamp in LAMPS:
+        dispatcher.map(osc.subscription(lamp), led_handler_channel)
+    dispatcher.map(osc.subscription("filter.led"), led_handler_fx)
+    dispatcher.map(osc.subscription("beat"), beat_handler)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.
@@ -399,7 +398,10 @@ if __name__ == '__main__':
         while True:
             now = time.monotonic()
             if recall.due(now):
-                osc_core.send_message(RecallRequest.ADDRESS, 1)
+                # Which truth the desk speaks, with every question: a Core
+                # that comes up later still hears it.
+                osc_core.send_message(*osc.hello())
+                osc_core.send_message(osc.address("state.recall"), 1)
                 recall.asked(now)
             time.sleep(1.0)
 

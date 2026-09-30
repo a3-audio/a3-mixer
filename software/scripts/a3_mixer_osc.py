@@ -1,0 +1,173 @@
+#!/usr/bin/python
+
+# SPDX-FileCopyrightText: 2026 Patric Schmitz, Raphael Eismann
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""The desk's words, ports and addresses -- out of the one truth.
+
+Every fact about who talks to whom, on which port, with which words, lives in
+a3-core's a3-osc.json (decided 2026-09-30). The desk runs on a machine of its
+own, so it reads a copy that is put beside this script at deploy
+(`a3-osc.json`, not in git), or the file $A3_OSC_TRUTH names.
+
+This module holds the desk's own tables -- which pot, key and lamp is which
+address -- as the truth's *keys*, never as addresses. It is the counterpart
+of a3-core's a3_osc.py, cut to what the desk asks, and like the panel tables
+it needs no board, neopixel or serial to import.
+
+A fact the file does not have is an error, not a default: a default is a
+second truth, and the desk's old literal for Core's address was wrong more
+often than it was right.
+"""
+
+import hashlib
+import json
+import os
+import re
+from pathlib import Path
+
+#: Where the deploy puts the desk's copy.
+BESIDE_THE_SCRIPT = Path(__file__).resolve().with_name("a3-osc.json")
+
+#: The channel strip's pots, by the index the firmware reports.
+CHANNEL_POTS = {
+    "0": "channel.fx-send",
+    "1": "channel.gain",
+    "2": "channel.eq.high",
+    "3": "channel.eq.mid",
+    "4": "channel.eq.low",
+    "5": "channel.volume",
+}
+
+#: The channel strip's keys, by what a3_mixer_panel.channel_button says they
+#: do. The fx key switches the channel through the master filter.
+CHANNEL_KEYS = {
+    "fx": "channel.filter",
+    "pfl": "channel.pfl",
+}
+
+#: The master section's pots, by the index the firmware reports.
+MASTER_POTS = {
+    "0": "master.volume",
+    "1": "filter.resonance",
+    "2": "filter.frequency",
+    "3": "master.booth",
+    "4": "master.phones-mix",
+    "5": "master.phones-volume",
+    "6": "master.fx-return",
+}
+
+#: The lamps Core tells the desk about, and the panel's name for each --
+#: the name a3_mixer_panel.led_colour takes.
+LAMPS = {
+    "channel.pfl.led": "pfl",
+    "channel.filter.led": "fx",
+}
+
+#: The firmware's twelve meter slots, by what they measure: four inputs of
+#: eight LEDs, then eight outputs of thirty-two (decided 2026-09-30: the main
+#: sub and main tops 1-7). The slots are the firmware's numbering and stay;
+#: which /vu number feeds one is the channel map's.
+VU_SLOTS = (
+    "in1_pre", "in2_pre", "in3_pre", "in4_pre",
+    "main_sub", "main_top1", "main_top2", "main_top3",
+    "main_top4", "main_top5", "main_top6", "main_top7",
+)
+
+#: Every address key the desk sends or listens for.
+KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
+    + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
+    + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
+       "device.hello")
+
+
+class TruthMissing(Exception):
+    """No truth to read -- the desk cannot know where Core is."""
+
+
+class MixerOsc:
+    def __init__(self, data, digest=None):
+        self._data = data
+        self._digest = digest
+
+    # -- where ------------------------------------------------------------
+
+    def _listener(self, program, role):
+        for listener in self._data["listeners"]:
+            if listener["program"] == program and listener["role"] == role:
+                return listener
+        raise KeyError(f"nobody listens as {program}.{role} in a3-osc.json")
+
+    def _on_the_core_machine(self, program, role):
+        """(ip, port) of a listener, seen from the desk. A listener on every
+        interface ("any") is on the Core machine, where everything but the
+        desk runs -- from here that is Core's address, not the loopback."""
+        listener = self._listener(program, role)
+        host = "core" if listener["host"] == "any" else listener["host"]
+        return self._data["hosts"][host], listener["port"]
+
+    def core(self):
+        return self._on_the_core_machine("core", "osc")
+
+    def beatclock(self):
+        return self._on_the_core_machine("beat-analyzer", "clock")
+
+    def listen_port(self):
+        return self._listener("mixer", "osc")["port"]
+
+    # -- what ---------------------------------------------------------------
+
+    def address(self, key, **fields):
+        return self._data["addresses"][key]["pattern"].format(**fields)
+
+    def channel_address(self, key, index):
+        """The address for channel `index` (0-3): on the wire, 1-4."""
+        return self.address(key, ch=index + 1)
+
+    def subscription(self, key):
+        """The pattern for pythonosc's dispatcher: placeholders as `*`."""
+        return re.sub(r"\{\w+\}", "*", self._data["addresses"][key]["pattern"])
+
+    def match(self, address):
+        """("channel.pfl.led", {"ch": 2}) for "/channel/2/pfl/led", or None
+        for an address the truth does not have or a number out of range."""
+        for key, entry in self._data["addresses"].items():
+            regex = re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>\\d+)", re.escape(entry["pattern"]))
+            found = re.fullmatch(regex, address)
+            if not found:
+                continue
+            fields = {name: int(value) for name, value in found.groupdict().items()}
+            if all(entry.get(name, [value, value])[0] <= value
+                   <= entry.get(name, [value, value])[1]
+                   for name, value in fields.items()):
+                return key, fields
+        return None
+
+    def vu_slot(self, number):
+        """The firmware slot /vu/<number> lights, or None if the desk does
+        not show that meter."""
+        meters = self._data.get("vu_meters", [])
+        if not 1 <= number <= len(meters):
+            return None
+        name = meters[number - 1]
+        return VU_SLOTS.index(name) if name in VU_SLOTS else None
+
+    def hello(self):
+        """(address, [name, sha256 of the copy]): the desk tells Core which
+        truth it speaks, and Core's window shows whether it is Core's own."""
+        return self.address("device.hello"), ["mixer", self._digest]
+
+    def missing(self):
+        """The keys the desk uses that the truth does not have."""
+        return [key for key in KEYS_USED if key not in self._data["addresses"]]
+
+
+def load(path=None):
+    """The truth: `path`, else $A3_OSC_TRUTH, else the copy beside the script."""
+    path = Path(path or os.environ.get("A3_OSC_TRUTH") or BESIDE_THE_SCRIPT)
+    if not path.exists():
+        raise TruthMissing(f"no a3-osc.json at {path} -- copy the Core's "
+                           "/usr/share/a3/a3-osc.json there")
+    raw = path.read_bytes()
+    return MixerOsc(json.loads(raw), hashlib.sha256(raw).hexdigest())

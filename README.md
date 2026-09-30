@@ -33,3 +33,12 @@ versioning are described once, in the umbrella:**
 
 The short of it: work happens on `main`, a version is an annotated tag, and
 the same tag name is set in every repository at once — `v03.0` is the first.
+
+## Addresses and ports
+
+The desk speaks what the one truth says: a3-core ships every OSC address,
+port and IP of the system in `/usr/share/a3/a3-osc.json`. The desk reads a
+copy of it beside its script, `software/scripts/a3-osc.json` (not in git —
+copy it over from the Core machine whenever the package there changes), or
+the file `$A3_OSC_TRUTH` names. Without it the service stops at once and
+says where it looked.
