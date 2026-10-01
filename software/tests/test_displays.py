@@ -21,6 +21,11 @@ from a3_mixer_displays import DrawTimer, Displays, Multiplexer
 from a3_mixer_levels import LevelGate
 
 
+def stem(pair):
+    """The mask Core announces for a channel playing that one pair."""
+    return 1 << (pair - 1)
+
+
 class Rig:
     def __init__(self):
         self.selected = []
@@ -51,9 +56,9 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_two_draws_build_the_device_once(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
-        displays.show_channel(0, 2)
+        displays.show_channel(0, stem(2))
         displays.drain()
         self.assertEqual(1, len(rig.built))
         self.assertEqual(2, len(rig.drawn))
@@ -61,16 +66,16 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_the_device_persists_past_exit(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
         self.assertTrue(rig.built[0][1].persist)
 
     def test_the_multiplexer_is_selected_before_every_draw(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
-        displays.show_channel(0, 2)
+        displays.show_channel(0, stem(2))
         displays.drain()
         displays.show_return(1, (True,) * 8)
         displays.drain()
@@ -87,14 +92,14 @@ class OneDevicePerPanel(unittest.TestCase):
 class LatestWins(unittest.TestCase):
     def test_posting_draws_nothing_yet(self):
         rig = Rig()
-        rig.displays().show_channel(0, 1)
+        rig.displays().show_channel(0, stem(1))
         self.assertEqual([], rig.drawn)
 
     def test_a_fast_spin_is_one_draw_of_where_it_ended(self):
         rig = Rig()
         displays = rig.displays()
         for pair in (1, 2, 3, 4):
-            displays.show_channel(0, pair)
+            displays.show_channel(0, stem(pair))
         displays.drain()
         self.assertEqual(1, len(rig.drawn))
         self.assertEqual([s.filled for s in rig.drawn[0][1]].index(True), 3)
@@ -102,9 +107,9 @@ class LatestWins(unittest.TestCase):
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.show_return(2, (True,) * 8)
-        displays.show_channel(0, 2)
+        displays.show_channel(0, stem(2))
         displays.drain()
         self.assertEqual(2, len(rig.drawn))
 
@@ -115,7 +120,7 @@ class LatestWins(unittest.TestCase):
         rig.draw = lambda device, squares: (draw(device, squares), drawn.set())
         displays = rig.displays()
         displays.start()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         self.assertTrue(drawn.wait(2.0))
 
 
@@ -125,7 +130,7 @@ class WhatIsDrawn(unittest.TestCase):
         rig.make_device = lambda panel: type(
             "Device", (), {"persist": False, "width": 128, "height": 32})()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
         device, squares = rig.drawn[-1]
         self.assertTrue(all(s.box[3] < 32 for s in squares))
@@ -144,13 +149,13 @@ class AfterAFailure(unittest.TestCase):
     def test_a_failed_draw_drops_the_device_and_the_next_rebuilds(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
         rig.fail_draw = True
-        displays.show_channel(0, 2)
+        displays.show_channel(0, stem(2))
         displays.drain()
         rig.fail_draw = False
-        displays.show_channel(0, 3)
+        displays.show_channel(0, stem(3))
         displays.drain()
         self.assertEqual(2, len(rig.built))
         filled = [s.filled for s in rig.drawn[-1][1]]
@@ -160,9 +165,9 @@ class AfterAFailure(unittest.TestCase):
         rig = Rig()
         displays = rig.displays()
         rig.fail_draw = True
-        displays.show_channel(1, 1)
+        displays.show_channel(1, stem(1))
         displays.drain()
-        displays.show_channel(1, 2)
+        displays.show_channel(1, stem(2))
         displays.drain()
         self.assertEqual(1, len(rig.reports))
 
@@ -175,7 +180,7 @@ class TryingAgain(unittest.TestCase):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_channel(0, 3)
+        displays.show_channel(0, stem(3))
         displays.drain()
         self.assertEqual(1, len(scheduled))
         rig.fail_draw = False
@@ -187,10 +192,10 @@ class TryingAgain(unittest.TestCase):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_channel(0, 3)
+        displays.show_channel(0, stem(3))
         displays.drain()
         rig.fail_draw = False
-        displays.show_channel(0, 5)
+        displays.show_channel(0, stem(5))
         displays.drain()
         scheduled[0][1]()
         displays.drain()
@@ -199,7 +204,7 @@ class TryingAgain(unittest.TestCase):
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
-        displays.show_channel(0, 3)
+        displays.show_channel(0, stem(3))
         displays.drain()
         self.assertEqual([], scheduled)
 
@@ -249,7 +254,7 @@ class Levels(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
         self.now = 0.01
-        self.displays.show_channel(0, 2)
+        self.displays.show_channel(0, stem(2))
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
         squares = self.rig.drawn[0][1]
@@ -267,7 +272,7 @@ class Levels(unittest.TestCase):
             draw(device, squares)
             order.append(labels[id(device)])
             if len(order) == 1:
-                self.displays.show_channel(3, 5)   # Deck 4, last in the table
+                self.displays.show_channel(3, stem(5))   # Deck 4, last in the table
 
         self.rig.draw = draw_and_turn
         self.displays._draw_squares = draw_and_turn
@@ -278,7 +283,7 @@ class Levels(unittest.TestCase):
         self.assertTrue(last_deck_four[4].filled and last_deck_four[0].bar)
 
     def test_the_square_state_survives_a_level_redraw(self):
-        self.displays.show_channel(0, 3)
+        self.displays.show_channel(0, stem(3))
         self.displays.show_return(2, (True,) * 8)
         self.displays.drain()
         self.displays.note_level(1, 2)
@@ -304,14 +309,12 @@ class TheCueField(unittest.TestCase):
         self.assertEqual(1, len(self.rig.drawn))
         self.assertTrue(self.rig.drawn[0][1][9].filled)
 
-    def test_the_stem_cue_fills_the_returns_c(self):
-        self.displays.show_stem_cue(True)
-        self.displays.drain()
-        self.assertTrue(self.rig.drawn[0][1][8].filled)
+    def test_the_return_has_no_stem_cue(self):
+        self.assertFalse(hasattr(self.displays, "show_stem_cue"))
 
     def test_the_cue_survives_a_stem_change(self):
         self.displays.show_cue(0, True)
-        self.displays.show_channel(0, 3)
+        self.displays.show_channel(0, stem(3))
         self.displays.drain()
         self.assertTrue(self.rig.drawn[-1][1][9].filled)
 
@@ -339,9 +342,9 @@ class HowLongADrawTakes(unittest.TestCase):
         rig = Rig()
         ticks = iter([0.0, 0.012, 1.0, 1.020])
         displays = rig.displays(clock=lambda: next(ticks), every=2)
-        displays.show_channel(0, 1)
+        displays.show_channel(0, stem(1))
         displays.drain()
-        displays.show_channel(1, 1)
+        displays.show_channel(1, stem(1))
         displays.drain()
         self.assertEqual(rig.reports, ["displays: 2 draws, mean 16.0 ms, max 20.0 ms"])
 

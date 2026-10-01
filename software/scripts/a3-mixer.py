@@ -435,9 +435,9 @@ if __name__ == '__main__':
     # A damaged announcement is ignored: nothing may raise into the server.
     def stem_handler_channel(address, *args):
         found = osc.match(address)
-        pair = channel_announcement(args)
-        if found and pair is not None and 1 <= found[1]["ch"] <= num_channel:
-            displays.show_channel(found[1]["ch"] - 1, pair)
+        mask = channel_announcement(args)
+        if found and mask is not None and 1 <= found[1]["ch"] <= num_channel:
+            displays.show_channel(found[1]["ch"] - 1, mask)
 
     def stem_handler_return(address, *args):
         announced = return_announcement(args)
@@ -447,13 +447,6 @@ if __name__ == '__main__':
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
 
-    # The stem cue: the aux-return display's C field. A damaged value is
-    # ignored, like a damaged stem announcement.
-    def stem_cue_handler(address, *args):
-        if len(args) == 1 and isinstance(args[0], (int, float)) and not isinstance(args[0], bool):
-            displays.show_stem_cue(args[0] > 0.5)
-
-    dispatcher.map(osc.subscription("stem.cue.led"), stem_cue_handler)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.

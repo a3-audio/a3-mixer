@@ -96,8 +96,8 @@ def encoder_message(osc, encoder, clicks):
 
 
 def push_message(osc, encoder, pressed):
-    """A press: on the aux return the stem push (Core decides what it means
-    -- a stem's AUX, or the stem cue on the C field); on a channel its cue,
+    """A press: on the aux return the stem push (Core toggles the AUX of the
+    stem under the cursor on StemDeck); on a channel its cue,
     sent as the strip's key sends it, the text "1" Core reads as a toggle."""
     target = ENCODER_TARGETS.get(encoder)
     if not pressed or target is None:
