@@ -63,6 +63,63 @@ class Clicks(unittest.TestCase):
         self.assertEqual(c.feed(0, 4), 1)
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+class PushHoldOff(unittest.TestCase):
+    """The firmware reads the encoder switch raw, so one press can arrive as
+    several EB edges -- and a release as well. Edges in quick succession are
+    one press, not a mute toggled a random number of times."""
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.hold = enc.PushHoldOff(clock=self.clock)
+
+    def edges(self, *timed):
+        accepted = []
+        for at, pressed in timed:
+            self.clock.now = at
+            accepted.append(self.hold.feed(4, pressed))
+        return accepted
+
+    def test_a_clean_press_counts(self):
+        self.assertEqual(self.edges((1.0, True), (1.2, False)), [True, False])
+
+    def test_a_bouncing_press_counts_once(self):
+        self.assertEqual(
+            self.edges((1.0, True), (1.002, False), (1.004, True),
+                       (1.010, False), (1.012, True)),
+            [True, False, False, False, False])
+
+    def test_a_bouncing_release_is_no_press(self):
+        self.assertEqual(
+            self.edges((1.0, True), (1.3, False), (1.302, True), (1.304, False)),
+            [True, False, False, False])
+
+    def test_two_presses_apart_both_count(self):
+        self.assertEqual(
+            self.edges((1.0, True), (1.15, False), (1.3, True)),
+            [True, False, True])
+
+    def test_encoders_hold_off_on_their_own(self):
+        self.clock.now = 1.0
+        self.assertTrue(self.hold.feed(4, True))
+        self.assertTrue(self.hold.feed(3, True))
+
+
+class TheDeskUsesIt(unittest.TestCase):
+    def test_the_push_edge_goes_through_the_hold_off(self):
+        source = (Path(__file__).resolve().parents[1]
+                  / "scripts/a3-mixer.py").read_text()
+        branch = source.split('if mode == "EB"', 1)[1].split("\n\n", 1)[0]
+        self.assertIn("pushes.feed(", branch)
+
+
 class ParseInt(unittest.TestCase):
     def test_numbers_come_through(self):
         self.assertEqual(enc.parse_int("12"), 12)

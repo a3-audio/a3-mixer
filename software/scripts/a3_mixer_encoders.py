@@ -11,6 +11,8 @@ per encoder; this turns positions into clicks and clicks into the truth's
 words. Core decides what a click means (a3_core_stems).
 """
 
+import time
+
 #: Encoder index -> what it chooses for. MEASURED ON THE DESK: <date, who>.
 #: Not yet measured, assumed: the firmware's order, left to right.
 ENCODER_TARGETS = {
@@ -24,6 +26,12 @@ ENCODER_TARGETS = {
 #: Counts per detent. MEASURED ON THE DESK: <date, who>. Not yet measured,
 #: assumed: quadrature encoders with the Encoder library usually report four.
 COUNTS_PER_CLICK = 4
+
+#: How long an encoder switch has to be quiet before a press counts.
+#: MEASURED ON THE DESK: <date, who>. Not yet measured, assumed: contacts of
+#: this kind settle within a few milliseconds, and no hand presses twice in
+#: fifty.
+PUSH_HOLD_OFF_SECONDS = 0.05
 
 
 class Clicks:
@@ -51,6 +59,30 @@ class Clicks:
         clicks = total - self._sent[encoder]
         self._sent[encoder] = total
         return clicks
+
+
+class PushHoldOff:
+    """A press from the raw switch edges, contact bounce ignored.
+
+    The firmware reads the encoder switches with a bare digitalRead, unlike
+    the panel keys (Bounce), and prints every change -- one press can arrive
+    as several press edges. A press counts only after `hold_off` without any
+    edge of that encoder. Any edge, not just the last accepted press: a
+    release bounces too, and its stray press edge comes long after the press
+    it belongs to."""
+
+    def __init__(self, hold_off=PUSH_HOLD_OFF_SECONDS, clock=time.monotonic):
+        self._hold_off = hold_off
+        self._clock = clock
+        self._last_edge = {}
+
+    def feed(self, encoder, pressed):
+        now = self._clock()
+        previous = self._last_edge.get(encoder)
+        self._last_edge[encoder] = now
+        if not pressed:
+            return False
+        return previous is None or now - previous >= self._hold_off
 
 
 def encoder_message(osc, encoder, clicks):

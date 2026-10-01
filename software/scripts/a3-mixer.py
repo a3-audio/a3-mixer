@@ -25,8 +25,8 @@ from typing import List, Any
 from a3_mixer_recall import HelloEvery, RecallRequest
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
-from a3_mixer_encoders import (Clicks, encoder_message, parse_int,
-                                push_message)
+from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
+                                parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, open_displays,
                                return_announcement)
 from a3_mixer_watchdog import watch_child
@@ -59,6 +59,7 @@ fx_state = np.zeros(10)
 # an sein konnte. Siehe a3_mixer_recall.
 recall = RecallRequest()
 clicks = Clicks()
+pushes = PushHoldOff()
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
@@ -296,8 +297,9 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # The five encoders: positions in, stem words out (a3_mixer_encoders).
         # Only numeric tracks -- the encoders are 0..4.
         # A damaged field parses to None and is skipped, never raised: an
-        # exception here ends the serial reader. The press edge is the
-        # firmware's -- it prints EB only on a change.
+        # exception here ends the serial reader. The edges are the
+        # firmware's -- it prints EB on every change of a switch it reads
+        # raw, so a bouncing contact is taken apart here (PushHoldOff).
         if mode == "ENC" and track.isdigit():
             position = parse_int(value)
             if position is not None:
@@ -306,7 +308,8 @@ def serial_handler(): # dispatch from serial stream and send to osc
                 if msg:
                     osc_core.send_message(*msg)
         if mode == "EB" and track.isdigit():
-            msg = push_message(osc, int(track), value == "1")
+            pressed = pushes.feed(int(track), value == "1")
+            msg = push_message(osc, int(track), pressed)
             if msg:
                 osc_core.send_message(*msg)
 
