@@ -25,6 +25,10 @@ from typing import List, Any
 from a3_mixer_recall import HelloEvery, RecallRequest
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
+from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
+                                parse_int, push_message)
+from a3_mixer_displays import (channel_announcement, open_displays,
+                               return_announcement)
 from a3_mixer_watchdog import watch_child
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
                           TruthMissing, load as load_osc_truth)
@@ -54,6 +58,8 @@ fx_state = np.zeros(10)
 # nichts geändert, also blieben die LEDs dunkel, obwohl der Filter eines Kanals
 # an sein konnte. Siehe a3_mixer_recall.
 recall = RecallRequest()
+clicks = Clicks()
+pushes = PushHoldOff()
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
@@ -288,7 +294,24 @@ def serial_handler(): # dispatch from serial stream and send to osc
         index = words[3]
         value = words[4]
 
-#        print(f'value: {value}')
+        # The five encoders: positions in, stem words out (a3_mixer_encoders).
+        # Only numeric tracks -- the encoders are 0..4.
+        # A damaged field parses to None and is skipped, never raised: an
+        # exception here ends the serial reader. The edges are the
+        # firmware's -- it prints EB on every change of a switch it reads
+        # raw, so a bouncing contact is taken apart here (PushHoldOff).
+        if mode == "ENC" and track.isdigit():
+            position = parse_int(value)
+            if position is not None:
+                msg = encoder_message(osc, int(track),
+                                      clicks.feed(int(track), position))
+                if msg:
+                    osc_core.send_message(*msg)
+        if mode == "EB" and track.isdigit():
+            pressed = pushes.feed(int(track), value == "1")
+            msg = push_message(osc, int(track), pressed)
+            if msg:
+                osc_core.send_message(*msg)
 
         # Buttons
         #
@@ -392,6 +415,26 @@ if __name__ == '__main__':
         dispatcher.map(osc.subscription(lamp), led_handler_channel)
     dispatcher.map(osc.subscription("filter.led"), led_handler_fx)
     dispatcher.map(osc.subscription("beat"), beat_handler)
+
+    # The displays show what Core announces; until it does, a dash. A failing
+    # display is reported inside Displays and never reaches this server.
+    displays = open_displays()
+    displays.blank_all()
+
+    # A damaged announcement is ignored: nothing may raise into the server.
+    def stem_handler_channel(address, *args):
+        found = osc.match(address)
+        pair = channel_announcement(args)
+        if found and pair is not None and 1 <= found[1]["ch"] <= num_channel:
+            displays.show_channel(found[1]["ch"] - 1, pair)
+
+    def stem_handler_return(address, *args):
+        announced = return_announcement(args)
+        if announced:
+            displays.show_return(*announced)
+
+    dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
+    dispatcher.map(osc.subscription("fx-return.stem"), stem_handler_return)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.

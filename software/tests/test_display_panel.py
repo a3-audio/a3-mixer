@@ -123,5 +123,68 @@ class NothingWrong(unittest.TestCase):
         self.assertEqual([], reported)
 
 
+class StemText(unittest.TestCase):
+    def test_a_channel_shows_its_pair(self):
+        from display_panel import channel_text
+        self.assertEqual(channel_text(3), "5/6")
+        self.assertEqual(channel_text(0), "–")
+
+    def test_the_return_shows_pair_and_mute(self):
+        from display_panel import return_text
+        self.assertEqual(return_text(2, False), "3/4")
+        self.assertEqual(return_text(2, True), "3/4 M")
+        self.assertEqual(return_text(0, False), "–")
+
+    def test_every_pair_has_its_two_numbers(self):
+        from display_panel import channel_text
+        self.assertEqual([channel_text(p) for p in range(1, 9)],
+                         ["1/2", "3/4", "5/6", "7/8", "9/10", "11/12",
+                          "13/14", "15/16"])
+
+
+class StemPanels(unittest.TestCase):
+    def test_channels_zero_to_three_are_the_four_decks(self):
+        from display_panel import panel_for_channel
+        self.assertEqual([panel_for_channel(i).label for i in range(4)],
+                         ["Deck 1", "Deck 2", "Deck 3", "Deck 4"])
+
+    def test_the_return_is_the_fx_return_panel(self):
+        from display_panel import return_panel
+        self.assertEqual(return_panel().label, "FX Return")
+
+    def test_the_mapping_hands_out_the_table_rows_themselves(self):
+        from display_panel import PANELS, panel_for_channel, return_panel
+        self.assertIs(panel_for_channel(0), PANELS[0])
+        self.assertIs(return_panel(), PANELS[4])
+
+    def test_a_channel_the_desk_does_not_have_is_refused(self):
+        from display_panel import panel_for_channel
+        for index in (-1, 4, 5):
+            with self.assertRaises(IndexError):
+                panel_for_channel(index)
+
+
+class StemAnnouncements(unittest.TestCase):
+    def test_a_channel_announcement_is_one_pair(self):
+        from display_panel import channel_announcement
+        self.assertEqual(channel_announcement((3,)), 3)
+        self.assertEqual(channel_announcement((0,)), 0)
+
+    def test_a_damaged_channel_announcement_is_none(self):
+        from display_panel import channel_announcement
+        for args in ((), ("x",), (9,), (-1,), (None,), (1.5,), ("3",)):
+            self.assertIsNone(channel_announcement(args), args)
+
+    def test_a_return_announcement_is_pair_and_mute(self):
+        from display_panel import return_announcement
+        self.assertEqual(return_announcement((2, 1)), (2, True))
+        self.assertEqual(return_announcement((0, 0)), (0, False))
+
+    def test_a_damaged_return_announcement_is_none(self):
+        from display_panel import return_announcement
+        for args in ((), (2,), ("a", 1), (2, "b"), (9, 0), (2, 5)):
+            self.assertIsNone(return_announcement(args), args)
+
+
 if __name__ == "__main__":
     unittest.main()

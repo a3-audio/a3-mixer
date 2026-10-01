@@ -84,3 +84,53 @@ def draw_panels(panels, show, report):
             )
 
     return failed
+
+
+#: Which display shows which strip. PANELS is in label order -- the four decks,
+#: then the FX return -- and the desk's channel index 0..3 is deck 1..4.
+CHANNEL_COUNT = 4
+
+
+def panel_for_channel(index):
+    """The display of channel `index` (0..3); anything else is a bug upstream."""
+    if not 0 <= index < CHANNEL_COUNT:
+        raise IndexError("the desk has channels 0..%d, not %d" % (CHANNEL_COUNT - 1, index))
+    return PANELS[index]
+
+
+def return_panel():
+    """The FX return's display, the one after the four decks."""
+    return PANELS[CHANNEL_COUNT]
+
+
+def channel_text(pair):
+    """`5/6` for pair 3, `\u2013` for none."""
+    return "%d/%d" % (2 * pair - 1, 2 * pair) if pair else "\u2013"
+
+
+def return_text(pair, muted):
+    """The FX return's pair, with `M` while it is muted there."""
+    if not pair:
+        return "\u2013"
+    return channel_text(pair) + (" M" if muted else "")
+
+
+PAIRS = 8
+
+
+def _is_count(value, upper):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= upper
+
+
+def channel_announcement(args):
+    """The pair out of `/channel/{ch}/stem`'s arguments, or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], PAIRS):
+        return None
+    return args[0]
+
+
+def return_announcement(args):
+    """(pair, muted) out of `/fx-return/stem`'s arguments, or None if damaged."""
+    if len(args) != 2 or not _is_count(args[0], PAIRS) or not _is_count(args[1], 1):
+        return None
+    return args[0], bool(args[1])

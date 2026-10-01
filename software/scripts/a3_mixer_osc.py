@@ -79,7 +79,8 @@ VU_SLOTS = (
 KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
-       "device.hello")
+       "device.hello", "channel.stem.turn", "fx-return.stem.turn",
+       "fx-return.stem.push", "channel.stem", "fx-return.stem")
 
 
 class TruthMissing(Exception):
