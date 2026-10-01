@@ -38,7 +38,7 @@ TAP = "tap"
 CHANNEL_BUTTONS = {
     "0": TAP,
     "1": "fx",
-    "2": "pfl",
+    "2": "cue",
 }
 
 #: Welche Farbe der einen Lampe des Kanalzugs eine Funktion anzuendet.
@@ -50,7 +50,7 @@ CHANNEL_BUTTONS = {
 #: bestellt.
 LED_COLOUR = {
     "fx": 1,
-    "pfl": 2,
+    "cue": 2,
 }
 
 

@@ -175,6 +175,8 @@ class Displays:
         # channel, the cursor and what plays on the return.
         self._channel_pairs = [0] * (len(PANELS) - 1)
         self._return = (0, (False,) * PAIRS)
+        self._cues = [False] * (len(PANELS) - 1)   # the C fields (2026-10-01)
+        self._stem_cue = False
         self._gate = gate or LevelGate()
         self._levels = {}
         self._later = later
@@ -197,6 +199,18 @@ class Displays:
     def show_return(self, cursor, plays):
         with self._wake:
             self._return = (cursor, tuple(plays))
+        self._post(return_panel())
+
+    def show_cue(self, index, on):
+        """A channel's cue: its display's C field."""
+        with self._wake:
+            self._cues[index] = bool(on)
+        self._post(panel_for_channel(index))
+
+    def show_stem_cue(self, on):
+        """The stem cue: the aux-return display's C field."""
+        with self._wake:
+            self._stem_cue = bool(on)
         self._post(return_panel())
 
     def blank_all(self):
@@ -241,10 +255,12 @@ class Displays:
             levels = dict(self._levels)
             if panel == return_panel():
                 cursor, plays = self._return
+                stem_cue = self._stem_cue
                 return lambda width, height: return_squares(
-                    cursor, plays, width, height, levels)
-            pair = self._channel_pairs[PANELS.index(panel)]
-        return lambda width, height: channel_squares(pair, width, height, levels)
+                    cursor, plays, width, height, levels, cue=stem_cue)
+            index = PANELS.index(panel)
+            pair, cue = self._channel_pairs[index], self._cues[index]
+        return lambda width, height: channel_squares(pair, width, height, levels, cue=cue)
 
     def _post(self, panel):
         with self._wake:
@@ -312,6 +328,12 @@ class NoDisplays:
         pass
 
     def show_return(self, cursor, plays):
+        pass
+
+    def show_cue(self, index, on):
+        pass
+
+    def show_stem_cue(self, on):
         pass
 
     def note_level(self, pair, step):

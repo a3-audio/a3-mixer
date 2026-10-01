@@ -39,11 +39,11 @@ class WhatTheKeysDo(unittest.TestCase):
 
     # Der ehemalige 3D-Taster. Er blieb am Panel, als seine Funktion am
     # 2026-09-12 wegfiel, und traegt jetzt PFL.
-    def test_the_third_key_is_pfl(self):
-        self.assertEqual("pfl", channel_button("2"))
+    def test_the_third_key_is_cue(self):
+        self.assertEqual("cue", channel_button("2"))
 
-    def test_pfl_is_no_longer_on_the_first_key(self):
-        self.assertNotEqual("pfl", channel_button("0"))
+    def test_cue_is_not_on_the_first_key(self):
+        self.assertNotEqual("cue", channel_button("0"))
 
     # Genau der Fehler, der am 2026-09-12 das ganze Pult taub gemacht hat:
     # eine Taste ohne Eintrag war ein blanker dict-Zugriff und damit ein
@@ -63,8 +63,8 @@ class WhichLampLights(unittest.TestCase):
     # Der eigentliche Grund des Umbaus: rot ist die Linie mit den falschen
     # Widerstaenden. Steht PFL wieder auf 0, ist die Cue-Lampe wieder zu dunkel
     # zum Lesen.
-    def test_pfl_lights_the_blue_line_not_the_dim_red_one(self):
-        self.assertEqual(2, led_colour("pfl"))
+    def test_cue_lights_the_blue_line_not_the_dim_red_one(self):
+        self.assertEqual(2, led_colour("cue"))
 
     def test_fx_keeps_its_green(self):
         self.assertEqual(1, led_colour("fx"))

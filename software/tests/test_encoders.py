@@ -135,17 +135,20 @@ class Messages(unittest.TestCase):
         self.assertEqual(enc.encoder_message(made_up(), 1, -2), ("/t/channel.stem.turn/2", -2))
 
     def test_the_fifth_turns_the_return(self):
-        self.assertEqual(enc.encoder_message(made_up(), 4, 1), ("/t/fx-return.stem.turn", 1))
+        self.assertEqual(enc.encoder_message(made_up(), 4, 1), ("/t/aux-return.stem.turn", 1))
 
     def test_no_click_no_message(self):
         self.assertIsNone(enc.encoder_message(made_up(), 0, 0))
 
     def test_the_return_push_on_press_only(self):
-        self.assertEqual(enc.push_message(made_up(), 4, True), ("/t/fx-return.stem.push", 1))
+        self.assertEqual(enc.push_message(made_up(), 4, True), ("/t/aux-return.stem.push", 1))
         self.assertIsNone(enc.push_message(made_up(), 4, False))
 
-    def test_a_channel_push_does_nothing_yet(self):
-        self.assertIsNone(enc.push_message(made_up(), 0, True))
+    def test_a_channel_push_is_its_cue(self):
+        # The C field on a channel's display (2026-10-01): a press, sent as the
+        # strip's key sends it -- the text "1", which Core reads as a toggle.
+        self.assertEqual(enc.push_message(made_up(), 1, True), ("/t/channel.cue/2", "1"))
+        self.assertIsNone(enc.push_message(made_up(), 1, False))
 
 
 if __name__ == "__main__":

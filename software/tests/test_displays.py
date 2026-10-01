@@ -273,7 +273,7 @@ class Levels(unittest.TestCase):
         self.displays._draw_squares = draw_and_turn
         self.displays.note_level(1, 3)
         self.displays.drain()
-        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "FX Return"])
+        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
         last_deck_four = self.drawn_on("Deck 4")[-1]
         self.assertTrue(last_deck_four[4].filled and last_deck_four[0].bar)
 
@@ -284,7 +284,36 @@ class Levels(unittest.TestCase):
         self.displays.note_level(1, 2)
         self.displays.drain()
         self.assertTrue(self.drawn_on("Deck 1")[-1][2].filled)
-        self.assertTrue(self.drawn_on("FX Return")[-1][1].mark)
+        self.assertTrue(self.drawn_on("Aux Return")[-1][1].mark)
+
+
+class TheCueField(unittest.TestCase):
+    """C on every display (2026-10-01): a channel's cue, the stem cue on the
+    aux return -- drawn from what Core says, like the stems."""
+
+    def setUp(self):
+        self.rig = Rig()
+        self.displays = self.rig.displays()
+        self.displays.blank_all()
+        self.displays.drain()
+        self.rig.drawn.clear()
+
+    def test_a_channels_cue_fills_its_c(self):
+        self.displays.show_cue(1, True)
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertTrue(self.rig.drawn[0][1][9].filled)
+
+    def test_the_stem_cue_fills_the_returns_c(self):
+        self.displays.show_stem_cue(True)
+        self.displays.drain()
+        self.assertTrue(self.rig.drawn[0][1][8].filled)
+
+    def test_the_cue_survives_a_stem_change(self):
+        self.displays.show_cue(0, True)
+        self.displays.show_channel(0, 3)
+        self.displays.drain()
+        self.assertTrue(self.rig.drawn[-1][1][9].filled)
 
 
 class HowLongADrawTakes(unittest.TestCase):
