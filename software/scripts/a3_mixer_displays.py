@@ -72,11 +72,13 @@ def _hardware():
         draw = ImageDraw.Draw(image)
         for square in squares:
             x0, y0, x1, y1 = square.box
-            if square.frame:
-                draw.rectangle(square.frame, outline="white", fill="black")
             ink, paper = ("black", "white") if square.filled else ("white", "black")
             draw.rectangle(square.box, outline="white", fill=paper)
-            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), str(square.label),
+            if square.mark:
+                # The return's cursor: the digit inverted on a block of ink.
+                draw.rectangle(square.mark, fill=ink)
+                ink = paper
+            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), square.label,
                       font=font_for(x1 - x0), fill=ink, anchor="mm")
         # Only the window that changed goes over the bus (a3_mixer_oled).
         sender.send(device, image)
