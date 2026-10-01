@@ -127,6 +127,26 @@ class WhichMeterIsWhichLed(unittest.TestCase):
         self.assertIsNone(osc.vu_slot(0))
 
 
+class TheMeterNumberIsReadDirectly(unittest.TestCase):
+    """A thousand meters a second reach the desk (40 at 25 Hz). Searching the
+    whole truth for each one filled a core of the Pi 3B+ and backed every
+    message up behind them (2026-10-01: receive buffer full, ~70 drops/s), so
+    the meter's number is read off its own pattern alone."""
+
+    def test_the_number_of_a_meter(self):
+        self.assertEqual(made_up().vu_number("/t/vu/7"), 7)
+        self.assertEqual(made_up().vu_number("/t/vu/40"), 40)
+
+    def test_out_of_the_truths_range_is_none(self):
+        self.assertIsNone(made_up().vu_number("/t/vu/0"))
+        self.assertIsNone(made_up().vu_number("/t/vu/41"))
+
+    def test_anything_else_is_none(self):
+        self.assertIsNone(made_up().vu_number("/t/vu/x"))
+        self.assertIsNone(made_up().vu_number("/t/vu/7/peak"))
+        self.assertIsNone(made_up().vu_number("/t/channel.volume/2"))
+
+
 class TheDeskSaysWhichTruth(unittest.TestCase):
     """At start the desk names itself and the sha256 of its copy, so Core's
     window can show whether the copy is Core's own (/device/hello)."""

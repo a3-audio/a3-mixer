@@ -83,6 +83,11 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
        "fx-return.stem.push", "channel.stem", "fx-return.stem")
 
 
+def _pattern_regex(pattern):
+    """"/channel/{ch}/volume" as a regex with a named group per placeholder."""
+    return re.compile(re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>\\d+)", re.escape(pattern)))
+
+
 class TruthMissing(Exception):
     """No truth to read -- the desk cannot know where Core is."""
 
@@ -91,6 +96,10 @@ class MixerOsc:
     def __init__(self, data, digest=None):
         self._data = data
         self._digest = digest
+        # Compiled once: the desk matches every message it hears, a thousand
+        # meters a second among them, on a Pi 3B+.
+        self._matchers = {key: _pattern_regex(entry["pattern"])
+                          for key, entry in data["addresses"].items()}
 
     # -- where ------------------------------------------------------------
 
@@ -133,16 +142,30 @@ class MixerOsc:
     def match(self, address):
         """("channel.pfl.led", {"ch": 2}) for "/channel/2/pfl/led", or None
         for an address the truth does not have or a number out of range."""
-        for key, entry in self._data["addresses"].items():
-            regex = re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>\\d+)", re.escape(entry["pattern"]))
-            found = re.fullmatch(regex, address)
-            if not found:
-                continue
-            fields = {name: int(value) for name, value in found.groupdict().items()}
-            if all(entry.get(name, [value, value])[0] <= value
-                   <= entry.get(name, [value, value])[1]
-                   for name, value in fields.items()):
+        for key, regex in self._matchers.items():
+            fields = self._fields(key, regex, address)
+            if fields is not None:
                 return key, fields
+        return None
+
+    def vu_number(self, address):
+        """The n of /vu/<n>, or None: the meter path's own match, without
+        searching the rest of the truth."""
+        regex = self._matchers.get("vu")
+        fields = regex and self._fields("vu", regex, address)
+        return fields["n"] if fields else None
+
+    def _fields(self, key, regex, address):
+        """The numbers in `address` if it is `key`'s and they are in range."""
+        found = regex.fullmatch(address)
+        if not found:
+            return None
+        entry = self._data["addresses"][key]
+        fields = {name: int(value) for name, value in found.groupdict().items()}
+        if all(entry.get(name, [value, value])[0] <= value
+               <= entry.get(name, [value, value])[1]
+               for name, value in fields.items()):
+            return fields
         return None
 
     def vu_slot(self, number):
