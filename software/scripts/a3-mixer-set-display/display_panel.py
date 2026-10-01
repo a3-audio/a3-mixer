@@ -110,9 +110,14 @@ def _is_count(value, upper):
     return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= upper
 
 
+#: The largest stem mask: one bit per pair.
+ALL_PAIRS = (1 << PAIRS) - 1
+
+
 def channel_announcement(args):
-    """The pair out of `/channel/{ch}/stem`'s arguments, or None if damaged."""
-    if len(args) != 1 or not _is_count(args[0], PAIRS):
+    """The stem mask out of `/channel/{ch}/stem`'s arguments (bit 0 = pair
+    1; 0 = the analog input), or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], ALL_PAIRS):
         return None
     return args[0]
 
@@ -121,7 +126,7 @@ def return_announcement(args):
     """(cursor, plays) out of `/aux-return/stem`'s arguments -- the pair the
     encoder is on, then for pairs 1-8 whether it plays on the return -- or
     None if damaged."""
-    if len(args) != 1 + PAIRS or not _is_count(args[0], CUE_POSITION):
+    if len(args) != 1 + PAIRS or not _is_count(args[0], PAIRS):
         return None
     if not all(_is_count(flag, 1) for flag in args[1:]):
         return None
@@ -143,30 +148,22 @@ BAR_INSET = 0.12        # its gap to the square's edges, as a share of the squar
 LEVEL_STEPS = 6         # a3_mixer_levels.STEPS: a full bar
 
 
-def channel_squares(pair, width, height, levels=None, cue=False):
-    """A channel's display: the stem it plays filled, or "A" while it plays
-    its analog input (pair 0). `levels` (pair -> step) draws a bar in each
-    stem square; "A" has none."""
-    squares = _stem_squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height,
-                            levels)
+def channel_squares(mask, width, height, levels=None, cue=False):
+    """A channel's display: every stem StemDeck has on its bus filled (`mask`,
+    bit 0 = pair 1), or "A" while it plays its analog input (mask 0).
+    `levels` (pair -> step) draws a bar in each stem square; "A" has none."""
+    squares = _stem_squares([bool(mask >> (p - 1) & 1) for p in range(1, PAIRS + 1)], 0,
+                            width, height, levels)
     # "C" above "A": the channel's cue (2026-10-01), its encoder's push.
-    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, 0, width, height),
+    return squares + [_square(STEMS_PER_DECK, 1, "A", mask == 0, False, 0, width, height),
                       _square(STEMS_PER_DECK, 0, "C", cue, False, 0, width, height)]
 
 
-#: The return cursor's position on the C field, after the eight stems
-#: (a3-core's Stems.CUE).
-CUE_POSITION = 9
-
-
-def return_squares(cursor, plays, width, height, levels=None, cue=False):
+def return_squares(cursor, plays, width, height, levels=None):
     """The aux return's display: what plays there filled, the digit of the
     stem under the encoder (`cursor`) inverted, the stems' levels as bars.
-    Its "A" place stays empty."""
-    squares = _stem_squares(list(plays), cursor, width, height, levels)
-    # "C": the stem cue, a cursor position after the stems (2026-10-01).
-    return squares + [_square(STEMS_PER_DECK, 0, "C", cue, cursor == CUE_POSITION, 0,
-                              width, height)]
+    Its fifth column stays empty (the C field left on 2026-10-01)."""
+    return _stem_squares(list(plays), cursor, width, height, levels)
 
 
 def _stem_squares(filled, marked_pair, width, height, levels=None):

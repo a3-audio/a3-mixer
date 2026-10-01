@@ -157,8 +157,15 @@ class StemSquares(unittest.TestCase):
 
     def test_a_channel_on_a_stem_fills_only_that_stem(self):
         from display_panel import channel_squares
-        filled = [s.filled for s in channel_squares(6, 128, 64)]
+        filled = [s.filled for s in channel_squares(1 << 5, 128, 64)]   # pair 6
         self.assertEqual(filled, [False] * 5 + [True] + [False] * 2 + [False, False])  # ..., A, C
+
+    def test_a_channel_fills_every_stem_in_its_mask(self):
+        # Spec stemdeck-remote: the display shows every stem StemDeck has on
+        # that channel's bus.
+        from display_panel import channel_squares
+        filled = [s.filled for s in channel_squares(0b100001, 128, 64)[:8]]
+        self.assertEqual(filled, [True, False, False, False, False, True, False, False])
 
     def test_a_channel_marks_nothing(self):
         from display_panel import channel_squares
@@ -167,7 +174,7 @@ class StemSquares(unittest.TestCase):
     def test_the_return_has_the_stems_and_no_a(self):
         from display_panel import channel_squares, return_squares
         squares = return_squares(1, (True,) * 8, 128, 64)
-        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2 + ["C"])
+        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2)
         self.assertEqual([s.box for s in squares[:8]],
                          [s.box for s in channel_squares(0, 128, 64)[:8]])
 
@@ -175,9 +182,9 @@ class StemSquares(unittest.TestCase):
         from display_panel import return_squares
         plays = (True, False, False, True, True, True, True, True)
         squares = return_squares(2, plays, 128, 64)
-        self.assertEqual([s.filled for s in squares], list(plays) + [False])   # C: stem cue off
+        self.assertEqual([s.filled for s in squares], list(plays))
         self.assertEqual([bool(s.mark) for s in squares],
-                         [False, True] + [False] * 6 + [False])
+                         [False, True] + [False] * 6)
 
     def test_a_return_with_no_free_pair_marks_nothing(self):
         from display_panel import return_squares
@@ -267,13 +274,10 @@ class StemSquares(unittest.TestCase):
         self.assertTrue(channel_squares(0, 128, 64, cue=True)[9].filled)
         self.assertFalse(channel_squares(0, 128, 64)[9].filled)
 
-    def test_the_return_has_c_for_the_stem_cue(self):
+    def test_the_return_has_no_c(self):
+        # The C field left the return on 2026-10-01 (smoke test, check 6).
         from display_panel import return_squares
-        squares = return_squares(9, (True,) * 8, 128, 64, cue=True)
-        self.assertEqual(squares[8].label, "C")
-        self.assertTrue(squares[8].filled)
-        self.assertTrue(squares[8].mark)                 # the cursor is on C
-        self.assertFalse(any(s.mark for s in squares[:8]))
+        self.assertNotIn("C", [s.label for s in return_squares(1, (True,) * 8, 128, 64)])
 
     def test_the_squares_follow_the_panel_size(self):
         from display_panel import channel_squares
@@ -306,14 +310,15 @@ class StemPanels(unittest.TestCase):
 
 
 class StemAnnouncements(unittest.TestCase):
-    def test_a_channel_announcement_is_one_pair(self):
+    def test_a_channel_announcement_is_a_mask(self):
         from display_panel import channel_announcement
-        self.assertEqual(channel_announcement((3,)), 3)
+        self.assertEqual(channel_announcement((0b100001,)), 0b100001)
+        self.assertEqual(channel_announcement((255,)), 255)
         self.assertEqual(channel_announcement((0,)), 0)
 
     def test_a_damaged_channel_announcement_is_none(self):
         from display_panel import channel_announcement
-        for args in ((), ("x",), (9,), (-1,), (None,), (1.5,), ("3",)):
+        for args in ((), ("x",), (256,), (-1,), (None,), (1.5,), ("3",), (True,)):
             self.assertIsNone(channel_announcement(args), args)
 
     def test_a_return_announcement_is_cursor_and_eight_pairs(self):
@@ -322,9 +327,10 @@ class StemAnnouncements(unittest.TestCase):
                          (2, (True, False, False, True, True, True, True, True)))
         self.assertEqual(return_announcement((0,) * 9), (0, (False,) * 8))
 
-    def test_the_cursor_may_stand_on_c(self):
+    def test_the_cursor_stops_at_eight(self):
         from display_panel import return_announcement
-        self.assertEqual(return_announcement((9,) + (1,) * 8)[0], 9)
+        self.assertEqual(return_announcement((8,) + (1,) * 8)[0], 8)
+        self.assertIsNone(return_announcement((9,) + (1,) * 8))
 
     def test_a_damaged_return_announcement_is_none(self):
         from display_panel import return_announcement
