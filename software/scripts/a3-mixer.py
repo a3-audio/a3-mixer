@@ -441,7 +441,7 @@ if __name__ == '__main__':
             displays.show_return(*announced)
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
-    dispatcher.map(osc.subscription("fx-return.stem"), stem_handler_return)
+    dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.

@@ -92,13 +92,13 @@ def encoder_message(osc, encoder, clicks):
     kind, index = target
     if kind == "channel":
         return osc.channel_address("channel.stem.turn", index), clicks
-    return osc.address("fx-return.stem.turn"), clicks
+    return osc.address("aux-return.stem.turn"), clicks
 
 
 def push_message(osc, encoder, pressed):
     if not pressed or ENCODER_TARGETS.get(encoder, (None,))[0] != "return":
         return None
-    return osc.address("fx-return.stem.push"), 1
+    return osc.address("aux-return.stem.push"), 1
 
 
 def parse_int(text):

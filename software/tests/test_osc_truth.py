@@ -75,7 +75,7 @@ class WhatTheDeskSays(unittest.TestCase):
 
     def test_a_pot_is_named_by_the_truths_key(self):
         self.assertEqual(a3_mixer_osc.CHANNEL_POTS["1"], "channel.gain")
-        self.assertEqual(a3_mixer_osc.MASTER_POTS["6"], "master.fx-return")
+        self.assertEqual(a3_mixer_osc.MASTER_POTS["6"], "master.aux-return")
         self.assertEqual(a3_mixer_osc.MASTER_POTS["2"], "filter.frequency")
 
     def test_the_fx_key_is_the_channel_filter(self):
@@ -83,7 +83,7 @@ class WhatTheDeskSays(unittest.TestCase):
         self.assertEqual(a3_mixer_osc.CHANNEL_KEYS["pfl"], "channel.pfl")
 
     def test_an_address_without_a_channel(self):
-        self.assertEqual(made_up().address("master.fx-return"), "/t/master.fx-return")
+        self.assertEqual(made_up().address("master.aux-return"), "/t/master.aux-return")
 
 
 class WhatTheDeskHears(unittest.TestCase):

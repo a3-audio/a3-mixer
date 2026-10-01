@@ -32,7 +32,7 @@ BESIDE_THE_SCRIPT = Path(__file__).resolve().with_name("a3-osc.json")
 
 #: The channel strip's pots, by the index the firmware reports.
 CHANNEL_POTS = {
-    "0": "channel.fx-send",
+    "0": "channel.aux-send",
     "1": "channel.gain",
     "2": "channel.eq.high",
     "3": "channel.eq.mid",
@@ -55,7 +55,7 @@ MASTER_POTS = {
     "3": "master.booth",
     "4": "master.phones-mix",
     "5": "master.phones-volume",
-    "6": "master.fx-return",
+    "6": "master.aux-return",
 }
 
 #: The lamps Core tells the desk about, and the panel's name for each --
@@ -79,8 +79,8 @@ VU_SLOTS = (
 KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
-       "device.hello", "channel.stem.turn", "fx-return.stem.turn",
-       "fx-return.stem.push", "channel.stem", "fx-return.stem")
+       "device.hello", "channel.stem.turn", "aux-return.stem.turn",
+       "aux-return.stem.push", "channel.stem", "aux-return.stem")
 
 
 def _pattern_regex(pattern):

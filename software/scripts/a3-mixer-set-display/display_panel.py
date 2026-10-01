@@ -54,7 +54,7 @@ PANELS = (
     Panel(channel=3, port=I2C_BUS, address=0x3D, rotate=2, label="Deck 2"),
     Panel(channel=4, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 3"),
     Panel(channel=5, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 4"),
-    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="FX Return"),
+    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="Aux Return"),
 )
 
 
@@ -87,7 +87,7 @@ def draw_panels(panels, show, report):
 
 
 #: Which display shows which strip. PANELS is in label order -- the four decks,
-#: then the FX return -- and the desk's channel index 0..3 is deck 1..4.
+#: then the aux return -- and the desk's channel index 0..3 is deck 1..4.
 CHANNEL_COUNT = 4
 
 
@@ -99,7 +99,7 @@ def panel_for_channel(index):
 
 
 def return_panel():
-    """The FX return's display, the one after the four decks."""
+    """The aux return's display, the one after the four decks."""
     return PANELS[CHANNEL_COUNT]
 
 
@@ -118,7 +118,7 @@ def channel_announcement(args):
 
 
 def return_announcement(args):
-    """(cursor, plays) out of `/fx-return/stem`'s arguments -- the pair the
+    """(cursor, plays) out of `/aux-return/stem`'s arguments -- the pair the
     encoder is on, then for pairs 1-8 whether it plays on the return -- or
     None if damaged."""
     if len(args) != 1 + PAIRS or not _is_count(args[0], PAIRS):
@@ -153,7 +153,7 @@ def channel_squares(pair, width, height, levels=None):
 
 
 def return_squares(cursor, plays, width, height, levels=None):
-    """The FX return's display: what plays there filled, the digit of the
+    """The aux return's display: what plays there filled, the digit of the
     stem under the encoder (`cursor`) inverted, the stems' levels as bars.
     Its "A" place stays empty."""
     return _stem_squares(list(plays), cursor, width, height, levels)

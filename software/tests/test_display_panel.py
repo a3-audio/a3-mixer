@@ -64,8 +64,8 @@ class PanelTable(unittest.TestCase):
     # "es gibt 5 (kanal 1-4 und FX-Return)". Das fuenfte trug die Aufschrift
     # "Line In" -- dieselbe Copy-Paste-Schicht, aus der auch das sechste
     # Display kam, das es nie gab.
-    def test_the_fifth_is_the_fx_return(self):
-        self.assertEqual("FX Return", PANELS[-1].label)
+    def test_the_fifth_is_the_aux_return(self):
+        self.assertEqual("Aux Return", PANELS[-1].label)
 
     def test_the_first_four_are_the_channel_strips(self):
         self.assertEqual(["Deck 1", "Deck 2", "Deck 3", "Deck 4"],
@@ -268,9 +268,9 @@ class StemPanels(unittest.TestCase):
         self.assertEqual([panel_for_channel(i).label for i in range(4)],
                          ["Deck 1", "Deck 2", "Deck 3", "Deck 4"])
 
-    def test_the_return_is_the_fx_return_panel(self):
+    def test_the_return_is_the_aux_return_panel(self):
         from display_panel import return_panel
-        self.assertEqual(return_panel().label, "FX Return")
+        self.assertEqual(return_panel().label, "Aux Return")
 
     def test_the_mapping_hands_out_the_table_rows_themselves(self):
         from display_panel import PANELS, panel_for_channel, return_panel

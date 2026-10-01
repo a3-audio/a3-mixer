@@ -273,7 +273,7 @@ class Levels(unittest.TestCase):
         self.displays._draw_squares = draw_and_turn
         self.displays.note_level(1, 3)
         self.displays.drain()
-        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "FX Return"])
+        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
         last_deck_four = self.drawn_on("Deck 4")[-1]
         self.assertTrue(last_deck_four[4].filled and last_deck_four[0].bar)
 
@@ -284,7 +284,7 @@ class Levels(unittest.TestCase):
         self.displays.note_level(1, 2)
         self.displays.drain()
         self.assertTrue(self.drawn_on("Deck 1")[-1][2].filled)
-        self.assertTrue(self.drawn_on("FX Return")[-1][1].mark)
+        self.assertTrue(self.drawn_on("Aux Return")[-1][1].mark)
 
 
 class HowLongADrawTakes(unittest.TestCase):
