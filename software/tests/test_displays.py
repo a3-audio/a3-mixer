@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from a3_mixer_displays import DrawTimer, Displays, Multiplexer
+from a3_mixer_levels import LevelGate
 
 
 class Rig:
@@ -201,6 +202,68 @@ class TryingAgain(unittest.TestCase):
         displays.show_channel(0, 3)
         displays.drain()
         self.assertEqual([], scheduled)
+
+
+class Levels(unittest.TestCase):
+    """The stem levels (issue a3-system#71): noted cheaply on the OSC thread,
+    drawn through a gate -- at most every 0.1 s and only on a step change --
+    while a turn of the encoder still draws at once."""
+
+    def setUp(self):
+        self.now = 0.0
+        self.rig = Rig()
+        self.displays = self.rig.displays(
+            gate=LevelGate(interval=0.1, clock=lambda: self.now))
+        self.displays.blank_all()
+        self.displays.drain()
+        self.rig.drawn.clear()
+
+    def drawn_on(self, label):
+        device = next(d for name, d in self.rig.built if name == label)
+        return [squares for d, squares in self.rig.drawn if d is device]
+
+    def test_a_level_redraws_every_display(self):
+        self.displays.note_level(1, 3)
+        self.displays.drain()
+        self.assertEqual(5, len(self.rig.drawn))
+        self.assertTrue(all(squares[0].bar for _, squares in self.rig.drawn))
+
+    def test_levels_wait_for_the_gate(self):
+        self.displays.note_level(1, 3)
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.now = 0.05
+        self.displays.note_level(1, 5)
+        self.displays.drain()
+        self.assertEqual([], self.rig.drawn)
+        self.now = 0.2
+        self.displays.drain()
+        self.assertEqual(5, len(self.rig.drawn))
+
+    def test_noting_a_level_draws_nothing_by_itself(self):
+        self.displays.note_level(1, 3)
+        self.assertEqual([], self.rig.drawn)
+
+    def test_a_turn_is_not_held_back_by_the_gate(self):
+        self.displays.note_level(1, 3)
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.now = 0.01
+        self.displays.show_channel(0, 2)
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        squares = self.rig.drawn[0][1]
+        self.assertTrue(squares[1].filled)
+        self.assertTrue(squares[0].bar)   # still with the level
+
+    def test_the_square_state_survives_a_level_redraw(self):
+        self.displays.show_channel(0, 3)
+        self.displays.show_return(2, (True,) * 8)
+        self.displays.drain()
+        self.displays.note_level(1, 2)
+        self.displays.drain()
+        self.assertTrue(self.drawn_on("Deck 1")[-1][2].filled)
+        self.assertTrue(self.drawn_on("FX Return")[-1][1].mark)
 
 
 class HowLongADrawTakes(unittest.TestCase):

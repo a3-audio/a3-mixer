@@ -32,6 +32,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "a3-mixer-set-display")
 )
 
+from a3_mixer_levels import LevelGate  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            channel_squares, panel_for_channel, return_panel,  # noqa: E402
                            return_squares, PAIRS, PANELS)
@@ -56,9 +57,9 @@ def _hardware():
     fonts = {}
     sender = PartialSender()
 
-    def font_for(side):
-        # The number fills about two thirds of its square, whatever the panel.
-        size = max(6, round(side * 0.7))
+    def font_for(face_height):
+        # The digit fills its face (the square above the bar's strip).
+        size = max(6, round(face_height * 1.1))
         if size not in fonts:
             fonts[size] = ImageFont.truetype(FONT_PATH, size)
         return fonts[size]
@@ -71,15 +72,18 @@ def _hardware():
         image = Image.new(device.mode, device.size)
         draw = ImageDraw.Draw(image)
         for square in squares:
-            x0, y0, x1, y1 = square.box
             ink, paper = ("black", "white") if square.filled else ("white", "black")
             draw.rectangle(square.box, outline="white", fill=paper)
+            if square.bar:
+                draw.rectangle(square.bar, fill=ink)
+            digit = ink
             if square.mark:
                 # The return's cursor: the digit inverted on a block of ink.
                 draw.rectangle(square.mark, fill=ink)
-                ink = paper
-            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), square.label,
-                      font=font_for(x1 - x0), fill=ink, anchor="mm")
+                digit = paper
+            f0, g0, f1, g1 = square.face
+            draw.text(((f0 + f1) / 2, (g0 + g1) / 2), square.label,
+                      font=font_for(g1 - g0), fill=digit, anchor="mm")
         # Only the window that changed goes over the bus (a3_mixer_oled).
         sender.send(device, image)
 
@@ -156,7 +160,7 @@ class Displays:
     """
 
     def __init__(self, select, make_device, draw_squares, report=report,
-                 clock=time.monotonic, every=20, later=_later):
+                 clock=time.monotonic, every=20, later=_later, gate=None):
         self._select = select
         self._make_device = make_device
         self._draw_squares = draw_squares
@@ -166,21 +170,34 @@ class Displays:
         self._lock = threading.Lock()
         self._devices = {}
         self._silent = set()  # panels already reported as not answering
-        self._posted = {}     # panel -> squares_for, the latest wins
-        self._latest = {}     # panel -> squares_for last posted, for a retry
+        self._posted = set()  # panels to draw; each is drawn from its state
+        # What each display shows, so a level redraw keeps it: the pair per
+        # channel, the cursor and what plays on the return.
+        self._channel_pairs = [0] * (len(PANELS) - 1)
+        self._return = (0, (False,) * PAIRS)
+        self._gate = gate or LevelGate()
+        self._levels = {}
         self._later = later
         self._wake = threading.Condition()
+
+    def note_level(self, pair, step):
+        """A stem's level step, from the OSC thread: noted, never drawn here.
+        The draw thread asks the gate at most every gate.interval seconds."""
+        self._gate.update(pair, step)
 
     def start(self):
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, pair):
-        self._post(panel_for_channel(index),
-                   lambda width, height: channel_squares(pair, width, height))
+        panel = panel_for_channel(index)
+        with self._wake:
+            self._channel_pairs[index] = pair
+        self._post(panel)
 
     def show_return(self, cursor, plays):
-        self._post(return_panel(),
-                   lambda width, height: return_squares(cursor, plays, width, height))
+        with self._wake:
+            self._return = (cursor, tuple(plays))
+        self._post(return_panel())
 
     def blank_all(self):
         """Until Core speaks: every square empty, nothing claimed to play."""
@@ -189,27 +206,44 @@ class Displays:
         self.show_return(0, (False,) * PAIRS)
 
     def drain(self):
-        """Draw everything posted so far, each panel once."""
+        """Draw everything posted so far, each panel once -- and every panel,
+        when the gate hands out new levels."""
+        levels = self._gate.due()
         with self._wake:
-            posted, self._posted = self._posted, {}
-        for panel, squares_for in posted.items():
-            self._draw(panel, squares_for)
+            if levels:
+                self._levels = levels
+                self._posted.update(PANELS)
+            posted, self._posted = self._posted, set()
+        for panel in PANELS:            # in table order, each at most once
+            if panel in posted:
+                self._draw(panel, self._squares_for(panel))
 
-    def _post(self, panel, squares_for):
+    def _squares_for(self, panel):
+        """The picture of `panel` from its state and the levels, laid out
+        for whatever size the display turns out to be."""
         with self._wake:
-            self._posted[panel] = squares_for
-            self._latest[panel] = squares_for
+            levels = dict(self._levels)
+            if panel == return_panel():
+                cursor, plays = self._return
+                return lambda width, height: return_squares(
+                    cursor, plays, width, height, levels)
+            pair = self._channel_pairs[PANELS.index(panel)]
+        return lambda width, height: channel_squares(pair, width, height, levels)
+
+    def _post(self, panel):
+        with self._wake:
+            self._posted.add(panel)
             self._wake.notify()
 
     def _retry(self, panel):
-        with self._wake:
-            self._posted.setdefault(panel, self._latest[panel])
-            self._wake.notify()
+        self._post(panel)
 
     def _run(self):
         while True:
             with self._wake:
-                self._wake.wait_for(lambda: self._posted)
+                # Woken by a post at once; otherwise every gate interval,
+                # to hand out levels that changed.
+                self._wake.wait_for(lambda: self._posted, timeout=self._gate.interval)
             self.drain()
 
     def _draw(self, panel, squares_for):
@@ -262,6 +296,9 @@ class NoDisplays:
         pass
 
     def show_return(self, cursor, plays):
+        pass
+
+    def note_level(self, pair, step):
         pass
 
     def blank_all(self):

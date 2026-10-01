@@ -29,6 +29,7 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, open_displays,
                                return_announcement)
+from a3_mixer_levels import level_step
 from a3_mixer_watchdog import watch_child
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
                           TruthMissing, load as load_osc_truth)
@@ -152,6 +153,12 @@ def vu_handler(address: str,
     # up by what the meter measures (a3_mixer_osc.VU_SLOTS).
     number = osc.vu_number(address)
     if number is None:
+        return
+    # A stem meter has no LED: its level goes to the stem displays, which
+    # only note it here and draw through their gate (a3_mixer_levels).
+    pair = osc.stem_pair(number)
+    if pair is not None:
+        displays.note_level(pair, level_step(osc_arguments[0]))
         return
     slot = osc.vu_slot(number)
     if slot is None:
