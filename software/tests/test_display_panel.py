@@ -123,23 +123,69 @@ class NothingWrong(unittest.TestCase):
         self.assertEqual([], reported)
 
 
-class StemText(unittest.TestCase):
-    def test_a_channel_shows_its_pair(self):
-        from display_panel import channel_text
-        self.assertEqual(channel_text(3), "5/6")
-        self.assertEqual(channel_text(0), "–")
+class StemSquares(unittest.TestCase):
+    """2x4 squares: StemDeck 1's stems 1-4 on top, StemDeck 2's below; a
+    square is filled while its stem plays (maintainer, 2026-10-01). Sizes
+    follow the panel, so a 128x32 display draws the same picture smaller."""
 
-    def test_the_return_shows_pair_and_mute(self):
-        from display_panel import return_text
-        self.assertEqual(return_text(2, False), "3/4")
-        self.assertEqual(return_text(2, True), "3/4 M")
-        self.assertEqual(return_text(0, False), "–")
+    def test_eight_squares_numbered_one_to_four_per_row(self):
+        from display_panel import channel_squares
+        squares = channel_squares(0, 128, 64)
+        self.assertEqual([s.label for s in squares], [1, 2, 3, 4, 1, 2, 3, 4])
 
-    def test_every_pair_has_its_two_numbers(self):
-        from display_panel import channel_text
-        self.assertEqual([channel_text(p) for p in range(1, 9)],
-                         ["1/2", "3/4", "5/6", "7/8", "9/10", "11/12",
-                          "13/14", "15/16"])
+    def test_stemdeck_one_is_the_top_row(self):
+        from display_panel import channel_squares
+        squares = channel_squares(0, 128, 64)
+        self.assertTrue(all(s.box[3] <= 32 for s in squares[:4]))
+        self.assertTrue(all(s.box[1] >= 32 for s in squares[4:]))
+
+    def test_left_to_right_within_a_row(self):
+        from display_panel import channel_squares
+        lefts = [s.box[0] for s in channel_squares(0, 128, 64)[:4]]
+        self.assertEqual(lefts, sorted(lefts))
+
+    def test_a_channel_fills_only_its_own_pair(self):
+        from display_panel import channel_squares
+        filled = [s.filled for s in channel_squares(6, 128, 64)]
+        self.assertEqual(filled, [False] * 5 + [True] + [False] * 2)
+
+    def test_a_channel_with_no_pair_fills_nothing(self):
+        from display_panel import channel_squares
+        squares = channel_squares(0, 128, 64)
+        self.assertFalse(any(s.filled for s in squares))
+        self.assertFalse(any(s.frame for s in squares))
+
+    def test_the_return_fills_what_plays_and_frames_the_cursor(self):
+        from display_panel import return_squares
+        plays = (True, False, False, True, True, True, True, True)
+        squares = return_squares(2, plays, 128, 64)
+        self.assertEqual([s.filled for s in squares], list(plays))
+        self.assertEqual([bool(s.frame) for s in squares],
+                         [False, True] + [False] * 6)
+
+    def test_a_return_with_no_free_pair_frames_nothing(self):
+        from display_panel import return_squares
+        squares = return_squares(0, (False,) * 8, 128, 64)
+        self.assertFalse(any(s.frame for s in squares))
+
+    def test_squares_are_square_and_the_frame_fits_around_them(self):
+        from display_panel import return_squares
+        for width, height in ((128, 64), (128, 32)):
+            for s in return_squares(1, (True,) * 8, width, height):
+                x0, y0, x1, y1 = s.box
+                self.assertEqual(x1 - x0, y1 - y0)
+                outer = s.frame or s.box
+                self.assertTrue(0 <= outer[0] < x0 and 0 <= outer[1] < y0
+                                if s.frame else True)
+                self.assertTrue(outer[2] < width and outer[3] < height,
+                                (width, height, s))
+
+    def test_the_squares_follow_the_panel_size(self):
+        from display_panel import channel_squares
+        def side(height):
+            box = channel_squares(0, 128, height)[0].box
+            return box[2] - box[0]
+        self.assertGreater(side(64), side(32))
 
 
 class StemPanels(unittest.TestCase):
@@ -175,14 +221,17 @@ class StemAnnouncements(unittest.TestCase):
         for args in ((), ("x",), (9,), (-1,), (None,), (1.5,), ("3",)):
             self.assertIsNone(channel_announcement(args), args)
 
-    def test_a_return_announcement_is_pair_and_mute(self):
+    def test_a_return_announcement_is_cursor_and_eight_pairs(self):
         from display_panel import return_announcement
-        self.assertEqual(return_announcement((2, 1)), (2, True))
-        self.assertEqual(return_announcement((0, 0)), (0, False))
+        self.assertEqual(return_announcement((2, 1, 0, 0, 1, 1, 1, 1, 1)),
+                         (2, (True, False, False, True, True, True, True, True)))
+        self.assertEqual(return_announcement((0,) * 9), (0, (False,) * 8))
 
     def test_a_damaged_return_announcement_is_none(self):
         from display_panel import return_announcement
-        for args in ((), (2,), ("a", 1), (2, "b"), (9, 0), (2, 5)):
+        for args in ((), (2, 1), (2,) + (1,) * 7, (2,) + (1,) * 9,
+                     (9,) + (1,) * 8, (2, 2) + (1,) * 7, ("a",) + (1,) * 8,
+                     (2, True) + (1,) * 7):
             self.assertIsNone(return_announcement(args), args)
 
 

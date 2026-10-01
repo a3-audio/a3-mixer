@@ -26,14 +26,14 @@ class Rig:
         self.selected.append(channel)
 
     def make_device(self, panel):
-        device = type("Device", (), {"persist": False})()
+        device = type("Device", (), {"persist": False, "width": 128, "height": 64})()
         self.built.append((panel.label, device))
         return device
 
-    def draw(self, device, text):
+    def draw(self, device, squares):
         if self.fail_draw:
             raise OSError("nack")
-        self.drawn.append((device, text))
+        self.drawn.append((device, squares))
 
     def displays(self):
         return Displays(self.select, self.make_device, self.draw, self.reports.append)
@@ -58,13 +58,30 @@ class OneDevicePerPanel(unittest.TestCase):
         displays = rig.displays()
         displays.show_channel(0, 1)
         displays.show_channel(0, 2)
-        displays.show_return(1, False)
+        displays.show_return(1, (True,) * 8)
         self.assertEqual([2, 2, 6], rig.selected)
 
     def test_each_panel_has_its_own_device(self):
         rig = Rig()
         rig.displays().blank_all()
         self.assertEqual(5, len(rig.built))
+
+
+class WhatIsDrawn(unittest.TestCase):
+    def test_the_squares_are_sized_to_the_device(self):
+        rig = Rig()
+        rig.make_device = lambda panel: type(
+            "Device", (), {"persist": False, "width": 128, "height": 32})()
+        rig.displays().show_channel(0, 1)
+        device, squares = rig.drawn[-1]
+        self.assertTrue(all(s.box[3] < 32 for s in squares))
+        self.assertTrue(squares[0].filled)
+
+    def test_the_return_shows_its_cursor(self):
+        rig = Rig()
+        rig.displays().show_return(3, (True,) * 8)
+        device, squares = rig.drawn[-1]
+        self.assertEqual([bool(s.frame) for s in squares].index(True), 2)
 
 
 class AfterAFailure(unittest.TestCase):
@@ -77,7 +94,8 @@ class AfterAFailure(unittest.TestCase):
         rig.fail_draw = False
         displays.show_channel(0, 3)
         self.assertEqual(2, len(rig.built))
-        self.assertEqual("5/6", rig.drawn[-1][1])
+        filled = [s.filled for s in rig.drawn[-1][1]]
+        self.assertEqual(filled.index(True), 2)   # pair 3 drawn after the rebuild
 
     def test_a_failure_never_raises_and_is_reported_once(self):
         rig = Rig()
