@@ -164,5 +164,27 @@ class StemPanels(unittest.TestCase):
                 panel_for_channel(index)
 
 
+class StemAnnouncements(unittest.TestCase):
+    def test_a_channel_announcement_is_one_pair(self):
+        from display_panel import channel_announcement
+        self.assertEqual(channel_announcement((3,)), 3)
+        self.assertEqual(channel_announcement((0,)), 0)
+
+    def test_a_damaged_channel_announcement_is_none(self):
+        from display_panel import channel_announcement
+        for args in ((), ("x",), (9,), (-1,), (None,), (1.5,), ("3",)):
+            self.assertIsNone(channel_announcement(args), args)
+
+    def test_a_return_announcement_is_pair_and_mute(self):
+        from display_panel import return_announcement
+        self.assertEqual(return_announcement((2, 1)), (2, True))
+        self.assertEqual(return_announcement((0, 0)), (0, False))
+
+    def test_a_damaged_return_announcement_is_none(self):
+        from display_panel import return_announcement
+        for args in ((), (2,), ("a", 1), (2, "b"), (9, 0), (2, 5)):
+            self.assertIsNone(return_announcement(args), args)
+
+
 if __name__ == "__main__":
     unittest.main()

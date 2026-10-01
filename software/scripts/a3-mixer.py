@@ -27,7 +27,8 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_encoders import (Clicks, encoder_message, parse_int,
                                 push_message)
-from a3_mixer_displays import open_displays
+from a3_mixer_displays import (channel_announcement, open_displays,
+                               return_announcement)
 from a3_mixer_watchdog import watch_child
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
                           TruthMissing, load as load_osc_truth)
@@ -417,13 +418,17 @@ if __name__ == '__main__':
     displays = open_displays()
     displays.blank_all()
 
+    # A damaged announcement is ignored: nothing may raise into the server.
     def stem_handler_channel(address, *args):
         found = osc.match(address)
-        if found and 1 <= found[1]["ch"] <= num_channel:
-            displays.show_channel(found[1]["ch"] - 1, int(args[0]))
+        pair = channel_announcement(args)
+        if found and pair is not None and 1 <= found[1]["ch"] <= num_channel:
+            displays.show_channel(found[1]["ch"] - 1, pair)
 
     def stem_handler_return(address, *args):
-        displays.show_return(int(args[0]), bool(args[1]))
+        announced = return_announcement(args)
+        if announced:
+            displays.show_return(*announced)
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("fx-return.stem"), stem_handler_return)

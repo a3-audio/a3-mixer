@@ -113,3 +113,24 @@ def return_text(pair, muted):
     if not pair:
         return "\u2013"
     return channel_text(pair) + (" M" if muted else "")
+
+
+PAIRS = 8
+
+
+def _is_count(value, upper):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= upper
+
+
+def channel_announcement(args):
+    """The pair out of `/channel/{ch}/stem`'s arguments, or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], PAIRS):
+        return None
+    return args[0]
+
+
+def return_announcement(args):
+    """(pair, muted) out of `/fx-return/stem`'s arguments, or None if damaged."""
+    if len(args) != 2 or not _is_count(args[0], PAIRS) or not _is_count(args[1], 1):
+        return None
+    return args[0], bool(args[1])
