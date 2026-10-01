@@ -28,7 +28,7 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, open_displays,
-                               return_announcement)
+                               return_announcement, selected_announcement)
 from a3_mixer_levels import level_step
 from a3_mixer_watchdog import watch_child
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
@@ -222,10 +222,6 @@ def led_handler_channel(address: str,
     colour = led_colour(led_type)
     if colour is not None:
         send_button_leds_data(channel, led_on, colour)
-
-    # The cue is also the C field on the channel's display (2026-10-01).
-    if led_type == "cue" and 0 <= channel < num_channel:
-        displays.show_cue(channel, bool(led_on))
 
 def led_handler_fx(address: str,
                    *osc_arguments: List[Any]) -> None:
@@ -444,8 +440,17 @@ if __name__ == '__main__':
         if announced:
             displays.show_return(*announced)
 
+    # Where a channel's selection stands (spec desk-stem-selector): drawn on
+    # its own display only. A damaged value is ignored.
+    def stem_handler_selected(address, *args):
+        found = osc.match(address)
+        selected = selected_announcement(args)
+        if found and selected is not None and 1 <= found[1]["ch"] <= num_channel:
+            displays.show_selected(found[1]["ch"] - 1, selected)
+
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
+    dispatcher.map(osc.subscription("channel.stem.selected"), stem_handler_selected)
 
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen

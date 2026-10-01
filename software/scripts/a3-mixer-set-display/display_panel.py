@@ -30,6 +30,7 @@ Als Tabelle kann das nicht wiederkommen: fuenf Zeilen, die Kanaele stehen
 einmal da, und ein Test besteht darauf, dass es die des Multiplexers sind.
 """
 
+import math
 from collections import namedtuple
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
@@ -133,70 +134,109 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: One square per stem, plus the analog input on a channel: `box` is
-#: (x0, y0, x1, y1), `label` what is written in it ("1"-"4", "A"), `mark` the
-#: block behind the digit of the square the return's encoder is on, `bar` the
-#: stem's level along the bottom edge -- each a box or None -- and `face` the
-#: area above the bar's strip where the digit (and the block) sit.
-Square = namedtuple("Square", "box label filled mark bar face")
+#: The stem selector's fields (spec desk-stem-selector, 2026-10-02): eight
+#: stems (StemDeck A's on top, B's below) and the fifth column's field, bottom
+#: right -- a channel's A, the return's empty field. A field shows the symbol
+#: of the place its stem plays: channel 1-4, then the aux return.
+SYMBOLS = ("circle", "square", "triangle", "diamond", "star")
+RETURN_PLACE = 4
+
+#: `box` is (x0, y0, x1, y1); `symbol` a name from SYMBOLS or None; `framed`
+#: whether the place's selection stands here; `bar` the stem's level, a box
+#: under the field, or None.
+Field = namedtuple("Field", "box symbol framed bar")
 
 STEMS_PER_DECK = 4
-COLUMNS = STEMS_PER_DECK + 1   # the fifth column holds "A", bottom right
-SQUARE_OF_CELL = 0.75   # the square's side, as a share of its cell
-BAR_OF_SQUARE = 0.12    # the level bar's height, as a share of the square
-BAR_INSET = 0.12        # its gap to the square's edges, as a share of the square
-LEVEL_STEPS = 6         # a3_mixer_levels.STEPS: a full bar
+COLUMNS = STEMS_PER_DECK + 1   # the fifth column holds A / the empty field
+FIELD_OF_CELL = 0.5            # the field's side, as a share of its cell's smaller side
+BAR_HEIGHT_OF_CELL = 0.12      # the level bar's height, as a share of the cell's height
+LEVEL_STEPS = 6                # a3_mixer_levels.STEPS: a full bar
 
 
-def channel_squares(mask, width, height, levels=None, cue=False):
-    """A channel's display: every stem StemDeck has on its bus filled (`mask`,
-    bit 0 = pair 1), or "A" while it plays its analog input (mask 0).
-    `levels` (pair -> step) draws a bar in each stem square; "A" has none."""
-    squares = _stem_squares([bool(mask >> (p - 1) & 1) for p in range(1, PAIRS + 1)], 0,
-                            width, height, levels)
-    # "C" above "A": the channel's cue (2026-10-01), its encoder's push.
-    return squares + [_square(STEMS_PER_DECK, 1, "A", mask == 0, False, 0, width, height),
-                      _square(STEMS_PER_DECK, 0, "C", cue, False, 0, width, height)]
+def places_of(masks, plays):
+    """Where each pair plays: the first channel index whose mask has it, else
+    RETURN_PLACE if it plays on the return, else None."""
+    places = []
+    for pair in range(1, PAIRS + 1):
+        on = [c for c, mask in enumerate(masks) if mask >> (pair - 1) & 1]
+        places.append(on[0] if on else (RETURN_PLACE if plays[pair - 1] else None))
+    return places
 
 
-def return_squares(cursor, plays, width, height, levels=None):
-    """The aux return's display: what plays there filled, the digit of the
-    stem under the encoder (`cursor`) inverted, the stems' levels as bars.
-    Its fifth column stays empty (the C field left on 2026-10-01)."""
-    return _stem_squares(list(plays), cursor, width, height, levels)
+def channel_fields(index, places, selected, width, height, levels=None):
+    """Channel `index`'s display: the stems, then A -- which shows the
+    channel's own symbol while no stem plays there."""
+    on_analog = index not in places
+    return _stem_fields(places, selected, width, height, levels) + [
+        _field(STEMS_PER_DECK, 1, SYMBOLS[index] if on_analog else None, selected == 0, 0,
+               width, height)]
 
 
-def _stem_squares(filled, marked_pair, width, height, levels=None):
-    """StemDeck 1's stems 1-4 on top, StemDeck 2's below, columns 1-4
-    (2026-10-01: pairs 1-4 are deck A's stems, 5-8 deck B's)."""
-    return [_square(index % STEMS_PER_DECK, index // STEMS_PER_DECK,
-                    str(index % STEMS_PER_DECK + 1), is_filled,
-                    index + 1 == marked_pair, (levels or {}).get(index + 1, 0),
-                    width, height)
-            for index, is_filled in enumerate(filled)]
+def return_fields(places, selected, width, height, levels=None):
+    """The aux return's display: the stems, then the empty field (no stem on
+    the return)."""
+    return _stem_fields(places, selected, width, height, levels) + [
+        _field(STEMS_PER_DECK, 1, None, selected == 0, 0, width, height)]
 
 
-def _square(column, row, label, filled, marked, step, width, height):
-    """A square centred in its cell of the 5x2 grid, sized by the cell, so
-    any panel draws the same picture."""
-    cell_w = width / COLUMNS
-    cell_h = height / 2
-    side = round(min(cell_w, cell_h) * SQUARE_OF_CELL)
+def _symbol(place):
+    return None if place is None else SYMBOLS[place]
+
+
+def _stem_fields(places, selected, width, height, levels):
+    return [_field(i % STEMS_PER_DECK, i // STEMS_PER_DECK, _symbol(place), selected == i + 1,
+                   (levels or {}).get(i + 1, 0), width, height)
+            for i, place in enumerate(places)]
+
+
+def _field(column, row, symbol, framed, step, width, height):
+    """A field centred in its cell of the 5x2 grid with its bar below, sized
+    by the cell, so any panel draws the same picture."""
+    cell_w, cell_h = width / COLUMNS, height / 2
+    side = round(min(cell_w, cell_h) * FIELD_OF_CELL)
+    bar_h = max(1, round(cell_h * BAR_HEIGHT_OF_CELL))
+    gap = max(1, bar_h // 2)
     x0 = round(column * cell_w + (cell_w - side) / 2)
-    y0 = round(row * cell_h + (cell_h - side) / 2)
-    inset = max(1, round(side * BAR_INSET))
-    bar_height = max(1, round(side * BAR_OF_SQUARE))
-    bottom = y0 + side - inset
-    # The digit's area: above the bar's strip, whether a bar shows or not.
-    face = (x0 + inset, y0 + inset, x0 + side - inset, bottom - bar_height - inset)
-    mark = None
-    if marked:
-        # A square block, as tall as the face, centred on the digit.
-        half = (face[3] - face[1]) // 2
-        middle = (face[0] + face[2]) // 2
-        mark = (middle - half, face[1], middle + half, face[3])
+    y0 = round(row * cell_h + (cell_h - side - gap - bar_h) / 2)
     bar = None
-    length = round((side - 2 * inset) * min(step, LEVEL_STEPS) / LEVEL_STEPS)
+    length = round(side * min(step, LEVEL_STEPS) / LEVEL_STEPS)
     if length > 0:
-        bar = (x0 + inset, bottom - bar_height, x0 + inset + length, bottom)
-    return Square((x0, y0, x0 + side, y0 + side), label, filled, mark, bar, face)
+        top = y0 + side + gap
+        bar = (x0, top, x0 + length, top + bar_h)
+    return Field((x0, y0, x0 + side, y0 + side), symbol, framed, bar)
+
+
+#: How far a symbol keeps from its field's edge, as a share of the side.
+SYMBOL_INSET = 0.2
+
+
+def symbol_shape(symbol, box):
+    """What the painter draws for `symbol` inside `box`: ("ellipse" or
+    "rectangle", (x0, y0, x1, y1)) or ("polygon", (x, y, x, y, ...))."""
+    x0, y0, x1, y1 = box
+    inset = max(1, round((x1 - x0) * SYMBOL_INSET))
+    left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
+    cx, cy = (left + right) / 2, (top + bottom) / 2
+    if symbol == "circle":
+        return "ellipse", (left, top, right, bottom)
+    if symbol == "square":
+        return "rectangle", (left, top, right, bottom)
+    if symbol == "triangle":
+        return "polygon", (cx, top, right, bottom, left, bottom)
+    if symbol == "diamond":
+        return "polygon", (cx, top, right, cy, cx, bottom, left, cy)
+    outer, inner = (right - left) / 2, (right - left) / 5
+    points = []
+    for corner in range(10):
+        radius = outer if corner % 2 == 0 else inner
+        angle = math.pi / 2 + corner * math.pi / 5
+        points += [cx + radius * math.cos(angle), cy - radius * math.sin(angle)]
+    return "polygon", tuple(points)
+
+
+def selected_announcement(args):
+    """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
+    1-8 a stem), or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], PAIRS):
+        return None
+    return args[0]

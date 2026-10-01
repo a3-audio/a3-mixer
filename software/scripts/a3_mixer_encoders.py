@@ -96,16 +96,16 @@ def encoder_message(osc, encoder, clicks):
 
 
 def push_message(osc, encoder, pressed):
-    """A press: on the aux return the stem push (Core toggles the AUX of the
-    stem under the cursor on StemDeck); on a channel its cue,
-    sent as the strip's key sends it, the text "1" Core reads as a toggle."""
+    """A press loads the selection (spec desk-stem-selector): on a channel
+    its selected input, on the aux return its selected stem. The cue is the
+    strip's key alone."""
     target = ENCODER_TARGETS.get(encoder)
     if not pressed or target is None:
         return None
     kind, index = target
     if kind == "return":
         return osc.address("aux-return.stem.push"), 1
-    return osc.channel_address("channel.cue", index), "1"
+    return osc.channel_address("channel.stem.push", index), 1
 
 
 def parse_int(text):
