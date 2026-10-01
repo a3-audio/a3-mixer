@@ -166,6 +166,43 @@ class AfterAFailure(unittest.TestCase):
         self.assertEqual(1, len(rig.reports))
 
 
+class TryingAgain(unittest.TestCase):
+    """A failed draw is tried again a little later with the panel's latest
+    picture -- not left until the panel next changes."""
+
+    def test_a_failed_draw_is_tried_again_later(self):
+        rig, scheduled = Rig(), []
+        displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
+        rig.fail_draw = True
+        displays.show_channel(0, 3)
+        displays.drain()
+        self.assertEqual(1, len(scheduled))
+        rig.fail_draw = False
+        scheduled[0][1]()
+        displays.drain()
+        self.assertEqual([s.filled for s in rig.drawn[-1][1]].index(True), 2)
+
+    def test_the_retry_draws_what_was_posted_since(self):
+        rig, scheduled = Rig(), []
+        displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
+        rig.fail_draw = True
+        displays.show_channel(0, 3)
+        displays.drain()
+        rig.fail_draw = False
+        displays.show_channel(0, 5)
+        displays.drain()
+        scheduled[0][1]()
+        displays.drain()
+        self.assertEqual([s.filled for s in rig.drawn[-1][1]].index(True), 4)
+
+    def test_a_good_draw_schedules_nothing(self):
+        rig, scheduled = Rig(), []
+        displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
+        displays.show_channel(0, 3)
+        displays.drain()
+        self.assertEqual([], scheduled)
+
+
 class HowLongADrawTakes(unittest.TestCase):
     """One journal line per batch of draws, so the bus speed is measured on
     the desk instead of guessed."""
