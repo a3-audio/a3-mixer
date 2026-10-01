@@ -121,7 +121,7 @@ def return_announcement(args):
     """(cursor, plays) out of `/aux-return/stem`'s arguments -- the pair the
     encoder is on, then for pairs 1-8 whether it plays on the return -- or
     None if damaged."""
-    if len(args) != 1 + PAIRS or not _is_count(args[0], PAIRS):
+    if len(args) != 1 + PAIRS or not _is_count(args[0], CUE_POSITION):
         return None
     if not all(_is_count(flag, 1) for flag in args[1:]):
         return None
@@ -143,20 +143,30 @@ BAR_INSET = 0.12        # its gap to the square's edges, as a share of the squar
 LEVEL_STEPS = 6         # a3_mixer_levels.STEPS: a full bar
 
 
-def channel_squares(pair, width, height, levels=None):
+def channel_squares(pair, width, height, levels=None, cue=False):
     """A channel's display: the stem it plays filled, or "A" while it plays
     its analog input (pair 0). `levels` (pair -> step) draws a bar in each
     stem square; "A" has none."""
     squares = _stem_squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height,
                             levels)
-    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, 0, width, height)]
+    # "C" above "A": the channel's cue (2026-10-01), its encoder's push.
+    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, 0, width, height),
+                      _square(STEMS_PER_DECK, 0, "C", cue, False, 0, width, height)]
 
 
-def return_squares(cursor, plays, width, height, levels=None):
+#: The return cursor's position on the C field, after the eight stems
+#: (a3-core's Stems.CUE).
+CUE_POSITION = 9
+
+
+def return_squares(cursor, plays, width, height, levels=None, cue=False):
     """The aux return's display: what plays there filled, the digit of the
     stem under the encoder (`cursor`) inverted, the stems' levels as bars.
     Its "A" place stays empty."""
-    return _stem_squares(list(plays), cursor, width, height, levels)
+    squares = _stem_squares(list(plays), cursor, width, height, levels)
+    # "C": the stem cue, a cursor position after the stems (2026-10-01).
+    return squares + [_square(STEMS_PER_DECK, 0, "C", cue, cursor == CUE_POSITION, 0,
+                              width, height)]
 
 
 def _stem_squares(filled, marked_pair, width, height, levels=None):

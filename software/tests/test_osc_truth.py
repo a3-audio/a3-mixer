@@ -80,7 +80,7 @@ class WhatTheDeskSays(unittest.TestCase):
 
     def test_the_fx_key_is_the_channel_filter(self):
         self.assertEqual(a3_mixer_osc.CHANNEL_KEYS["fx"], "channel.filter")
-        self.assertEqual(a3_mixer_osc.CHANNEL_KEYS["pfl"], "channel.pfl")
+        self.assertEqual(a3_mixer_osc.CHANNEL_KEYS["cue"], "channel.cue")
 
     def test_an_address_without_a_channel(self):
         self.assertEqual(made_up().address("master.aux-return"), "/t/master.aux-return")
@@ -88,20 +88,20 @@ class WhatTheDeskSays(unittest.TestCase):
 
 class WhatTheDeskHears(unittest.TestCase):
     def test_a_lamp_is_taken_apart(self):
-        self.assertEqual(made_up().match("/t/channel.pfl.led/2"),
-                         ("channel.pfl.led", {"ch": 2}))
+        self.assertEqual(made_up().match("/t/channel.cue.led/2"),
+                         ("channel.cue.led", {"ch": 2}))
 
     def test_an_address_the_truth_does_not_have_is_nothing(self):
         self.assertIsNone(made_up().match("/channel/0/led/pfl"))
-        self.assertIsNone(made_up().match("/t/channel.pfl.led/9"))
+        self.assertIsNone(made_up().match("/t/channel.cue.led/9"))
 
     def test_a_subscription_is_the_pattern_with_wildcards(self):
-        self.assertEqual(made_up().subscription("channel.pfl.led"),
-                         "/t/channel.pfl.led/*")
+        self.assertEqual(made_up().subscription("channel.cue.led"),
+                         "/t/channel.cue.led/*")
         self.assertEqual(made_up().subscription("vu"), "/t/vu/*")
 
     def test_the_lamps_carry_the_panels_names(self):
-        self.assertEqual(a3_mixer_osc.LAMPS["channel.pfl.led"], "pfl")
+        self.assertEqual(a3_mixer_osc.LAMPS["channel.cue.led"], "cue")
         self.assertEqual(a3_mixer_osc.LAMPS["channel.filter.led"], "fx")
 
 

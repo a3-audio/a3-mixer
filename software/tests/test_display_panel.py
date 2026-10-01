@@ -133,13 +133,13 @@ class StemSquares(unittest.TestCase):
     def test_a_channel_has_eight_stems_and_the_analog_input(self):
         from display_panel import channel_squares
         labels = [s.label for s in channel_squares(0, 128, 64)]
-        self.assertEqual(labels, ["1", "2", "3", "4", "1", "2", "3", "4", "A"])
+        self.assertEqual(labels, ["1", "2", "3", "4", "1", "2", "3", "4", "A", "C"])
 
     def test_stemdeck_one_is_the_top_row(self):
         from display_panel import channel_squares
         squares = channel_squares(0, 128, 64)
         self.assertTrue(all(s.box[3] <= 32 for s in squares[:4]))
-        self.assertTrue(all(s.box[1] >= 32 for s in squares[4:]))
+        self.assertTrue(all(s.box[1] >= 32 for s in squares[4:9]))   # StemDeck 2 and A; C sits on top
 
     def test_the_stems_stand_in_columns_and_a_is_at_the_right(self):
         from display_panel import channel_squares
@@ -153,12 +153,12 @@ class StemSquares(unittest.TestCase):
     def test_a_channel_on_its_analog_input_fills_a(self):
         from display_panel import channel_squares
         filled = [s.filled for s in channel_squares(0, 128, 64)]
-        self.assertEqual(filled, [False] * 8 + [True])
+        self.assertEqual(filled, [False] * 8 + [True, False])  # A on, C off
 
     def test_a_channel_on_a_stem_fills_only_that_stem(self):
         from display_panel import channel_squares
         filled = [s.filled for s in channel_squares(6, 128, 64)]
-        self.assertEqual(filled, [False] * 5 + [True] + [False] * 3)
+        self.assertEqual(filled, [False] * 5 + [True] + [False] * 2 + [False, False])  # ..., A, C
 
     def test_a_channel_marks_nothing(self):
         from display_panel import channel_squares
@@ -167,17 +167,17 @@ class StemSquares(unittest.TestCase):
     def test_the_return_has_the_stems_and_no_a(self):
         from display_panel import channel_squares, return_squares
         squares = return_squares(1, (True,) * 8, 128, 64)
-        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2)
-        self.assertEqual([s.box for s in squares],
+        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2 + ["C"])
+        self.assertEqual([s.box for s in squares[:8]],
                          [s.box for s in channel_squares(0, 128, 64)[:8]])
 
     def test_the_return_fills_what_plays_and_marks_the_cursor(self):
         from display_panel import return_squares
         plays = (True, False, False, True, True, True, True, True)
         squares = return_squares(2, plays, 128, 64)
-        self.assertEqual([s.filled for s in squares], list(plays))
+        self.assertEqual([s.filled for s in squares], list(plays) + [False])   # C: stem cue off
         self.assertEqual([bool(s.mark) for s in squares],
-                         [False, True] + [False] * 6)
+                         [False, True] + [False] * 6 + [False])
 
     def test_a_return_with_no_free_pair_marks_nothing(self):
         from display_panel import return_squares
@@ -254,6 +254,27 @@ class StemSquares(unittest.TestCase):
         self.assertEqual(square.mark[1], square.face[1])
         self.assertEqual(square.mark[3], square.face[3])
 
+    def test_c_sits_above_a(self):
+        from display_panel import channel_squares
+        squares = channel_squares(0, 128, 64)
+        c, a = squares[9], squares[8]
+        self.assertEqual(c.label, "C")
+        self.assertEqual(c.box[0], a.box[0])
+        self.assertLess(c.box[3], a.box[1])
+
+    def test_a_channels_c_is_filled_while_its_cue_is_on(self):
+        from display_panel import channel_squares
+        self.assertTrue(channel_squares(0, 128, 64, cue=True)[9].filled)
+        self.assertFalse(channel_squares(0, 128, 64)[9].filled)
+
+    def test_the_return_has_c_for_the_stem_cue(self):
+        from display_panel import return_squares
+        squares = return_squares(9, (True,) * 8, 128, 64, cue=True)
+        self.assertEqual(squares[8].label, "C")
+        self.assertTrue(squares[8].filled)
+        self.assertTrue(squares[8].mark)                 # the cursor is on C
+        self.assertFalse(any(s.mark for s in squares[:8]))
+
     def test_the_squares_follow_the_panel_size(self):
         from display_panel import channel_squares
         def side(height):
@@ -301,10 +322,14 @@ class StemAnnouncements(unittest.TestCase):
                          (2, (True, False, False, True, True, True, True, True)))
         self.assertEqual(return_announcement((0,) * 9), (0, (False,) * 8))
 
+    def test_the_cursor_may_stand_on_c(self):
+        from display_panel import return_announcement
+        self.assertEqual(return_announcement((9,) + (1,) * 8)[0], 9)
+
     def test_a_damaged_return_announcement_is_none(self):
         from display_panel import return_announcement
         for args in ((), (2, 1), (2,) + (1,) * 7, (2,) + (1,) * 9,
-                     (9,) + (1,) * 8, (2, 2) + (1,) * 7, ("a",) + (1,) * 8,
+                     (10,) + (1,) * 8, (2, 2) + (1,) * 7, ("a",) + (1,) * 8,
                      (2, True) + (1,) * 7):
             self.assertIsNone(return_announcement(args), args)
 

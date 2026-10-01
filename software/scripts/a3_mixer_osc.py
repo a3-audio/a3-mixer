@@ -44,7 +44,7 @@ CHANNEL_POTS = {
 #: do. The fx key switches the channel through the master filter.
 CHANNEL_KEYS = {
     "fx": "channel.filter",
-    "pfl": "channel.pfl",
+    "cue": "channel.cue",
 }
 
 #: The master section's pots, by the index the firmware reports.
@@ -61,7 +61,7 @@ MASTER_POTS = {
 #: The lamps Core tells the desk about, and the panel's name for each --
 #: the name a3_mixer_panel.led_colour takes.
 LAMPS = {
-    "channel.pfl.led": "pfl",
+    "channel.cue.led": "cue",
     "channel.filter.led": "fx",
 }
 
@@ -80,7 +80,7 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
        "device.hello", "channel.stem.turn", "aux-return.stem.turn",
-       "aux-return.stem.push", "channel.stem", "aux-return.stem")
+       "aux-return.stem.push", "channel.stem", "aux-return.stem", "stem.cue.led")
 
 
 def _pattern_regex(pattern):
@@ -145,7 +145,7 @@ class MixerOsc:
         return re.sub(r"\{\w+\}", "*", self._data["addresses"][key]["pattern"])
 
     def match(self, address):
-        """("channel.pfl.led", {"ch": 2}) for "/channel/2/pfl/led", or None
+        """("channel.cue.led", {"ch": 2}) for "/channel/2/cue/led", or None
         for an address the truth does not have or a number out of range."""
         for key, regex in self._matchers.items():
             fields = self._fields(key, regex, address)

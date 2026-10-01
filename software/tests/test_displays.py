@@ -287,6 +287,35 @@ class Levels(unittest.TestCase):
         self.assertTrue(self.drawn_on("Aux Return")[-1][1].mark)
 
 
+class TheCueField(unittest.TestCase):
+    """C on every display (2026-10-01): a channel's cue, the stem cue on the
+    aux return -- drawn from what Core says, like the stems."""
+
+    def setUp(self):
+        self.rig = Rig()
+        self.displays = self.rig.displays()
+        self.displays.blank_all()
+        self.displays.drain()
+        self.rig.drawn.clear()
+
+    def test_a_channels_cue_fills_its_c(self):
+        self.displays.show_cue(1, True)
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertTrue(self.rig.drawn[0][1][9].filled)
+
+    def test_the_stem_cue_fills_the_returns_c(self):
+        self.displays.show_stem_cue(True)
+        self.displays.drain()
+        self.assertTrue(self.rig.drawn[0][1][8].filled)
+
+    def test_the_cue_survives_a_stem_change(self):
+        self.displays.show_cue(0, True)
+        self.displays.show_channel(0, 3)
+        self.displays.drain()
+        self.assertTrue(self.rig.drawn[-1][1][9].filled)
+
+
 class HowLongADrawTakes(unittest.TestCase):
     """One journal line per batch of draws, so the bus speed is measured on
     the desk instead of guessed."""

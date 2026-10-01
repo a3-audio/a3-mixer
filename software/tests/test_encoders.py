@@ -144,8 +144,11 @@ class Messages(unittest.TestCase):
         self.assertEqual(enc.push_message(made_up(), 4, True), ("/t/aux-return.stem.push", 1))
         self.assertIsNone(enc.push_message(made_up(), 4, False))
 
-    def test_a_channel_push_does_nothing_yet(self):
-        self.assertIsNone(enc.push_message(made_up(), 0, True))
+    def test_a_channel_push_is_its_cue(self):
+        # The C field on a channel's display (2026-10-01): a press, sent as the
+        # strip's key sends it -- the text "1", which Core reads as a toggle.
+        self.assertEqual(enc.push_message(made_up(), 1, True), ("/t/channel.cue/2", "1"))
+        self.assertIsNone(enc.push_message(made_up(), 1, False))
 
 
 if __name__ == "__main__":

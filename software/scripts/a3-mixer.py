@@ -223,6 +223,10 @@ def led_handler_channel(address: str,
     if colour is not None:
         send_button_leds_data(channel, led_on, colour)
 
+    # The cue is also the C field on the channel's display (2026-10-01).
+    if led_type == "cue" and 0 <= channel < num_channel:
+        displays.show_cue(channel, bool(led_on))
+
 def led_handler_fx(address: str,
                    *osc_arguments: List[Any]) -> None:
 #    print(f'led_handler_fx: {address}')
@@ -442,6 +446,14 @@ if __name__ == '__main__':
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
+
+    # The stem cue: the aux-return display's C field. A damaged value is
+    # ignored, like a damaged stem announcement.
+    def stem_cue_handler(address, *args):
+        if len(args) == 1 and isinstance(args[0], (int, float)) and not isinstance(args[0], bool):
+            displays.show_stem_cue(args[0] > 0.5)
+
+    dispatcher.map(osc.subscription("stem.cue.led"), stem_cue_handler)
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.
