@@ -41,6 +41,16 @@ class Clicks(unittest.TestCase):
         self.assertEqual(c.feed(0, 4), 1)
 
 
+class ParseInt(unittest.TestCase):
+    def test_numbers_come_through(self):
+        self.assertEqual(enc.parse_int("12"), 12)
+        self.assertEqual(enc.parse_int("-3"), -3)
+
+    def test_a_damaged_field_is_nothing(self):
+        for text in ("", "1x", "-", "--3", "\u00b2", "\u0661"):
+            self.assertIsNone(enc.parse_int(text), text)
+
+
 class Messages(unittest.TestCase):
     def test_a_channel_encoder_turns_its_channel(self):
         self.assertEqual(enc.encoder_message(made_up(), 1, -2), ("/t/channel.stem.turn/2", -2))

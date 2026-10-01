@@ -61,3 +61,11 @@ def push_message(osc, encoder, pressed):
     if not pressed or ENCODER_TARGETS.get(encoder, (None,))[0] != "return":
         return None
     return osc.address("fx-return.stem.push"), 1
+
+
+def parse_int(text):
+    """An int from a serial field, None if the line was damaged in transit."""
+    digits = text[1:] if text.startswith("-") else text
+    if not (digits.isascii() and digits.isdigit()):
+        return None
+    return int(text)
