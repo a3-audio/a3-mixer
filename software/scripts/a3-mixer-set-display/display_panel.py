@@ -130,38 +130,46 @@ def return_announcement(args):
 
 #: One square per stem, plus the analog input on a channel: `box` is
 #: (x0, y0, x1, y1), `label` what is written in it ("1"-"4", "A"), `mark` the
-#: block behind the digit of the square the return's encoder is on, or None.
-Square = namedtuple("Square", "box label filled mark")
+#: block behind the digit of the square the return's encoder is on, `bar` the
+#: stem's level along the bottom edge -- each a box or None -- and `face` the
+#: area above the bar's strip where the digit (and the block) sit.
+Square = namedtuple("Square", "box label filled mark bar face")
 
 STEMS_PER_DECK = 4
 COLUMNS = STEMS_PER_DECK + 1   # the fifth column holds "A", bottom right
 SQUARE_OF_CELL = 0.75   # the square's side, as a share of its cell
-MARK_OF_SQUARE = 0.7    # the block behind the cursor's digit, as a share of the square
+BAR_OF_SQUARE = 0.12    # the level bar's height, as a share of the square
+BAR_INSET = 0.12        # its gap to the square's edges, as a share of the square
+LEVEL_STEPS = 6         # a3_mixer_levels.STEPS: a full bar
 
 
-def channel_squares(pair, width, height):
+def channel_squares(pair, width, height, levels=None):
     """A channel's display: the stem it plays filled, or "A" while it plays
-    its analog input (pair 0)."""
-    squares = _stem_squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height)
-    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, width, height)]
+    its analog input (pair 0). `levels` (pair -> step) draws a bar in each
+    stem square; "A" has none."""
+    squares = _stem_squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height,
+                            levels)
+    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, 0, width, height)]
 
 
-def return_squares(cursor, plays, width, height):
+def return_squares(cursor, plays, width, height, levels=None):
     """The FX return's display: what plays there filled, the digit of the
-    stem under the encoder (`cursor`) inverted. Its "A" place stays empty."""
-    return _stem_squares(list(plays), cursor, width, height)
+    stem under the encoder (`cursor`) inverted, the stems' levels as bars.
+    Its "A" place stays empty."""
+    return _stem_squares(list(plays), cursor, width, height, levels)
 
 
-def _stem_squares(filled, marked_pair, width, height):
+def _stem_squares(filled, marked_pair, width, height, levels=None):
     """StemDeck 1's stems 1-4 on top, StemDeck 2's below, columns 1-4
     (2026-10-01: pairs 1-4 are deck A's stems, 5-8 deck B's)."""
     return [_square(index % STEMS_PER_DECK, index // STEMS_PER_DECK,
                     str(index % STEMS_PER_DECK + 1), is_filled,
-                    index + 1 == marked_pair, width, height)
+                    index + 1 == marked_pair, (levels or {}).get(index + 1, 0),
+                    width, height)
             for index, is_filled in enumerate(filled)]
 
 
-def _square(column, row, label, filled, marked, width, height):
+def _square(column, row, label, filled, marked, step, width, height):
     """A square centred in its cell of the 5x2 grid, sized by the cell, so
     any panel draws the same picture."""
     cell_w = width / COLUMNS
@@ -169,10 +177,19 @@ def _square(column, row, label, filled, marked, width, height):
     side = round(min(cell_w, cell_h) * SQUARE_OF_CELL)
     x0 = round(column * cell_w + (cell_w - side) / 2)
     y0 = round(row * cell_h + (cell_h - side) / 2)
+    inset = max(1, round(side * BAR_INSET))
+    bar_height = max(1, round(side * BAR_OF_SQUARE))
+    bottom = y0 + side - inset
+    # The digit's area: above the bar's strip, whether a bar shows or not.
+    face = (x0 + inset, y0 + inset, x0 + side - inset, bottom - bar_height - inset)
     mark = None
     if marked:
-        inner = round(side * MARK_OF_SQUARE)
-        m0 = x0 + (side - inner) // 2
-        n0 = y0 + (side - inner) // 2
-        mark = (m0, n0, m0 + inner, n0 + inner)
-    return Square((x0, y0, x0 + side, y0 + side), label, filled, mark)
+        # A square block, as tall as the face, centred on the digit.
+        half = (face[3] - face[1]) // 2
+        middle = (face[0] + face[2]) // 2
+        mark = (middle - half, face[1], middle + half, face[3])
+    bar = None
+    length = round((side - 2 * inset) * min(step, LEVEL_STEPS) / LEVEL_STEPS)
+    if length > 0:
+        bar = (x0 + inset, bottom - bar_height, x0 + inset + length, bottom)
+    return Square((x0, y0, x0 + side, y0 + side), label, filled, mark, bar, face)

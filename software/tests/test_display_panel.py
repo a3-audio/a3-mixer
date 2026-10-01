@@ -199,6 +199,61 @@ class StemSquares(unittest.TestCase):
                 self.assertTrue(0 <= x0 and 0 <= y0 and x1 < width and y1 < height,
                                 (width, height, s))
 
+    def test_no_levels_no_bars(self):
+        from display_panel import channel_squares
+        self.assertFalse(any(s.bar for s in channel_squares(1, 128, 64)))
+
+    def test_a_bar_grows_with_its_step(self):
+        from display_panel import channel_squares
+        def width(step):
+            bar = channel_squares(0, 128, 64, levels={1: step})[0].bar
+            return 0 if bar is None else bar[2] - bar[0]
+        widths = [width(step) for step in range(0, 7)]
+        self.assertEqual(widths[0], 0)
+        self.assertEqual(widths, sorted(widths))
+        self.assertGreater(widths[6], widths[1])
+
+    def test_the_bar_sits_inside_the_bottom_of_its_square(self):
+        from display_panel import channel_squares
+        square = channel_squares(0, 128, 64, levels={1: 6})[0]
+        (x0, y0, x1, y1), (b0, c0, b1, c1) = square.box, square.bar
+        self.assertTrue(x0 < b0 and b1 < x1 and y0 < c0 and c1 < y1)
+        self.assertGreater(c0, (y0 + y1) / 2)
+
+    def test_a_has_no_bar(self):
+        from display_panel import channel_squares
+        squares = channel_squares(0, 128, 64, levels={p: 6 for p in range(1, 9)})
+        self.assertIsNone(squares[8].bar)
+
+    def test_the_return_shows_the_levels_too(self):
+        from display_panel import return_squares
+        squares = return_squares(1, (True,) * 8, 128, 64, levels={5: 3})
+        self.assertIsNotNone(squares[4].bar)
+
+    def test_the_bar_clears_the_mark(self):
+        from display_panel import return_squares
+        square = return_squares(1, (True,) * 8, 128, 64, levels={1: 6})[0]
+        self.assertGreater(square.bar[1], square.mark[3])
+
+    def test_the_digit_has_its_face_above_the_bar(self):
+        """The digit and the cursor's block keep clear of the bar strip, with
+        or without a bar, so a level never runs into them and the digit does
+        not jump when a bar appears."""
+        from display_panel import channel_squares
+        with_bar = channel_squares(0, 128, 64, levels={1: 6})[0]
+        without = channel_squares(0, 128, 64)[0]
+        self.assertEqual(with_bar.face, without.face)
+        (f0, g0, f1, g1), (b0, c0, b1, c1) = with_bar.face, with_bar.bar
+        self.assertLess(g1, c0)
+        x0, y0, x1, y1 = with_bar.box
+        self.assertTrue(x0 < f0 < f1 < x1 and y0 < g0)
+
+    def test_the_mark_fills_the_face_height(self):
+        from display_panel import return_squares
+        square = return_squares(1, (True,) * 8, 128, 64)[0]
+        self.assertEqual(square.mark[1], square.face[1])
+        self.assertEqual(square.mark[3], square.face[3])
+
     def test_the_squares_follow_the_panel_size(self):
         from display_panel import channel_squares
         def side(height):

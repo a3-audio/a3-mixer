@@ -43,7 +43,9 @@ MADE_UP = {
     } | {"vu": {"pattern": "/t/vu/{n}", "n": [1, 40]}},
     "vu_meters": ["free", "main_top1", "in2_pre", "main_sub", "in1_pre",
                   "main_top2", "main_top3", "in4_pre", "main_top4", "in3_pre",
-                  "main_top5", "main_top6", "main_top7", "main_top8"],
+                  "main_top5", "main_top6", "main_top7", "main_top8",
+                  "stem_a1", "stem_a2", "stem_a3", "stem_a4",
+                  "stem_b1", "stem_b2", "stem_b3", "stem_b4"],
 }
 
 
@@ -145,6 +147,25 @@ class TheMeterNumberIsReadDirectly(unittest.TestCase):
         self.assertIsNone(made_up().vu_number("/t/vu/x"))
         self.assertIsNone(made_up().vu_number("/t/vu/7/peak"))
         self.assertIsNone(made_up().vu_number("/t/channel.volume/2"))
+
+
+class StemMetersByName(unittest.TestCase):
+    """The beat-analyzer's stem meters (issue a3-system#71) are found by
+    their names, stem_a1 ... stem_b4 = pairs 1-8, like the LED meters."""
+
+    def test_the_stem_meters_are_pairs_one_to_eight(self):
+        osc = made_up()
+        first = osc._data["vu_meters"].index("stem_a1") + 1
+        self.assertEqual(osc.stem_pair(first), 1)
+        self.assertEqual(osc.stem_pair(first + 7), 8)
+
+    def test_other_meters_are_not_stems(self):
+        self.assertIsNone(made_up().stem_pair(1))
+
+    def test_a_truth_without_stems_has_no_stem_meters(self):
+        osc = made_up(vu_meters=["in1_pre", "in2_pre"])
+        self.assertIsNone(osc.stem_pair(1))
+        self.assertIsNone(osc.stem_pair(41))
 
 
 class TheDeskSaysWhichTruth(unittest.TestCase):

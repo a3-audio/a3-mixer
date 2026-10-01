@@ -88,6 +88,11 @@ def _pattern_regex(pattern):
     return re.compile(re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>\\d+)", re.escape(pattern)))
 
 
+#: The beat-analyzer's stem meters, pairs 1-8: deck A's stems, then deck B's.
+STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
+               "stem_b1", "stem_b2", "stem_b3", "stem_b4")
+
+
 class TruthMissing(Exception):
     """No truth to read -- the desk cannot know where Core is."""
 
@@ -167,6 +172,15 @@ class MixerOsc:
                for name, value in fields.items()):
             return fields
         return None
+
+    def stem_pair(self, number):
+        """The stem pair (1-8) /vu/<number> meters, or None: found by name,
+        stem_a1 ... stem_b4, like the LED meters (issue a3-system#71)."""
+        meters = self._data.get("vu_meters", [])
+        if not 1 <= number <= len(meters):
+            return None
+        name = meters[number - 1]
+        return STEM_METERS.index(name) + 1 if name in STEM_METERS else None
 
     def vu_slot(self, number):
         """The firmware slot /vu/<number> lights, or None if the desk does
