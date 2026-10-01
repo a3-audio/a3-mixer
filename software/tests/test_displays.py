@@ -256,6 +256,27 @@ class Levels(unittest.TestCase):
         self.assertTrue(squares[1].filled)
         self.assertTrue(squares[0].bar)   # still with the level
 
+    def test_a_turn_during_a_level_batch_goes_first(self):
+        """A level batch redraws all five displays (~150 ms on the desk); a
+        turn arriving meanwhile is drawn next, not after the batch."""
+        order = []
+        labels = {id(device): name for name, device in self.rig.built}
+        draw = self.rig.draw
+
+        def draw_and_turn(device, squares):
+            draw(device, squares)
+            order.append(labels[id(device)])
+            if len(order) == 1:
+                self.displays.show_channel(3, 5)   # Deck 4, last in the table
+
+        self.rig.draw = draw_and_turn
+        self.displays._draw_squares = draw_and_turn
+        self.displays.note_level(1, 3)
+        self.displays.drain()
+        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "FX Return"])
+        last_deck_four = self.drawn_on("Deck 4")[-1]
+        self.assertTrue(last_deck_four[4].filled and last_deck_four[0].bar)
+
     def test_the_square_state_survives_a_level_redraw(self):
         self.displays.show_channel(0, 3)
         self.displays.show_return(2, (True,) * 8)

@@ -207,16 +207,32 @@ class Displays:
 
     def drain(self):
         """Draw everything posted so far, each panel once -- and every panel,
-        when the gate hands out new levels."""
+        when the gate hands out new levels.
+
+        A posted panel (a turn, an announcement) always goes before the
+        level redraws still waiting: a batch of five takes ~150 ms on the
+        desk, and a turn that arrives meanwhile is drawn next."""
         levels = self._gate.due()
         with self._wake:
             if levels:
                 self._levels = levels
-                self._posted.update(PANELS)
-            posted, self._posted = self._posted, set()
-        for panel in PANELS:            # in table order, each at most once
-            if panel in posted:
-                self._draw(panel, self._squares_for(panel))
+        waiting = list(PANELS) if levels else []
+        while True:
+            panel = self._next_panel(waiting)
+            if panel is None:
+                return
+            self._draw(panel, self._squares_for(panel))
+
+    def _next_panel(self, waiting):
+        """The next panel to draw: a posted one first (in table order), then
+        the next level redraw. Each is taken off both lists."""
+        with self._wake:
+            posted = [panel for panel in PANELS if panel in self._posted]
+            panel = posted[0] if posted else (waiting[0] if waiting else None)
+            self._posted.discard(panel)
+        if panel in waiting:
+            waiting.remove(panel)
+        return panel
 
     def _squares_for(self, panel):
         """The picture of `panel` from its state and the levels, laid out
