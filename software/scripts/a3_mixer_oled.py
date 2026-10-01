@@ -7,7 +7,8 @@
 luma's ssd1306.display() sends the whole frame on every draw -- 1 KB, about
 0.1 s on the desk's 100 kHz bus -- and packs it pixel by pixel in Python. The
 controller takes a column and page window (COLUMNADDR, PAGEADDR) and then only
-that window's bytes, so one stem square costs a tenth of the frame.
+that window's bytes, so one stem square costs a tenth of the frame. Each
+changed area gets its own window (changed_windows).
 
 The SSD1306's memory is in pages of eight rows: one byte per column and page,
 bit 0 the page's top row. Pure apart from PIL, which the desk has anyway.
@@ -33,13 +34,45 @@ def page_bytes(image, x0, x1, page0, page1):
     return list(out)
 
 
-def changed_window(before, after):
-    """(x0, x1, page0, page1) around everything that differs, or None."""
-    box = ImageChops.logical_xor(before, after).getbbox()
-    if box is None:
-        return None
-    left, upper, right, lower = box
-    return left, right - 1, upper // PAGE, (lower - 1) // PAGE
+MERGE_GAP = 8   # columns: closer changes share a window, which costs ~7 bytes
+
+
+def changed_windows(before, after):
+    """[(x0, x1, page0, page1), ...]: one window per changed area.
+
+    Per 8-row band, the runs of changed columns -- runs closer than MERGE_GAP
+    share one -- and a run directly below one with the same columns extends
+    it. One rectangle around everything was most of the display again
+    whenever a turn emptied one square and filled another far away."""
+    diff = ImageChops.logical_xor(before, after)
+    if diff.getbbox() is None:
+        return []
+    windows = []
+    for page in range(diff.height // PAGE):
+        band = diff.crop((0, page * PAGE, diff.width, (page + 1) * PAGE))
+        # Transposed, each column is one byte: non-zero where it changed.
+        columns = band.transpose(Image.Transpose.TRANSPOSE).tobytes()
+        for x0, x1 in _runs([x for x, byte in enumerate(columns) if byte]):
+            _extend_or_add(windows, x0, x1, page)
+    return windows
+
+
+def _runs(xs):
+    runs = []
+    for x in xs:
+        if runs and x - runs[-1][1] <= MERGE_GAP:
+            runs[-1][1] = x
+        else:
+            runs.append([x, x])
+    return [tuple(run) for run in runs]
+
+
+def _extend_or_add(windows, x0, x1, page):
+    for index, (w0, w1, page0, page1) in enumerate(windows):
+        if (w0, w1) == (x0, x1) and page1 == page - 1:
+            windows[index] = (w0, w1, page0, page)
+            return
+    windows.append((x0, x1, page, page))
 
 
 class PartialSender:
@@ -56,15 +89,13 @@ class PartialSender:
         picture = device.preprocess(image)
         before = self._shown.get(device)
         if before is None:
-            window = (0, picture.width - 1, 0, picture.height // PAGE - 1)
+            windows = [(0, picture.width - 1, 0, picture.height // PAGE - 1)]
         else:
-            window = changed_window(before, picture)
-            if window is None:
-                return
-        x0, x1, page0, page1 = window
+            windows = changed_windows(before, picture)
         const = device._const
-        device.command(const.COLUMNADDR, x0, x1, const.PAGEADDR, page0, page1)
-        device.data(page_bytes(picture, x0, x1, page0, page1))
+        for x0, x1, page0, page1 in windows:
+            device.command(const.COLUMNADDR, x0, x1, const.PAGEADDR, page0, page1)
+            device.data(page_bytes(picture, x0, x1, page0, page1))
         self._shown[device] = picture
 
     def forget(self, device):

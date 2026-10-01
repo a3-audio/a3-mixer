@@ -129,6 +129,15 @@ class DrawTimer:
             len(times), 1000 * sum(times) / len(times), 1000 * max(times))
 
 
+RETRY_SECONDS = 2.0
+
+
+def _later(seconds, then):
+    timer = threading.Timer(seconds, then)
+    timer.daemon = True
+    timer.start()
+
+
 class Displays:
     """`select(multiplexer, channel)`, `make_device(panel)` and
     `draw_squares(device, squares)` are the hardware; tests pass fakes.
@@ -141,11 +150,13 @@ class Displays:
     A device is built once per panel and kept: luma registers a cleanup per
     device at process exit and each holds an SMBus, so building one per draw
     would grow without bound over a set. A failed draw drops the panel's
-    device, so a display that comes back is initialised afresh.
+    device and tries again RETRY_SECONDS later with the panel's latest
+    picture, drawn whole on a fresh device -- with partial updates a panel
+    would otherwise keep whatever it showed until its next change.
     """
 
     def __init__(self, select, make_device, draw_squares, report=report,
-                 clock=time.monotonic, every=20):
+                 clock=time.monotonic, every=20, later=_later):
         self._select = select
         self._make_device = make_device
         self._draw_squares = draw_squares
@@ -156,6 +167,8 @@ class Displays:
         self._devices = {}
         self._silent = set()  # panels already reported as not answering
         self._posted = {}     # panel -> squares_for, the latest wins
+        self._latest = {}     # panel -> squares_for last posted, for a retry
+        self._later = later
         self._wake = threading.Condition()
 
     def start(self):
@@ -185,6 +198,12 @@ class Displays:
     def _post(self, panel, squares_for):
         with self._wake:
             self._posted[panel] = squares_for
+            self._latest[panel] = squares_for
+            self._wake.notify()
+
+    def _retry(self, panel):
+        with self._wake:
+            self._posted.setdefault(panel, self._latest[panel])
             self._wake.notify()
 
     def _run(self):
@@ -203,6 +222,7 @@ class Displays:
         except Exception as error:  # noqa: BLE001 -- any I2C excuse counts
             self._devices.pop(panel, None)
             self._complain(panel, error)
+            self._later(RETRY_SECONDS, lambda: self._retry(panel))
             return
         self._silent.discard(panel)
         line = self._timer.record(self._clock() - began)
