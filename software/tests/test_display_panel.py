@@ -123,168 +123,73 @@ class NothingWrong(unittest.TestCase):
         self.assertEqual([], reported)
 
 
-class StemSquares(unittest.TestCase):
-    """Five columns, two rows (maintainer, 2026-10-01): StemDeck 1's stems 1-4
-    on top, StemDeck 2's below, and the analog input "A" at the bottom right.
-    Filled while it plays. The return marks the square its encoder is on by
-    inverting the digit: a block of the other colour behind it. Sizes follow
-    the panel, so a 128x32 display draws the same picture smaller."""
+class Fields(unittest.TestCase):
+    """The stem selector's fields (spec desk-stem-selector, 2026-10-02): the
+    symbol of the place a stem plays, a frame for the selection, a level bar
+    under each stem -- no labels, no C."""
 
-    def test_a_channel_has_eight_stems_and_the_analog_input(self):
-        from display_panel import channel_squares
-        labels = [s.label for s in channel_squares(0, 128, 64)]
-        self.assertEqual(labels, ["1", "2", "3", "4", "1", "2", "3", "4", "A", "C"])
+    def test_every_stem_shows_the_symbol_of_its_place(self):
+        from display_panel import channel_fields, places_of
+        places = places_of([1 << 0, 1 << 5, 0, 0], [False, True] + [False] * 6)
+        symbols = [f.symbol for f in channel_fields(0, places, 0, 128, 64)[:8]]
+        self.assertEqual(symbols, ["circle", "star", None, None, None, "square", None, None])
 
-    def test_stemdeck_one_is_the_top_row(self):
-        from display_panel import channel_squares
-        squares = channel_squares(0, 128, 64)
-        self.assertTrue(all(s.box[3] <= 32 for s in squares[:4]))
-        self.assertTrue(all(s.box[1] >= 32 for s in squares[4:9]))   # StemDeck 2 and A; C sits on top
+    def test_every_stem_on_a_channel_shows_its_symbol(self):
+        from display_panel import channel_fields, places_of
+        places = places_of([0, 0, (1 << 1) | (1 << 6), 0], [False] * 8)
+        symbols = [f.symbol for f in channel_fields(1, places, 0, 128, 64)[:8]]
+        self.assertEqual(symbols.count("triangle"), 2)
 
-    def test_the_stems_stand_in_columns_and_a_is_at_the_right(self):
-        from display_panel import channel_squares
-        squares = channel_squares(0, 128, 64)
-        top = [s.box[0] for s in squares[:4]]
-        bottom = [s.box[0] for s in squares[4:8]]
-        self.assertEqual(top, bottom)
-        self.assertEqual(top, sorted(top))
-        self.assertGreater(squares[8].box[0], bottom[-1])
+    def test_a_shows_the_channels_own_symbol_while_it_plays_analog(self):
+        from display_panel import channel_fields, places_of
+        on_a = channel_fields(3, places_of([0] * 4, [False] * 8), 0, 128, 64)[8]
+        on_stem = channel_fields(3, places_of([0, 0, 0, 1], [False] * 8), 0, 128, 64)[8]
+        self.assertEqual((on_a.symbol, on_stem.symbol), ("diamond", None))
 
-    def test_a_channel_on_its_analog_input_fills_a(self):
-        from display_panel import channel_squares
-        filled = [s.filled for s in channel_squares(0, 128, 64)]
-        self.assertEqual(filled, [False] * 8 + [True, False])  # A on, C off
+    def test_the_selection_is_framed(self):
+        from display_panel import channel_fields, places_of
+        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 3, 128, 64)
+        self.assertEqual([f.framed for f in fields], [False, False, True] + [False] * 6)
+        self.assertTrue(channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64)[8].framed)
 
-    def test_a_channel_on_a_stem_fills_only_that_stem(self):
-        from display_panel import channel_squares
-        filled = [s.filled for s in channel_squares(1 << 5, 128, 64)]   # pair 6
-        self.assertEqual(filled, [False] * 5 + [True] + [False] * 2 + [False, False])  # ..., A, C
+    def test_the_return_has_an_empty_field_instead_of_a(self):
+        from display_panel import places_of, return_fields
+        fields = return_fields(places_of([0] * 4, [False] * 8), 0, 128, 64)
+        self.assertEqual(len(fields), 9)
+        self.assertIsNone(fields[8].symbol)
+        self.assertTrue(fields[8].framed)
 
-    def test_a_channel_fills_every_stem_in_its_mask(self):
-        # Spec stemdeck-remote: the display shows every stem StemDeck has on
-        # that channel's bus.
-        from display_panel import channel_squares
-        filled = [s.filled for s in channel_squares(0b100001, 128, 64)[:8]]
-        self.assertEqual(filled, [True, False, False, False, False, True, False, False])
+    def test_the_bar_sits_under_its_field(self):
+        from display_panel import channel_fields, places_of
+        field = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64, {1: 6})[0]
+        self.assertGreater(field.bar[1], field.box[3])
+        self.assertEqual(field.bar[2] - field.bar[0], field.box[2] - field.box[0])
 
-    def test_a_channel_marks_nothing(self):
-        from display_panel import channel_squares
-        self.assertFalse(any(s.mark for s in channel_squares(3, 128, 64)))
+    def test_no_level_no_bar_and_a_has_none(self):
+        from display_panel import channel_fields, places_of
+        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64, {1: 0})
+        self.assertIsNone(fields[0].bar)
+        self.assertIsNone(fields[8].bar)
 
-    def test_the_return_has_the_stems_and_no_a(self):
-        from display_panel import channel_squares, return_squares
-        squares = return_squares(1, (True,) * 8, 128, 64)
-        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2)
-        self.assertEqual([s.box for s in squares[:8]],
-                         [s.box for s in channel_squares(0, 128, 64)[:8]])
+    def test_fields_are_smaller_than_the_old_squares(self):
+        from display_panel import channel_fields, places_of
+        box = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64)[0].box
+        self.assertLessEqual(box[2] - box[0], round(min(128 / 5, 64 / 2) * 0.5))
 
-    def test_the_return_fills_what_plays_and_marks_the_cursor(self):
-        from display_panel import return_squares
-        plays = (True, False, False, True, True, True, True, True)
-        squares = return_squares(2, plays, 128, 64)
-        self.assertEqual([s.filled for s in squares], list(plays))
-        self.assertEqual([bool(s.mark) for s in squares],
-                         [False, True] + [False] * 6)
-
-    def test_a_return_with_no_free_pair_marks_nothing(self):
-        from display_panel import return_squares
-        squares = return_squares(0, (False,) * 8, 128, 64)
-        self.assertFalse(any(s.mark for s in squares))
-
-    def test_the_mark_sits_inside_its_square(self):
-        from display_panel import return_squares
-        square = return_squares(1, (True,) * 8, 128, 64)[0]
-        (x0, y0, x1, y1), (m0, n0, m1, n1) = square.box, square.mark
-        self.assertTrue(x0 < m0 < m1 < x1 and y0 < n0 < n1 < y1)
-
-    def test_squares_are_square_and_inside_the_panel(self):
-        from display_panel import channel_squares
-        for width, height in ((128, 64), (128, 32)):
-            for s in channel_squares(0, width, height):
-                x0, y0, x1, y1 = s.box
-                self.assertEqual(x1 - x0, y1 - y0)
-                self.assertTrue(0 <= x0 and 0 <= y0 and x1 < width and y1 < height,
-                                (width, height, s))
-
-    def test_no_levels_no_bars(self):
-        from display_panel import channel_squares
-        self.assertFalse(any(s.bar for s in channel_squares(1, 128, 64)))
-
-    def test_a_bar_grows_with_its_step(self):
-        from display_panel import channel_squares
-        def width(step):
-            bar = channel_squares(0, 128, 64, levels={1: step})[0].bar
-            return 0 if bar is None else bar[2] - bar[0]
-        widths = [width(step) for step in range(0, 7)]
-        self.assertEqual(widths[0], 0)
-        self.assertEqual(widths, sorted(widths))
-        self.assertGreater(widths[6], widths[1])
-
-    def test_the_bar_sits_inside_the_bottom_of_its_square(self):
-        from display_panel import channel_squares
-        square = channel_squares(0, 128, 64, levels={1: 6})[0]
-        (x0, y0, x1, y1), (b0, c0, b1, c1) = square.box, square.bar
-        self.assertTrue(x0 < b0 and b1 < x1 and y0 < c0 and c1 < y1)
-        self.assertGreater(c0, (y0 + y1) / 2)
-
-    def test_a_has_no_bar(self):
-        from display_panel import channel_squares
-        squares = channel_squares(0, 128, 64, levels={p: 6 for p in range(1, 9)})
-        self.assertIsNone(squares[8].bar)
-
-    def test_the_return_shows_the_levels_too(self):
-        from display_panel import return_squares
-        squares = return_squares(1, (True,) * 8, 128, 64, levels={5: 3})
-        self.assertIsNotNone(squares[4].bar)
-
-    def test_the_bar_clears_the_mark(self):
-        from display_panel import return_squares
-        square = return_squares(1, (True,) * 8, 128, 64, levels={1: 6})[0]
-        self.assertGreater(square.bar[1], square.mark[3])
-
-    def test_the_digit_has_its_face_above_the_bar(self):
-        """The digit and the cursor's block keep clear of the bar strip, with
-        or without a bar, so a level never runs into them and the digit does
-        not jump when a bar appears."""
-        from display_panel import channel_squares
-        with_bar = channel_squares(0, 128, 64, levels={1: 6})[0]
-        without = channel_squares(0, 128, 64)[0]
-        self.assertEqual(with_bar.face, without.face)
-        (f0, g0, f1, g1), (b0, c0, b1, c1) = with_bar.face, with_bar.bar
-        self.assertLess(g1, c0)
-        x0, y0, x1, y1 = with_bar.box
-        self.assertTrue(x0 < f0 < f1 < x1 and y0 < g0)
-
-    def test_the_mark_fills_the_face_height(self):
-        from display_panel import return_squares
-        square = return_squares(1, (True,) * 8, 128, 64)[0]
-        self.assertEqual(square.mark[1], square.face[1])
-        self.assertEqual(square.mark[3], square.face[3])
-
-    def test_c_sits_above_a(self):
-        from display_panel import channel_squares
-        squares = channel_squares(0, 128, 64)
-        c, a = squares[9], squares[8]
-        self.assertEqual(c.label, "C")
-        self.assertEqual(c.box[0], a.box[0])
-        self.assertLess(c.box[3], a.box[1])
-
-    def test_a_channels_c_is_filled_while_its_cue_is_on(self):
-        from display_panel import channel_squares
-        self.assertTrue(channel_squares(0, 128, 64, cue=True)[9].filled)
-        self.assertFalse(channel_squares(0, 128, 64)[9].filled)
-
-    def test_the_return_has_no_c(self):
-        # The C field left the return on 2026-10-01 (smoke test, check 6).
-        from display_panel import return_squares
-        self.assertNotIn("C", [s.label for s in return_squares(1, (True,) * 8, 128, 64)])
-
-    def test_the_squares_follow_the_panel_size(self):
-        from display_panel import channel_squares
+    def test_the_fields_follow_the_panel_size(self):
+        from display_panel import channel_fields, places_of
         def side(height):
-            box = channel_squares(0, 128, height)[0].box
+            box = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, height)[0].box
             return box[2] - box[0]
         self.assertGreater(side(64), side(32))
+
+    def test_every_field_and_bar_stays_inside_the_panel(self):
+        from display_panel import channel_fields, places_of
+        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64,
+                                {p: 6 for p in range(1, 9)})
+        for f in fields:
+            for x0, y0, x1, y1 in [f.box] + ([f.bar] if f.bar else []):
+                self.assertTrue(0 <= x0 < x1 <= 128 and 0 <= y0 < y1 <= 64, f)
 
 
 class StemPanels(unittest.TestCase):
