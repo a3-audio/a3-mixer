@@ -4,8 +4,8 @@
 
 """The five OLED displays, drawn by the main process: what Core announces.
 
-The displays are a3-mixer-set-display's -- the same multiplexer, ssd1306 and
-font -- and the table of which display sits where is display_panel.PANELS,
+The displays are a3-mixer-set-display's -- the same multiplexer and ssd1306
+-- and the table of which display sits where is display_panel.PANELS,
 untouched. A wrong port or channel there took the desk
 down from 2026-09-10 to 2026-09-18, so nothing here knows a channel, port or
 address of its own.
@@ -34,11 +34,10 @@ sys.path.insert(
 
 from a3_mixer_levels import LevelGate  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
-                           channel_squares, panel_for_channel, return_panel,  # noqa: E402
-                           return_squares, PAIRS, PANELS)
+                           selected_announcement, channel_fields, places_of, symbol_shape,
+                           panel_for_channel, return_panel, return_fields, PAIRS, PANELS)
 
 MULTIPLEXER_ADDRESS = 0x70
-FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 
 
 def report(message):
@@ -50,44 +49,35 @@ def _hardware():
     import smbus
     from luma.core.interface.serial import i2c
     from luma.oled.device import ssd1306
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     from a3_mixer_oled import PartialSender
 
-    fonts = {}
     sender = PartialSender()
 
-    def font_for(face_height):
-        # The digit fills its face (the square above the bar's strip).
-        size = max(6, round(face_height * 1.1))
-        if size not in fonts:
-            fonts[size] = ImageFont.truetype(FONT_PATH, size)
-        return fonts[size]
+    def draw_symbol(draw, symbol, box, ink):
+        kind, coords = symbol_shape(symbol, box)
+        getattr(draw, kind)(coords, fill=ink)
 
     def make_device(panel):
         return ssd1306(i2c(port=panel.port, address=panel.address),
                        rotate=panel.rotate)
 
-    def draw_squares(device, squares):
+    def draw_fields(device, fields):
         image = Image.new(device.mode, device.size)
         draw = ImageDraw.Draw(image)
-        for square in squares:
-            ink, paper = ("black", "white") if square.filled else ("white", "black")
-            draw.rectangle(square.box, outline="white", fill=paper)
-            if square.bar:
-                draw.rectangle(square.bar, fill=ink)
-            digit = ink
-            if square.mark:
-                # The return's cursor: the digit inverted on a block of ink.
-                draw.rectangle(square.mark, fill=ink)
-                digit = paper
-            f0, g0, f1, g1 = square.face
-            draw.text(((f0 + f1) / 2, (g0 + g1) / 2), square.label,
-                      font=font_for(g1 - g0), fill=digit, anchor="mm")
+        for field in fields:
+            # The selection: the field filled white, its symbol in black.
+            ink, paper = ("black", "white") if field.framed else ("white", "black")
+            draw.rectangle(field.box, outline="white", fill=paper)
+            if field.symbol:
+                draw_symbol(draw, field.symbol, field.box, ink)
+            if field.bar:
+                draw.rectangle(field.bar, fill="white")
         # Only the window that changed goes over the bus (a3_mixer_oled).
         sender.send(device, image)
 
-    return Multiplexer(lambda: smbus.SMBus(1)), make_device, draw_squares
+    return Multiplexer(lambda: smbus.SMBus(1)), make_device, draw_fields
 
 
 class Multiplexer:
@@ -144,7 +134,7 @@ def _later(seconds, then):
 
 class Displays:
     """`select(multiplexer, channel)`, `make_device(panel)` and
-    `draw_squares(device, squares)` are the hardware; tests pass fakes.
+    `draw_fields(device, fields)` are the hardware; tests pass fakes.
 
     The OSC thread only posts what a panel should show; a thread of its own
     draws it (start()), and a panel always gets the latest of what was posted.
@@ -159,11 +149,11 @@ class Displays:
     would otherwise keep whatever it showed until its next change.
     """
 
-    def __init__(self, select, make_device, draw_squares, report=report,
+    def __init__(self, select, make_device, draw_fields, report=report,
                  clock=time.monotonic, every=20, later=_later, gate=None):
         self._select = select
         self._make_device = make_device
-        self._draw_squares = draw_squares
+        self._draw_fields = draw_fields
         self._report = report
         self._clock = clock
         self._timer = DrawTimer(every)
@@ -171,11 +161,12 @@ class Displays:
         self._devices = {}
         self._silent = set()  # panels already reported as not answering
         self._posted = set()  # panels to draw; each is drawn from its state
-        # What each display shows, so a level redraw keeps it: the pair per
-        # channel, the cursor and what plays on the return.
+        # What the displays show, so a level redraw keeps it: what plays on
+        # each channel, each channel's selection, and the return's selection
+        # and what plays there (spec desk-stem-selector).
         self._channel_masks = [0] * (len(PANELS) - 1)
+        self._selected = [0] * (len(PANELS) - 1)
         self._return = (0, (False,) * PAIRS)
-        self._cues = [False] * (len(PANELS) - 1)   # the C fields (2026-10-01)
         self._gate = gate or LevelGate()
         self._levels = {}
         self._later = later
@@ -190,21 +181,21 @@ class Displays:
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, mask):
-        panel = panel_for_channel(index)
+        """What plays on a channel: every display shows each stem's place."""
         with self._wake:
             self._channel_masks[index] = mask
-        self._post(panel)
+        self._post_all()
 
-    def show_return(self, cursor, plays):
+    def show_selected(self, index, selected):
+        """A channel's selection: its own display only."""
         with self._wake:
-            self._return = (cursor, tuple(plays))
-        self._post(return_panel())
-
-    def show_cue(self, index, on):
-        """A channel's cue: its display's C field."""
-        with self._wake:
-            self._cues[index] = bool(on)
+            self._selected[index] = selected
         self._post(panel_for_channel(index))
+
+    def show_return(self, selected, plays):
+        with self._wake:
+            self._return = (selected, tuple(plays))
+        self._post_all()
 
     def blank_all(self):
         """Until Core speaks: every square empty, nothing claimed to play."""
@@ -246,17 +237,24 @@ class Displays:
         for whatever size the display turns out to be."""
         with self._wake:
             levels = dict(self._levels)
+            selected, plays = self._return
+            places = places_of(self._channel_masks, plays)
             if panel == return_panel():
-                cursor, plays = self._return
-                return lambda width, height: return_squares(
-                    cursor, plays, width, height, levels)
+                return lambda width, height: return_fields(
+                    places, selected, width, height, levels)
             index = PANELS.index(panel)
-            mask, cue = self._channel_masks[index], self._cues[index]
-        return lambda width, height: channel_squares(mask, width, height, levels, cue=cue)
+            chosen = self._selected[index]
+        return lambda width, height: channel_fields(
+            index, places, chosen, width, height, levels)
 
     def _post(self, panel):
         with self._wake:
             self._posted.add(panel)
+            self._wake.notify()
+
+    def _post_all(self):
+        with self._wake:
+            self._posted.update(PANELS)
             self._wake.notify()
 
     def _retry(self, panel):
@@ -296,7 +294,7 @@ class Displays:
             # a3-mixer-set-display.py for the measurement.
             device.persist = True
             self._devices[panel] = device
-        self._draw_squares(device, squares_for(device.width, device.height))
+        self._draw_fields(device, squares_for(device.width, device.height))
 
     def _complain(self, panel, error):
         # Once per outage: a dead display would otherwise fill the journal
@@ -319,10 +317,10 @@ class NoDisplays:
     def show_channel(self, index, mask):
         pass
 
-    def show_return(self, cursor, plays):
+    def show_selected(self, index, selected):
         pass
 
-    def show_cue(self, index, on):
+    def show_return(self, selected, plays):
         pass
 
     def note_level(self, pair, step):

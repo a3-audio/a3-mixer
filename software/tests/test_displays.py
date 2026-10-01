@@ -56,9 +56,9 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_two_draws_build_the_device_once(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_selected(0, 1)
         displays.drain()
-        displays.show_channel(0, stem(2))
+        displays.show_selected(0, 2)
         displays.drain()
         self.assertEqual(1, len(rig.built))
         self.assertEqual(2, len(rig.drawn))
@@ -66,20 +66,22 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_the_device_persists_past_exit(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_selected(0, 1)
         displays.drain()
         self.assertTrue(rig.built[0][1].persist)
 
     def test_the_multiplexer_is_selected_before_every_draw(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_selected(0, 1)
         displays.drain()
-        displays.show_channel(0, stem(2))
+        displays.show_selected(0, 2)
         displays.drain()
-        displays.show_return(1, (True,) * 8)
+        displays.show_return(1, (True,) * 8)   # what plays where: all five redraw
         displays.drain()
-        self.assertEqual([2, 2, 6], rig.selected)
+        self.assertEqual([2, 2], rig.selected[:2])
+        self.assertEqual(7, len(rig.selected))
+        self.assertIn(6, rig.selected[2:])
 
     def test_each_panel_has_its_own_device(self):
         rig = Rig()
@@ -99,10 +101,10 @@ class LatestWins(unittest.TestCase):
         rig = Rig()
         displays = rig.displays()
         for pair in (1, 2, 3, 4):
-            displays.show_channel(0, stem(pair))
+            displays.show_selected(0, pair)
         displays.drain()
         self.assertEqual(1, len(rig.drawn))
-        self.assertEqual([s.filled for s in rig.drawn[0][1]].index(True), 3)
+        self.assertEqual([s.framed for s in rig.drawn[0][1]].index(True), 3)
 
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
@@ -111,7 +113,7 @@ class LatestWins(unittest.TestCase):
         displays.show_return(2, (True,) * 8)
         displays.show_channel(0, stem(2))
         displays.drain()
-        self.assertEqual(2, len(rig.drawn))
+        self.assertEqual(5, len(rig.drawn))   # every panel once, each with its latest
 
     def test_the_thread_draws_what_is_posted(self):
         rig = Rig()
@@ -134,7 +136,7 @@ class WhatIsDrawn(unittest.TestCase):
         displays.drain()
         device, squares = rig.drawn[-1]
         self.assertTrue(all(s.box[3] < 32 for s in squares))
-        self.assertTrue(squares[0].filled)
+        self.assertEqual(squares[0].symbol, "circle")   # pair 1 plays on channel 1
 
     def test_the_return_shows_its_cursor(self):
         rig = Rig()
@@ -142,32 +144,32 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_return(3, (True,) * 8)
         displays.drain()
         device, squares = rig.drawn[-1]
-        self.assertEqual([bool(s.mark) for s in squares].index(True), 2)
+        self.assertEqual([s.framed for s in squares].index(True), 2)
 
 
 class AfterAFailure(unittest.TestCase):
     def test_a_failed_draw_drops_the_device_and_the_next_rebuilds(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_selected(0, 1)
         displays.drain()
         rig.fail_draw = True
-        displays.show_channel(0, stem(2))
+        displays.show_selected(0, 2)
         displays.drain()
         rig.fail_draw = False
-        displays.show_channel(0, stem(3))
+        displays.show_selected(0, 3)
         displays.drain()
         self.assertEqual(2, len(rig.built))
-        filled = [s.filled for s in rig.drawn[-1][1]]
-        self.assertEqual(filled.index(True), 2)   # pair 3 drawn after the rebuild
+        framed = [s.framed for s in rig.drawn[-1][1]]
+        self.assertEqual(framed.index(True), 2)   # pair 3 drawn after the rebuild
 
     def test_a_failure_never_raises_and_is_reported_once(self):
         rig = Rig()
         displays = rig.displays()
         rig.fail_draw = True
-        displays.show_channel(1, stem(1))
+        displays.show_selected(1, 1)
         displays.drain()
-        displays.show_channel(1, stem(2))
+        displays.show_selected(1, 2)
         displays.drain()
         self.assertEqual(1, len(rig.reports))
 
@@ -180,31 +182,31 @@ class TryingAgain(unittest.TestCase):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_channel(0, stem(3))
+        displays.show_selected(0, 3)
         displays.drain()
         self.assertEqual(1, len(scheduled))
         rig.fail_draw = False
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([s.filled for s in rig.drawn[-1][1]].index(True), 2)
+        self.assertEqual([s.framed for s in rig.drawn[-1][1]].index(True), 2)
 
     def test_the_retry_draws_what_was_posted_since(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_channel(0, stem(3))
+        displays.show_selected(0, 3)
         displays.drain()
         rig.fail_draw = False
-        displays.show_channel(0, stem(5))
+        displays.show_selected(0, 5)
         displays.drain()
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([s.filled for s in rig.drawn[-1][1]].index(True), 4)
+        self.assertEqual([s.framed for s in rig.drawn[-1][1]].index(True), 4)
 
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
-        displays.show_channel(0, stem(3))
+        displays.show_selected(0, 3)
         displays.drain()
         self.assertEqual([], scheduled)
 
@@ -254,11 +256,11 @@ class Levels(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
         self.now = 0.01
-        self.displays.show_channel(0, stem(2))
+        self.displays.show_selected(0, 2)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
         squares = self.rig.drawn[0][1]
-        self.assertTrue(squares[1].filled)
+        self.assertTrue(squares[1].framed)
         self.assertTrue(squares[0].bar)   # still with the level
 
     def test_a_turn_during_a_level_batch_goes_first(self):
@@ -272,15 +274,15 @@ class Levels(unittest.TestCase):
             draw(device, squares)
             order.append(labels[id(device)])
             if len(order) == 1:
-                self.displays.show_channel(3, stem(5))   # Deck 4, last in the table
+                self.displays.show_selected(3, 5)   # Deck 4, last in the table
 
         self.rig.draw = draw_and_turn
-        self.displays._draw_squares = draw_and_turn
+        self.displays._draw_fields = draw_and_turn
         self.displays.note_level(1, 3)
         self.displays.drain()
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
         last_deck_four = self.drawn_on("Deck 4")[-1]
-        self.assertTrue(last_deck_four[4].filled and last_deck_four[0].bar)
+        self.assertTrue(last_deck_four[4].framed and last_deck_four[0].bar)
 
     def test_the_square_state_survives_a_level_redraw(self):
         self.displays.show_channel(0, stem(3))
@@ -288,13 +290,13 @@ class Levels(unittest.TestCase):
         self.displays.drain()
         self.displays.note_level(1, 2)
         self.displays.drain()
-        self.assertTrue(self.drawn_on("Deck 1")[-1][2].filled)
-        self.assertTrue(self.drawn_on("Aux Return")[-1][1].mark)
+        self.assertEqual(self.drawn_on("Deck 1")[-1][2].symbol, "circle")
+        self.assertTrue(self.drawn_on("Aux Return")[-1][1].framed)
 
 
-class TheCueField(unittest.TestCase):
-    """C on every display (2026-10-01): a channel's cue, the stem cue on the
-    aux return -- drawn from what Core says, like the stems."""
+class WhatPlaysWhere(unittest.TestCase):
+    """A stem's place shows on every display (spec desk-stem-selector); a
+    selection only on its own."""
 
     def setUp(self):
         self.rig = Rig()
@@ -303,20 +305,19 @@ class TheCueField(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
 
-    def test_a_channels_cue_fills_its_c(self):
-        self.displays.show_cue(1, True)
-        self.displays.drain()
-        self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1][9].filled)
-
-    def test_the_return_has_no_stem_cue(self):
-        self.assertFalse(hasattr(self.displays, "show_stem_cue"))
-
-    def test_the_cue_survives_a_stem_change(self):
-        self.displays.show_cue(0, True)
+    def test_a_stem_change_redraws_every_display(self):
         self.displays.show_channel(0, stem(3))
         self.displays.drain()
-        self.assertTrue(self.rig.drawn[-1][1][9].filled)
+        self.assertEqual(5, len(self.rig.drawn))
+
+    def test_a_selection_redraws_its_own_display(self):
+        self.displays.show_selected(1, 4)
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertTrue(self.rig.drawn[0][1][3].framed)
+
+    def test_there_is_no_cue_on_the_display_any_more(self):
+        self.assertFalse(hasattr(self.displays, "show_cue"))
 
 
 class HowLongADrawTakes(unittest.TestCase):
@@ -342,9 +343,9 @@ class HowLongADrawTakes(unittest.TestCase):
         rig = Rig()
         ticks = iter([0.0, 0.012, 1.0, 1.020])
         displays = rig.displays(clock=lambda: next(ticks), every=2)
-        displays.show_channel(0, stem(1))
+        displays.show_selected(0, 1)
         displays.drain()
-        displays.show_channel(1, stem(1))
+        displays.show_selected(1, 1)
         displays.drain()
         self.assertEqual(rig.reports, ["displays: 2 draws, mean 16.0 ms, max 20.0 ms"])
 

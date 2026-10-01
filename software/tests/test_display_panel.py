@@ -192,6 +192,39 @@ class Fields(unittest.TestCase):
                 self.assertTrue(0 <= x0 < x1 <= 128 and 0 <= y0 < y1 <= 64, f)
 
 
+class SymbolShapes(unittest.TestCase):
+    """What the painter draws for each symbol, inside the field (inset)."""
+
+    def test_each_symbol_is_a_shape_inside_its_field(self):
+        from display_panel import SYMBOLS, symbol_shape
+        box = (10, 10, 30, 30)
+        for symbol in SYMBOLS:
+            kind, coords = symbol_shape(symbol, box)
+            self.assertIn(kind, ("ellipse", "rectangle", "polygon"), symbol)
+            xs, ys = coords[0::2], coords[1::2]
+            self.assertTrue(min(xs) > 10 and max(xs) < 30 and min(ys) > 10 and max(ys) < 30,
+                            (symbol, coords))
+
+    def test_the_five_look_different(self):
+        from display_panel import SYMBOLS, symbol_shape
+        shapes = {symbol_shape(s, (0, 0, 20, 20)) for s in SYMBOLS}
+        self.assertEqual(5, len(shapes))
+
+    def test_the_star_has_ten_corners(self):
+        from display_panel import symbol_shape
+        kind, coords = symbol_shape("star", (0, 0, 20, 20))
+        self.assertEqual((kind, len(coords)), ("polygon", 20))
+
+
+class SelectionAnnouncements(unittest.TestCase):
+    def test_a_selection_announcement_is_zero_to_eight(self):
+        from display_panel import selected_announcement
+        self.assertEqual(selected_announcement((4,)), 4)
+        self.assertEqual(selected_announcement((0,)), 0)
+        for args in ((9,), (-1,), ("1",), (True,), ()):
+            self.assertIsNone(selected_announcement(args), args)
+
+
 class StemPanels(unittest.TestCase):
     def test_channels_zero_to_three_are_the_four_decks(self):
         from display_panel import panel_for_channel

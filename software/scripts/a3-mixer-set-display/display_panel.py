@@ -30,6 +30,7 @@ Als Tabelle kann das nicht wiederkommen: fuenf Zeilen, die Kanaele stehen
 einmal da, und ein Test besteht darauf, dass es die des Multiplexers sind.
 """
 
+import math
 from collections import namedtuple
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
@@ -203,3 +204,39 @@ def _field(column, row, symbol, framed, step, width, height):
         top = y0 + side + gap
         bar = (x0, top, x0 + length, top + bar_h)
     return Field((x0, y0, x0 + side, y0 + side), symbol, framed, bar)
+
+
+#: How far a symbol keeps from its field's edge, as a share of the side.
+SYMBOL_INSET = 0.2
+
+
+def symbol_shape(symbol, box):
+    """What the painter draws for `symbol` inside `box`: ("ellipse" or
+    "rectangle", (x0, y0, x1, y1)) or ("polygon", (x, y, x, y, ...))."""
+    x0, y0, x1, y1 = box
+    inset = max(1, round((x1 - x0) * SYMBOL_INSET))
+    left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
+    cx, cy = (left + right) / 2, (top + bottom) / 2
+    if symbol == "circle":
+        return "ellipse", (left, top, right, bottom)
+    if symbol == "square":
+        return "rectangle", (left, top, right, bottom)
+    if symbol == "triangle":
+        return "polygon", (cx, top, right, bottom, left, bottom)
+    if symbol == "diamond":
+        return "polygon", (cx, top, right, cy, cx, bottom, left, cy)
+    outer, inner = (right - left) / 2, (right - left) / 5
+    points = []
+    for corner in range(10):
+        radius = outer if corner % 2 == 0 else inner
+        angle = math.pi / 2 + corner * math.pi / 5
+        points += [cx + radius * math.cos(angle), cy - radius * math.sin(angle)]
+    return "polygon", tuple(points)
+
+
+def selected_announcement(args):
+    """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
+    1-8 a stem), or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], PAIRS):
+        return None
+    return args[0]
