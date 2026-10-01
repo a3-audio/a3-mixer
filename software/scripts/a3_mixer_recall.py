@@ -55,3 +55,26 @@ class RecallRequest:
         if self._last_asked is None:
             return True
         return (now - self._last_asked) >= self._every
+
+
+class HelloEvery:
+    """When the desk next says which truth it speaks (/device/hello).
+
+    Every `every` seconds, for as long as the desk runs -- not only with the
+    state question above, which stops once Core answers. A Core restarted
+    after that forgot the hello and never heard it again (2026-10-01).
+    """
+
+    DEFAULT_EVERY = 30.0
+
+    def __init__(self, every=DEFAULT_EVERY):
+        self._every = every
+        self._last = None
+
+    def said(self, now):
+        """Just said hello."""
+        self._last = now
+
+    def due(self, now):
+        """Whether it is time to say it (again)."""
+        return self._last is None or now - self._last >= self._every

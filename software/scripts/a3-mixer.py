@@ -22,7 +22,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-from a3_mixer_recall import RecallRequest
+from a3_mixer_recall import HelloEvery, RecallRequest
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_watchdog import watch_child
@@ -54,6 +54,7 @@ fx_state = np.zeros(10)
 # nichts geändert, also blieben die LEDs dunkel, obwohl der Filter eines Kanals
 # an sein konnte. Siehe a3_mixer_recall.
 recall = RecallRequest()
+hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
 # a3-osc.json, a copy of which the deploy puts beside this script. See
@@ -397,10 +398,12 @@ if __name__ == '__main__':
     def ask_for_the_state():
         while True:
             now = time.monotonic()
-            if recall.due(now):
-                # Which truth the desk speaks, with every question: a Core
-                # that comes up later still hears it.
+            # Which truth the desk speaks, every 30 s for as long as it runs:
+            # a Core restarted at any hour hears it again (a3_mixer_recall).
+            if hello.due(now):
                 osc_core.send_message(*osc.hello())
+                hello.said(now)
+            if recall.due(now):
                 osc_core.send_message(osc.address("state.recall"), 1)
                 recall.asked(now)
             time.sleep(1.0)
