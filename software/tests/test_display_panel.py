@@ -124,14 +124,16 @@ class NothingWrong(unittest.TestCase):
 
 
 class StemSquares(unittest.TestCase):
-    """2x4 squares: StemDeck 1's stems 1-4 on top, StemDeck 2's below; a
-    square is filled while its stem plays (maintainer, 2026-10-01). Sizes
-    follow the panel, so a 128x32 display draws the same picture smaller."""
+    """Five columns, two rows (maintainer, 2026-10-01): StemDeck 1's stems 1-4
+    on top, StemDeck 2's below, and the analog input "A" at the bottom right.
+    Filled while it plays. The return marks the square its encoder is on by
+    inverting the digit: a block of the other colour behind it. Sizes follow
+    the panel, so a 128x32 display draws the same picture smaller."""
 
-    def test_eight_squares_numbered_one_to_four_per_row(self):
+    def test_a_channel_has_eight_stems_and_the_analog_input(self):
         from display_panel import channel_squares
-        squares = channel_squares(0, 128, 64)
-        self.assertEqual([s.label for s in squares], [1, 2, 3, 4, 1, 2, 3, 4])
+        labels = [s.label for s in channel_squares(0, 128, 64)]
+        self.assertEqual(labels, ["1", "2", "3", "4", "1", "2", "3", "4", "A"])
 
     def test_stemdeck_one_is_the_top_row(self):
         from display_panel import channel_squares
@@ -139,45 +141,62 @@ class StemSquares(unittest.TestCase):
         self.assertTrue(all(s.box[3] <= 32 for s in squares[:4]))
         self.assertTrue(all(s.box[1] >= 32 for s in squares[4:]))
 
-    def test_left_to_right_within_a_row(self):
-        from display_panel import channel_squares
-        lefts = [s.box[0] for s in channel_squares(0, 128, 64)[:4]]
-        self.assertEqual(lefts, sorted(lefts))
-
-    def test_a_channel_fills_only_its_own_pair(self):
-        from display_panel import channel_squares
-        filled = [s.filled for s in channel_squares(6, 128, 64)]
-        self.assertEqual(filled, [False] * 5 + [True] + [False] * 2)
-
-    def test_a_channel_with_no_pair_fills_nothing(self):
+    def test_the_stems_stand_in_columns_and_a_is_at_the_right(self):
         from display_panel import channel_squares
         squares = channel_squares(0, 128, 64)
-        self.assertFalse(any(s.filled for s in squares))
-        self.assertFalse(any(s.frame for s in squares))
+        top = [s.box[0] for s in squares[:4]]
+        bottom = [s.box[0] for s in squares[4:8]]
+        self.assertEqual(top, bottom)
+        self.assertEqual(top, sorted(top))
+        self.assertGreater(squares[8].box[0], bottom[-1])
 
-    def test_the_return_fills_what_plays_and_frames_the_cursor(self):
+    def test_a_channel_on_its_analog_input_fills_a(self):
+        from display_panel import channel_squares
+        filled = [s.filled for s in channel_squares(0, 128, 64)]
+        self.assertEqual(filled, [False] * 8 + [True])
+
+    def test_a_channel_on_a_stem_fills_only_that_stem(self):
+        from display_panel import channel_squares
+        filled = [s.filled for s in channel_squares(6, 128, 64)]
+        self.assertEqual(filled, [False] * 5 + [True] + [False] * 3)
+
+    def test_a_channel_marks_nothing(self):
+        from display_panel import channel_squares
+        self.assertFalse(any(s.mark for s in channel_squares(3, 128, 64)))
+
+    def test_the_return_has_the_stems_and_no_a(self):
+        from display_panel import channel_squares, return_squares
+        squares = return_squares(1, (True,) * 8, 128, 64)
+        self.assertEqual([s.label for s in squares], ["1", "2", "3", "4"] * 2)
+        self.assertEqual([s.box for s in squares],
+                         [s.box for s in channel_squares(0, 128, 64)[:8]])
+
+    def test_the_return_fills_what_plays_and_marks_the_cursor(self):
         from display_panel import return_squares
         plays = (True, False, False, True, True, True, True, True)
         squares = return_squares(2, plays, 128, 64)
         self.assertEqual([s.filled for s in squares], list(plays))
-        self.assertEqual([bool(s.frame) for s in squares],
+        self.assertEqual([bool(s.mark) for s in squares],
                          [False, True] + [False] * 6)
 
-    def test_a_return_with_no_free_pair_frames_nothing(self):
+    def test_a_return_with_no_free_pair_marks_nothing(self):
         from display_panel import return_squares
         squares = return_squares(0, (False,) * 8, 128, 64)
-        self.assertFalse(any(s.frame for s in squares))
+        self.assertFalse(any(s.mark for s in squares))
 
-    def test_squares_are_square_and_the_frame_fits_around_them(self):
+    def test_the_mark_sits_inside_its_square(self):
         from display_panel import return_squares
+        square = return_squares(1, (True,) * 8, 128, 64)[0]
+        (x0, y0, x1, y1), (m0, n0, m1, n1) = square.box, square.mark
+        self.assertTrue(x0 < m0 < m1 < x1 and y0 < n0 < n1 < y1)
+
+    def test_squares_are_square_and_inside_the_panel(self):
+        from display_panel import channel_squares
         for width, height in ((128, 64), (128, 32)):
-            for s in return_squares(1, (True,) * 8, width, height):
+            for s in channel_squares(0, width, height):
                 x0, y0, x1, y1 = s.box
                 self.assertEqual(x1 - x0, y1 - y0)
-                outer = s.frame or s.box
-                self.assertTrue(0 <= outer[0] < x0 and 0 <= outer[1] < y0
-                                if s.frame else True)
-                self.assertTrue(outer[2] < width and outer[3] < height,
+                self.assertTrue(0 <= x0 and 0 <= y0 and x1 < width and y1 < height,
                                 (width, height, s))
 
     def test_the_squares_follow_the_panel_size(self):

@@ -128,43 +128,51 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: One square per stem: `box` is (x0, y0, x1, y1), `label` the stem's number
-#: on its deck (1-4), `frame` the box drawn around the one the return's
-#: encoder is on, or None.
-Square = namedtuple("Square", "box label filled frame")
+#: One square per stem, plus the analog input on a channel: `box` is
+#: (x0, y0, x1, y1), `label` what is written in it ("1"-"4", "A"), `mark` the
+#: block behind the digit of the square the return's encoder is on, or None.
+Square = namedtuple("Square", "box label filled mark")
 
 STEMS_PER_DECK = 4
-SQUARE_OF_CELL = 0.62   # the square's side, as a share of its cell
-FRAME_OF_CELL = 0.12    # the gap to the cursor's frame, as a share of the cell
+COLUMNS = STEMS_PER_DECK + 1   # the fifth column holds "A", bottom right
+SQUARE_OF_CELL = 0.75   # the square's side, as a share of its cell
+MARK_OF_SQUARE = 0.7    # the block behind the cursor's digit, as a share of the square
 
 
 def channel_squares(pair, width, height):
-    """A channel's display: only the stem it plays is filled (0 = none)."""
-    return _squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height)
+    """A channel's display: the stem it plays filled, or "A" while it plays
+    its analog input (pair 0)."""
+    squares = _stem_squares([p == pair for p in range(1, PAIRS + 1)], 0, width, height)
+    return squares + [_square(STEMS_PER_DECK, 1, "A", pair == 0, False, width, height)]
 
 
 def return_squares(cursor, plays, width, height):
-    """The FX return's display: what plays there filled, a frame on `cursor`."""
-    return _squares(list(plays), cursor, width, height)
+    """The FX return's display: what plays there filled, the digit of the
+    stem under the encoder (`cursor`) inverted. Its "A" place stays empty."""
+    return _stem_squares(list(plays), cursor, width, height)
 
 
-def _squares(filled, framed_pair, width, height):
-    """2x4 squares: StemDeck 1's stems 1-4 on top, StemDeck 2's below, each
-    centred in its cell and sized by it, so any panel size draws the same
-    picture (2026-10-01: pairs 1-4 are deck A's stems, 5-8 deck B's)."""
-    cell_w = width / STEMS_PER_DECK
+def _stem_squares(filled, marked_pair, width, height):
+    """StemDeck 1's stems 1-4 on top, StemDeck 2's below, columns 1-4
+    (2026-10-01: pairs 1-4 are deck A's stems, 5-8 deck B's)."""
+    return [_square(index % STEMS_PER_DECK, index // STEMS_PER_DECK,
+                    str(index % STEMS_PER_DECK + 1), is_filled,
+                    index + 1 == marked_pair, width, height)
+            for index, is_filled in enumerate(filled)]
+
+
+def _square(column, row, label, filled, marked, width, height):
+    """A square centred in its cell of the 5x2 grid, sized by the cell, so
+    any panel draws the same picture."""
+    cell_w = width / COLUMNS
     cell_h = height / 2
-    unit = min(cell_w, cell_h)
-    side = round(unit * SQUARE_OF_CELL)
-    gap = max(1, round(unit * FRAME_OF_CELL))
-    squares = []
-    for index, is_filled in enumerate(filled):
-        row, column = divmod(index, STEMS_PER_DECK)
-        x0 = round(column * cell_w + (cell_w - side) / 2)
-        y0 = round(row * cell_h + (cell_h - side) / 2)
-        box = (x0, y0, x0 + side, y0 + side)
-        frame = ((x0 - gap, y0 - gap, x0 + side + gap, y0 + side + gap)
-                 if index + 1 == framed_pair else None)
-        squares.append(Square(box, column + 1, is_filled, frame))
-    return squares
-
+    side = round(min(cell_w, cell_h) * SQUARE_OF_CELL)
+    x0 = round(column * cell_w + (cell_w - side) / 2)
+    y0 = round(row * cell_h + (cell_h - side) / 2)
+    mark = None
+    if marked:
+        inner = round(side * MARK_OF_SQUARE)
+        m0 = x0 + (side - inner) // 2
+        n0 = y0 + (side - inner) // 2
+        mark = (m0, n0, m0 + inner, n0 + inner)
+    return Square((x0, y0, x0 + side, y0 + side), label, filled, mark)

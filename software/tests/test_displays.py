@@ -136,7 +136,7 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_return(3, (True,) * 8)
         displays.drain()
         device, squares = rig.drawn[-1]
-        self.assertEqual([bool(s.frame) for s in squares].index(True), 2)
+        self.assertEqual([bool(s.mark) for s in squares].index(True), 2)
 
 
 class AfterAFailure(unittest.TestCase):
