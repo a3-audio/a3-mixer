@@ -21,22 +21,44 @@ from test_osc_truth import made_up        # noqa: E402
 
 
 class Clicks(unittest.TestCase):
+    """The firmware counts from 0 at boot and prints on every change, so the
+    first line already says 1 or -1. Detents rest on multiples of four; a
+    click is counted half-way between two of them."""
+
     def test_four_counts_are_one_click(self):
         c = enc.Clicks()
-        c.feed(0, 0)
+        c.feed(0, 1)
         self.assertEqual(c.feed(0, 4), 1)
+
+    def test_the_first_report_sends_nothing(self):
+        c = enc.Clicks()
+        self.assertEqual(c.feed(0, 9), 0)
+        self.assertEqual(c.feed(0, 8), 0)
+        self.assertEqual(c.feed(0, 12), 1)
 
     def test_counts_carry_over(self):
         c = enc.Clicks()
-        c.feed(0, 0)
-        self.assertEqual(c.feed(0, 3), 0)
+        c.feed(0, 1)
         self.assertEqual(c.feed(0, 5), 1)
-        self.assertEqual(c.feed(0, 1), -1)
+        self.assertEqual(c.feed(0, 7), 1)
+        self.assertEqual(c.feed(0, 1), -2)
+
+    def test_jitter_around_a_rest_position_sends_nothing(self):
+        c = enc.Clicks()
+        c.feed(0, 1)
+        self.assertEqual(c.feed(0, 4), 1)
+        for position in (5, 3, 4, 5, 3, 4):
+            self.assertEqual(c.feed(0, position), 0, position)
+
+    def test_jitter_around_zero_sends_nothing(self):
+        c = enc.Clicks()
+        for position in (-1, 0, 1, 0, -1):
+            self.assertEqual(c.feed(0, position), 0, position)
 
     def test_encoders_count_on_their_own(self):
         c = enc.Clicks()
-        c.feed(0, 0)
-        c.feed(1, 0)
+        c.feed(0, 1)
+        c.feed(1, 1)
         self.assertEqual(c.feed(1, 8), 2)
         self.assertEqual(c.feed(0, 4), 1)
 

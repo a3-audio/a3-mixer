@@ -27,21 +27,27 @@ COUNTS_PER_CLICK = 4
 
 
 class Clicks:
-    """Whole clicks from absolute positions, leftover counts carried."""
+    """Whole clicks from absolute positions, leftover counts carried.
+
+    The grid is anchored at absolute 0, where the firmware starts counting at
+    boot, so detents rest on multiples of `per_click`. A click is counted
+    half-way between two of them: a knob resting on a detent and jittering by
+    a count either way stays inside one step instead of crossing a boundary
+    and back (which sent a stem away and back on the PA)."""
 
     def __init__(self, per_click=COUNTS_PER_CLICK):
         self._per_click = per_click
-        self._origin = {}
         self._sent = {}
 
     def feed(self, encoder, position):
-        if encoder not in self._origin:
-            self._origin[encoder] = position
-            self._sent[encoder] = 0
-            return 0
         # Detents are fixed on the position axis, so going out and back
         # across one nets to zero clicks instead of leaking a count.
-        total = (position - self._origin[encoder]) // self._per_click
+        total = (position + self._per_click // 2) // self._per_click
+        # The first report only says where the knob is: the firmware prints
+        # on a change, and nobody turned it towards anything yet.
+        if encoder not in self._sent:
+            self._sent[encoder] = total
+            return 0
         clicks = total - self._sent[encoder]
         self._sent[encoder] = total
         return clicks
