@@ -1,0 +1,63 @@
+#!/usr/bin/python
+
+# SPDX-FileCopyrightText: 2026 Patric Schmitz, Raphael Eismann
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""The five encoders: which stem plays where (spec stem-routing-on-the-desk).
+
+Hardware-free like a3_mixer_panel. The firmware reports an absolute position
+per encoder; this turns positions into clicks and clicks into the truth's
+words. Core decides what a click means (a3_core_stems).
+"""
+
+#: Encoder index -> what it chooses for. MEASURED ON THE DESK: <date, who>.
+#: Not yet measured, assumed: the firmware's order, left to right.
+ENCODER_TARGETS = {
+    0: ("channel", 0),
+    1: ("channel", 1),
+    2: ("channel", 2),
+    3: ("channel", 3),
+    4: ("return", None),
+}
+
+#: Counts per detent. MEASURED ON THE DESK: <date, who>. Not yet measured,
+#: assumed: quadrature encoders with the Encoder library usually report four.
+COUNTS_PER_CLICK = 4
+
+
+class Clicks:
+    """Whole clicks from absolute positions, leftover counts carried."""
+
+    def __init__(self, per_click=COUNTS_PER_CLICK):
+        self._per_click = per_click
+        self._origin = {}
+        self._sent = {}
+
+    def feed(self, encoder, position):
+        if encoder not in self._origin:
+            self._origin[encoder] = position
+            self._sent[encoder] = 0
+            return 0
+        # Detents are fixed on the position axis, so going out and back
+        # across one nets to zero clicks instead of leaking a count.
+        total = (position - self._origin[encoder]) // self._per_click
+        clicks = total - self._sent[encoder]
+        self._sent[encoder] = total
+        return clicks
+
+
+def encoder_message(osc, encoder, clicks):
+    target = ENCODER_TARGETS.get(encoder)
+    if target is None or clicks == 0:
+        return None
+    kind, index = target
+    if kind == "channel":
+        return osc.channel_address("channel.stem.turn", index), clicks
+    return osc.address("fx-return.stem.turn"), clicks
+
+
+def push_message(osc, encoder, pressed):
+    if not pressed or ENCODER_TARGETS.get(encoder, (None,))[0] != "return":
+        return None
+    return osc.address("fx-return.stem.push"), 1

@@ -25,6 +25,7 @@ from typing import List, Any
 from a3_mixer_recall import HelloEvery, RecallRequest
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
+from a3_mixer_encoders import Clicks, encoder_message, push_message
 from a3_mixer_watchdog import watch_child
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
                           TruthMissing, load as load_osc_truth)
@@ -54,6 +55,7 @@ fx_state = np.zeros(10)
 # nichts geändert, also blieben die LEDs dunkel, obwohl der Filter eines Kanals
 # an sein konnte. Siehe a3_mixer_recall.
 recall = RecallRequest()
+clicks = Clicks()
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
@@ -287,6 +289,18 @@ def serial_handler(): # dispatch from serial stream and send to osc
         mode = words[2]
         index = words[3]
         value = words[4]
+
+        # The five encoders: positions in, stem words out (a3_mixer_encoders).
+        # Only numeric tracks -- the encoders are 0..4.
+        if mode == "ENC" and track.isdigit():
+            msg = encoder_message(osc, int(track),
+                                  clicks.feed(int(track), int(value)))
+            if msg:
+                osc_core.send_message(*msg)
+        if mode == "EB" and track.isdigit():
+            msg = push_message(osc, int(track), value == "1")
+            if msg:
+                osc_core.send_message(*msg)
 
 #        print(f'value: {value}')
 
