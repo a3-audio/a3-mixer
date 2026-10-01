@@ -150,10 +150,10 @@ def vu_handler(address: str,
                *osc_arguments: List[Any]) -> None:
     # The meter's number is the channel map's; the firmware's slot is looked
     # up by what the meter measures (a3_mixer_osc.VU_SLOTS).
-    found = osc.match(address)
-    if found is None:
+    number = osc.vu_number(address)
+    if number is None:
         return
-    slot = osc.vu_slot(found[1]["n"])
+    slot = osc.vu_slot(number)
     if slot is None:
         return
     vu = str(slot)
