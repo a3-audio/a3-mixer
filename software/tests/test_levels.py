@@ -72,13 +72,5 @@ class Gate(unittest.TestCase):
         self.assertEqual(sorted(self.gate.due()), list(range(1, 9)))
 
 
-class OneCountOfSteps(unittest.TestCase):
-    def test_the_bar_knows_the_same_steps(self):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"
-                               / "a3-mixer-set-display"))
-        from display_panel import LEVEL_STEPS
-        self.assertEqual(LEVEL_STEPS, STEPS)
-
-
 if __name__ == "__main__":
     unittest.main()

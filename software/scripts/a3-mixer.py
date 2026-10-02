@@ -31,7 +31,6 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, open_displays,
                                return_announcement, selected_announcement)
-from a3_mixer_levels import level_step
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -196,11 +195,11 @@ def vu_handler(address: str,
     number = osc.vu_number(address)
     if number is None:
         return
-    # A stem meter has no LED: its level goes to the stem displays, which
-    # only note it here and draw through their gate (a3_mixer_levels).
+    # A stem meter has no LED: its peak feeds the stem displays' waves,
+    # noted here and drawn on the displays' own clock (spec desk-stem-grid).
     pair = osc.stem_pair(number)
     if pair is not None:
-        displays.note_level(pair, level_step(osc_arguments[0]))
+        displays.note_peak(pair, osc_arguments[0])
         return
     slot = osc.vu_slot(number)
     if slot is None:
@@ -208,6 +207,9 @@ def vu_handler(address: str,
     vu = str(slot)
 
     peak = osc_arguments[0]
+    # The four inputs are the analog channels' waves too.
+    if slot < num_channel:
+        displays.note_analog(slot, peak)
     rms = osc_arguments[1]
 
     # clamp to above 0 to avoid numerical error
@@ -482,7 +484,7 @@ if __name__ == '__main__':
         if announced:
             displays.show_return(*announced)
 
-    # Where a channel's selection stands (spec desk-stem-selector): drawn on
+    # Where a channel's selection stands (spec desk-stem-grid): drawn on
     # its own display only. A damaged value is ignored.
     def stem_handler_selected(address, *args):
         found = osc.match(address)

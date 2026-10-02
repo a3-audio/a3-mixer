@@ -134,23 +134,11 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: The stem selector's fields (spec desk-stem-selector, 2026-10-02): eight
-#: stems (StemDeck A's on top, B's below) and the fifth column's field, bottom
-#: right -- a channel's A, the return's empty field. A field shows the symbol
-#: of the place its stem plays: channel 1-4, then the aux return.
-SYMBOLS = ("circle", "square", "triangle", "diamond", "star")
+#: The stem grid (spec desk-stem-grid, 2026-10-02): eight stems, StemDeck A's
+#: on top and B's below, and a fifth column -- a channel's A beside A's stems.
+#: A place is a channel index 0-3, or the aux return.
 RETURN_PLACE = 4
-
-#: `box` is (x0, y0, x1, y1); `symbol` a name from SYMBOLS or None; `framed`
-#: whether the place's selection stands here; `bar` the stem's level, a box
-#: under the field, or None.
-Field = namedtuple("Field", "box symbol framed bar")
-
 STEMS_PER_DECK = 4
-COLUMNS = STEMS_PER_DECK + 1   # the fifth column holds A / the empty field
-FIELD_OF_CELL = 0.5            # the field's side, as a share of its cell's smaller side
-BAR_HEIGHT_OF_CELL = 0.12      # the level bar's height, as a share of the cell's height
-LEVEL_STEPS = 6                # a3_mixer_levels.STEPS: a full bar
 
 
 def places_of(masks, plays):
@@ -161,77 +149,6 @@ def places_of(masks, plays):
         on = [c for c, mask in enumerate(masks) if mask >> (pair - 1) & 1]
         places.append(on[0] if on else (RETURN_PLACE if plays[pair - 1] else None))
     return places
-
-
-def channel_fields(index, places, selected, width, height, levels=None):
-    """Channel `index`'s display: the stems, then A -- which shows the
-    channel's own symbol while no stem plays there."""
-    on_analog = index not in places
-    return _stem_fields(places, selected, width, height, levels) + [
-        _field(STEMS_PER_DECK, 1, SYMBOLS[index] if on_analog else None, selected == 0, 0,
-               width, height)]
-
-
-def return_fields(places, selected, width, height, levels=None):
-    """The aux return's display: the stems, then the empty field (no stem on
-    the return)."""
-    return _stem_fields(places, selected, width, height, levels) + [
-        _field(STEMS_PER_DECK, 1, None, selected == 0, 0, width, height)]
-
-
-def _symbol(place):
-    return None if place is None else SYMBOLS[place]
-
-
-def _stem_fields(places, selected, width, height, levels):
-    return [_field(i % STEMS_PER_DECK, i // STEMS_PER_DECK, _symbol(place), selected == i + 1,
-                   (levels or {}).get(i + 1, 0), width, height)
-            for i, place in enumerate(places)]
-
-
-def _field(column, row, symbol, framed, step, width, height):
-    """A field centred in its cell of the 5x2 grid with its bar below, sized
-    by the cell, so any panel draws the same picture."""
-    cell_w, cell_h = width / COLUMNS, height / 2
-    side = round(min(cell_w, cell_h) * FIELD_OF_CELL)
-    bar_h = max(1, round(cell_h * BAR_HEIGHT_OF_CELL))
-    gap = max(1, bar_h // 2)
-    x0 = round(column * cell_w + (cell_w - side) / 2)
-    y0 = round(row * cell_h + (cell_h - side - gap - bar_h) / 2)
-    bar = None
-    length = round(side * min(step, LEVEL_STEPS) / LEVEL_STEPS)
-    if length > 0:
-        top = y0 + side + gap
-        bar = (x0, top, x0 + length, top + bar_h)
-    return Field((x0, y0, x0 + side, y0 + side), symbol, framed, bar)
-
-
-#: How far a symbol keeps from its field's edge, as a share of the side.
-SYMBOL_INSET = 0.2
-
-
-def symbol_shape(symbol, box):
-    """What the painter draws for `symbol` inside `box`: ("ellipse" or
-    "rectangle", (x0, y0, x1, y1)) or ("polygon", (x, y, x, y, ...))."""
-    x0, y0, x1, y1 = box
-    inset = max(1, round((x1 - x0) * SYMBOL_INSET))
-    left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
-    cx, cy = (left + right) / 2, (top + bottom) / 2
-    if symbol == "circle":
-        return "ellipse", (left, top, right, bottom)
-    if symbol == "square":
-        return "rectangle", (left, top, right, bottom)
-    if symbol == "triangle":
-        return "polygon", (cx, top, right, bottom, left, bottom)
-    if symbol == "diamond":
-        return "polygon", (cx, top, right, cy, cx, bottom, left, cy)
-    outer, inner = (right - left) / 2, (right - left) / 5
-    points = []
-    for corner in range(10):
-        radius = outer if corner % 2 == 0 else inner
-        angle = math.pi / 2 + corner * math.pi / 5
-        points += [cx + radius * math.cos(angle), cy - radius * math.sin(angle)]
-    return "polygon", tuple(points)
 
 
 #: A cell of the stem grid (spec desk-stem-grid): `box` its square, `mark`
