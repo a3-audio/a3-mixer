@@ -289,6 +289,42 @@ def return_cells(places, cursor, width, height):
             for i, place in enumerate(places)]
 
 
+WAVE_STEPS_PER_SECOND = 5   # measured on the desk first (smoke-test/scripts/desk-wave-bench.py)
+WAVE_COLUMNS_PER_STEP = 2
+WAVE_FLOOR_DB = -48.0
+
+
+def wave_level(peak):
+    """0.0-1.0 for a linear peak, in dB down to WAVE_FLOOR_DB; anything odd
+    is silence."""
+    if not isinstance(peak, (int, float)) or isinstance(peak, bool) or peak <= 0:
+        return 0.0
+    db = 20 * math.log10(peak)
+    return max(0.0, min(1.0, (db - WAVE_FLOOR_DB) / -WAVE_FLOOR_DB))
+
+
+class Wave:
+    """One display's envelope history, a level per column, newest last.
+    Always `width` columns: it starts silent and drops what scrolls out."""
+
+    def __init__(self, width):
+        self._levels = [0.0] * width
+
+    def step(self, level):
+        self._levels = self._levels[WAVE_COLUMNS_PER_STEP:] + [level] * WAVE_COLUMNS_PER_STEP
+
+    def columns(self, box):
+        """(x, top, bottom) per column inside `box`, mirrored about its
+        middle; silence is the middle line."""
+        x0, y0, x1, y1 = box
+        half = (y1 - y0) / 2
+        out = []
+        for offset, level in enumerate(self._levels[-(x1 - x0 + 1):]):
+            gap = int(half * (1.0 - level))
+            out.append((x0 + offset, y0 + gap, y1 - gap))
+        return out
+
+
 def selected_announcement(args):
     """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
     1-8 a stem), or None if damaged."""

@@ -286,6 +286,50 @@ class ReturnCells(unittest.TestCase):
         self.assertEqual([c.box for c in return_cells(NOWHERE, 1, W, H)], grid_cells(W, H)[:8])
 
 
+class Waveform(unittest.TestCase):
+    """StemDeck's style: a mirrored envelope, newest at the right edge."""
+    BOX = (0, 32, 127, 63)
+
+    def test_levels_map_in_db(self):
+        from display_panel import wave_level
+        self.assertEqual(wave_level(1.0), 1.0)
+        self.assertEqual(wave_level(0.0), 0.0)
+        self.assertEqual(wave_level(-1), 0.0)
+        self.assertEqual(wave_level("x"), 0.0)
+        self.assertAlmostEqual(wave_level(10 ** (-24 / 20)), 0.5, places=2)
+
+    def test_the_newest_enters_at_the_right(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(1.0)
+        x, top, bottom = wave.columns(self.BOX)[-1]
+        self.assertEqual((x, top, bottom), (127, 32, 63))
+
+    def test_it_runs_right_to_left(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(1.0)
+        wave.step(0.0)
+        tall = [x for x, top, bottom in wave.columns(self.BOX) if bottom - top > 1]
+        self.assertEqual(tall, [124, 125])
+
+    def test_the_history_is_capped_at_the_width(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        for _ in range(1000):
+            wave.step(0.5)
+        self.assertEqual(len(wave.columns(self.BOX)), 128)
+        self.assertEqual(len(Wave(128).columns(self.BOX)), 128)
+
+    def test_mirrored_about_the_middle(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(0.5)
+        x, top, bottom = wave.columns(self.BOX)[-1]
+        self.assertEqual(top - 32, 63 - bottom)
+        self.assertTrue(32 < top < bottom < 63)
+
+
 class SelectionAnnouncements(unittest.TestCase):
     def test_a_selection_announcement_is_zero_to_eight(self):
         from display_panel import selected_announcement
