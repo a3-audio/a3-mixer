@@ -123,97 +123,118 @@ class NothingWrong(unittest.TestCase):
         self.assertEqual([], reported)
 
 
-class Fields(unittest.TestCase):
-    """The stem selector's fields (spec desk-stem-selector, 2026-10-02): the
-    symbol of the place a stem plays, a frame for the selection, a level bar
-    under each stem -- no labels, no C."""
-
-    def test_every_stem_shows_the_symbol_of_its_place(self):
-        from display_panel import channel_fields, places_of
-        places = places_of([1 << 0, 1 << 5, 0, 0], [False, True] + [False] * 6)
-        symbols = [f.symbol for f in channel_fields(0, places, 0, 128, 64)[:8]]
-        self.assertEqual(symbols, ["circle", "star", None, None, None, "square", None, None])
-
-    def test_every_stem_on_a_channel_shows_its_symbol(self):
-        from display_panel import channel_fields, places_of
-        places = places_of([0, 0, (1 << 1) | (1 << 6), 0], [False] * 8)
-        symbols = [f.symbol for f in channel_fields(1, places, 0, 128, 64)[:8]]
-        self.assertEqual(symbols.count("triangle"), 2)
-
-    def test_a_shows_the_channels_own_symbol_while_it_plays_analog(self):
-        from display_panel import channel_fields, places_of
-        on_a = channel_fields(3, places_of([0] * 4, [False] * 8), 0, 128, 64)[8]
-        on_stem = channel_fields(3, places_of([0, 0, 0, 1], [False] * 8), 0, 128, 64)[8]
-        self.assertEqual((on_a.symbol, on_stem.symbol), ("diamond", None))
-
-    def test_the_selection_is_framed(self):
-        from display_panel import channel_fields, places_of
-        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 3, 128, 64)
-        self.assertEqual([f.framed for f in fields], [False, False, True] + [False] * 6)
-        self.assertTrue(channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64)[8].framed)
-
-    def test_the_return_has_an_empty_field_instead_of_a(self):
-        from display_panel import places_of, return_fields
-        fields = return_fields(places_of([0] * 4, [False] * 8), 0, 128, 64)
-        self.assertEqual(len(fields), 9)
-        self.assertIsNone(fields[8].symbol)
-        self.assertTrue(fields[8].framed)
-
-    def test_the_bar_sits_under_its_field(self):
-        from display_panel import channel_fields, places_of
-        field = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64, {1: 6})[0]
-        self.assertGreater(field.bar[1], field.box[3])
-        self.assertEqual(field.bar[2] - field.bar[0], field.box[2] - field.box[0])
-
-    def test_no_level_no_bar_and_a_has_none(self):
-        from display_panel import channel_fields, places_of
-        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64, {1: 0})
-        self.assertIsNone(fields[0].bar)
-        self.assertIsNone(fields[8].bar)
-
-    def test_fields_are_smaller_than_the_old_squares(self):
-        from display_panel import channel_fields, places_of
-        box = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64)[0].box
-        self.assertLessEqual(box[2] - box[0], round(min(128 / 5, 64 / 2) * 0.5))
-
-    def test_the_fields_follow_the_panel_size(self):
-        from display_panel import channel_fields, places_of
-        def side(height):
-            box = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, height)[0].box
-            return box[2] - box[0]
-        self.assertGreater(side(64), side(32))
-
-    def test_every_field_and_bar_stays_inside_the_panel(self):
-        from display_panel import channel_fields, places_of
-        fields = channel_fields(0, places_of([0] * 4, [False] * 8), 0, 128, 64,
-                                {p: 6 for p in range(1, 9)})
-        for f in fields:
-            for x0, y0, x1, y1 in [f.box] + ([f.bar] if f.bar else []):
-                self.assertTrue(0 <= x0 < x1 <= 128 and 0 <= y0 < y1 <= 64, f)
+W, H = 128, 64
+NOWHERE = [None] * 8
 
 
-class SymbolShapes(unittest.TestCase):
-    """What the painter draws for each symbol, inside the field (inset)."""
+class Grid(unittest.TestCase):
+    """The stem grid (spec desk-stem-grid, 2026-10-02): dots packed close in
+    the upper half, the waveform below."""
 
-    def test_each_symbol_is_a_shape_inside_its_field(self):
-        from display_panel import SYMBOLS, symbol_shape
-        box = (10, 10, 30, 30)
-        for symbol in SYMBOLS:
-            kind, coords = symbol_shape(symbol, box)
-            self.assertIn(kind, ("ellipse", "rectangle", "polygon"), symbol)
-            xs, ys = coords[0::2], coords[1::2]
-            self.assertTrue(min(xs) > 10 and max(xs) < 30 and min(ys) > 10 and max(ys) < 30,
-                            (symbol, coords))
+    def test_ten_square_adjacent_cells_in_the_upper_half(self):
+        from display_panel import grid_cells
+        boxes = grid_cells(W, H)
+        self.assertEqual(len(boxes), 10)
+        for x0, y0, x1, y1 in boxes:
+            self.assertEqual(x1 - x0, y1 - y0)
+            self.assertTrue(0 <= x0 and x1 < W and 0 <= y0 and y1 < H // 2)
+        self.assertEqual(boxes[1][0] - boxes[0][0], boxes[0][2] - boxes[0][0])
 
-    def test_the_five_look_different(self):
-        from display_panel import SYMBOLS, symbol_shape
-        shapes = {symbol_shape(s, (0, 0, 20, 20)) for s in SYMBOLS}
-        self.assertEqual(5, len(shapes))
+    def test_the_grid_follows_the_panel(self):
+        from display_panel import grid_cells
+        self.assertTrue(all(y1 < 16 for _, _, _, y1 in grid_cells(128, 32)))
 
-    def test_the_star_has_ten_corners(self):
-        from display_panel import symbol_shape
-        kind, coords = symbol_shape("star", (0, 0, 20, 20))
-        self.assertEqual((kind, len(coords)), ("polygon", 20))
+    def test_the_wave_has_the_lower_half(self):
+        from display_panel import wave_box
+        self.assertEqual(wave_box(W, H), (0, 32, 127, 63))
+
+
+class ChannelCells(unittest.TestCase):
+    def test_a_stem_on_another_channel_is_a_ring(self):
+        from display_panel import channel_cells
+        places = [1, None, 4, None, None, None, None, None]   # pair 3 on the return
+        cells = channel_cells(0, places, 0, W, H)
+        self.assertEqual(cells[0].mark, "ring")
+        self.assertEqual(cells[2].mark, "dot")
+
+    def test_the_own_digit_stands_at_what_is_loaded(self):
+        from display_panel import channel_cells
+        places = [None, 0, None, None, None, None, None, None]
+        cells = channel_cells(0, places, 0, W, H)
+        self.assertEqual([c.digit for c in cells], [None, "1"] + [None] * 7)
+        self.assertIsNone(cells[1].mark)
+
+    def test_analog_carries_the_digit_at_a(self):
+        from display_panel import channel_cells
+        self.assertEqual(channel_cells(2, NOWHERE, 0, W, H)[8].digit, "3")
+
+    def test_the_cursor_is_inverted(self):
+        from display_panel import channel_cells
+        cells = channel_cells(0, NOWHERE, 5, W, H)
+        self.assertEqual([c.inverted for c in cells].index(True), 4)
+        self.assertTrue(channel_cells(0, NOWHERE, 0, W, H)[8].inverted)
+
+
+class ReturnCells(unittest.TestCase):
+    def test_every_stem_shows_where_it_plays(self):
+        from display_panel import return_cells
+        places = [0, 4, None, 2, None, None, None, None]
+        cells = return_cells(places, 3, W, H)
+        self.assertEqual([c.digit for c in cells], ["1", "5", None, "3", None, None, None, None])
+        self.assertEqual(cells[2].mark, "dot")
+        self.assertTrue(cells[2].inverted)
+
+    def test_nothing_free_inverts_nothing(self):
+        from display_panel import return_cells
+        self.assertFalse(any(c.inverted for c in return_cells([0] * 8, 0, W, H)))
+
+    def test_the_cells_sit_in_the_grid(self):
+        from display_panel import grid_cells, return_cells
+        self.assertEqual([c.box for c in return_cells(NOWHERE, 1, W, H)], grid_cells(W, H)[:8])
+
+
+class Waveform(unittest.TestCase):
+    """StemDeck's style: a mirrored envelope, newest at the right edge."""
+    BOX = (0, 32, 127, 63)
+
+    def test_levels_map_in_db(self):
+        from display_panel import wave_level
+        self.assertEqual(wave_level(1.0), 1.0)
+        self.assertEqual(wave_level(0.0), 0.0)
+        self.assertEqual(wave_level(-1), 0.0)
+        self.assertEqual(wave_level("x"), 0.0)
+        self.assertAlmostEqual(wave_level(10 ** (-24 / 20)), 0.5, places=2)
+
+    def test_the_newest_enters_at_the_right(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(1.0)
+        x, top, bottom = wave.columns(self.BOX)[-1]
+        self.assertEqual((x, top, bottom), (127, 32, 63))
+
+    def test_it_runs_right_to_left(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(1.0)
+        wave.step(0.0)
+        tall = [x for x, top, bottom in wave.columns(self.BOX) if bottom - top > 1]
+        self.assertEqual(tall, [124, 125])
+
+    def test_the_history_is_capped_at_the_width(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        for _ in range(1000):
+            wave.step(0.5)
+        self.assertEqual(len(wave.columns(self.BOX)), 128)
+        self.assertEqual(len(Wave(128).columns(self.BOX)), 128)
+
+    def test_mirrored_about_the_middle(self):
+        from display_panel import Wave
+        wave = Wave(128)
+        wave.step(0.5)
+        x, top, bottom = wave.columns(self.BOX)[-1]
+        self.assertEqual(top - 32, 63 - bottom)
+        self.assertTrue(32 < top < bottom < 63)
 
 
 class SelectionAnnouncements(unittest.TestCase):

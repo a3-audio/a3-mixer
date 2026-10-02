@@ -32,10 +32,57 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "a3-mixer-set-display")
 )
 
-from a3_mixer_levels import LevelGate  # noqa: E402
+from collections import namedtuple  # noqa: E402
+
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
-                           selected_announcement, channel_fields, places_of, symbol_shape,
-                           panel_for_channel, return_panel, return_fields, PAIRS, PANELS)
+                           selected_announcement, channel_cells, return_cells, places_of,
+                           panel_for_channel, return_panel, wave_box, wave_level, Wave,
+                           RETURN_PLACE, WAVE_STEPS_PER_SECOND, PAIRS, PANELS)
+
+#: What a panel shows (spec desk-stem-grid): the grid's cells, and the wave
+#: as (x, top, bottom) columns.
+Picture = namedtuple("Picture", "cells wave")
+
+#: A dot's diameter, as a share of its cell's side.
+DOT_OF_CELL = 1 / 3
+
+#: The widest panel's columns: how much history a wave keeps (SSD1306).
+WAVE_HISTORY = 128
+
+#: A meter not heard for this long is silence: StemDeck or the analyzer
+#: stopped, and the last peak must not stand on the display for ever.
+METER_STALE_SECONDS = 0.5
+
+
+def paint(image, picture):
+    """Draw `picture` onto a 1-bit PIL image: the cursor a white box with
+    its content black, a dot filled, a ring hollow, a digit in the default
+    font, the wave as vertical lines."""
+    from PIL import ImageDraw, ImageFont
+
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    for cell in picture.cells:
+        x0, y0, x1, y1 = cell.box
+        ink = "white"
+        if cell.inverted:
+            draw.rectangle(cell.box, fill="white")
+            ink = "black"
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        if cell.digit:
+            left, top, right, bottom = draw.textbbox((0, 0), cell.digit, font=font)
+            draw.text((cx - (left + right) / 2, cy - (top + bottom) / 2), cell.digit,
+                      fill=ink, font=font)
+        elif cell.mark:
+            radius = max(1, round((x1 - x0) * DOT_OF_CELL / 2))
+            dot = (cx - radius, cy - radius, cx + radius, cy + radius)
+            if cell.mark == "dot":
+                draw.ellipse(dot, fill=ink)
+            else:
+                draw.ellipse(dot, outline=ink)
+    for x, top, bottom in picture.wave:
+        draw.line((x, top, x, bottom), fill="white")
+
 
 MULTIPLEXER_ADDRESS = 0x70
 
@@ -49,35 +96,23 @@ def _hardware():
     import smbus
     from luma.core.interface.serial import i2c
     from luma.oled.device import ssd1306
-    from PIL import Image, ImageDraw
+    from PIL import Image
 
     from a3_mixer_oled import PartialSender
 
     sender = PartialSender()
 
-    def draw_symbol(draw, symbol, box, ink):
-        kind, coords = symbol_shape(symbol, box)
-        getattr(draw, kind)(coords, fill=ink)
-
     def make_device(panel):
         return ssd1306(i2c(port=panel.port, address=panel.address),
                        rotate=panel.rotate)
 
-    def draw_fields(device, fields):
+    def draw_picture(device, picture):
         image = Image.new(device.mode, device.size)
-        draw = ImageDraw.Draw(image)
-        for field in fields:
-            # The selection: the field filled white, its symbol in black.
-            ink, paper = ("black", "white") if field.framed else ("white", "black")
-            draw.rectangle(field.box, outline="white", fill=paper)
-            if field.symbol:
-                draw_symbol(draw, field.symbol, field.box, ink)
-            if field.bar:
-                draw.rectangle(field.bar, fill="white")
+        paint(image, picture)
         # Only the window that changed goes over the bus (a3_mixer_oled).
         sender.send(device, image)
 
-    return Multiplexer(lambda: smbus.SMBus(1)), make_device, draw_fields
+    return Multiplexer(lambda: smbus.SMBus(1)), make_device, draw_picture
 
 
 class Multiplexer:
@@ -134,7 +169,7 @@ def _later(seconds, then):
 
 class Displays:
     """`select(multiplexer, channel)`, `make_device(panel)` and
-    `draw_fields(device, fields)` are the hardware; tests pass fakes.
+    `draw_fields(device, picture)` are the hardware; tests pass fakes.
 
     The OSC thread only posts what a panel should show; a thread of its own
     draws it (start()), and a panel always gets the latest of what was posted.
@@ -150,7 +185,7 @@ class Displays:
     """
 
     def __init__(self, select, make_device, draw_fields, report=report,
-                 clock=time.monotonic, every=20, later=_later, gate=None):
+                 clock=time.monotonic, every=500, later=_later):
         self._select = select
         self._make_device = make_device
         self._draw_fields = draw_fields
@@ -161,21 +196,79 @@ class Displays:
         self._devices = {}
         self._silent = set()  # panels already reported as not answering
         self._posted = set()  # panels to draw; each is drawn from its state
-        # What the displays show, so a level redraw keeps it: what plays on
+        self._wave_due = set()  # panels whose wave moved: drawn when nothing is posted
+        # What the displays show, so a wave redraw keeps it: what plays on
         # each channel, each channel's selection, and the return's selection
-        # and what plays there (spec desk-stem-selector).
+        # and what plays there (spec desk-stem-grid).
         self._channel_masks = [0] * (len(PANELS) - 1)
         self._selected = [0] * (len(PANELS) - 1)
         self._return = (0, (False,) * PAIRS)
-        self._gate = gate or LevelGate()
-        self._levels = {}
+        # The meters: (loudest peak since the last step, when last heard)
+        # per stem pair and per channel's analog input; each panel's wave,
+        # stepped on the displays' clock.
+        self._stem_peaks = {}
+        self._analog_peaks = {}
+        self._waves = {panel: Wave(WAVE_HISTORY) for panel in PANELS}
+        self._next_step = None
         self._later = later
         self._wake = threading.Condition()
 
-    def note_level(self, pair, step):
-        """A stem's level step, from the OSC thread: noted, never drawn here.
-        The draw thread asks the gate at most every gate.interval seconds."""
-        self._gate.update(pair, step)
+    def note_peak(self, pair, peak):
+        """A stem's peak, from the OSC thread: noted, never drawn here.
+        StemDeck sends a 40 ms peak 25 times a second; the loudest since the
+        last step is held, so a hit between steps is not lost."""
+        with self._wake:
+            self._hold(self._stem_peaks, pair, peak)
+
+    def note_analog(self, index, peak):
+        """A channel's analog input peak, from the OSC thread."""
+        with self._wake:
+            self._hold(self._analog_peaks, index, peak)
+
+    def _hold(self, peaks, key, peak):
+        if not isinstance(peak, (int, float)) or isinstance(peak, bool):
+            return
+        held, _ = peaks.get(key, (0.0, None))
+        peaks[key] = (max(held, peak), self._clock())
+
+    def tick(self):
+        """Steps the waves when a step is due (WAVE_STEPS_PER_SECOND)."""
+        now = self._clock()
+        if self._next_step is not None and now < self._next_step:
+            return
+        self._next_step = now + 1.0 / WAVE_STEPS_PER_SECOND
+        self.step_waves()
+
+    def step_waves(self):
+        """Every panel's wave moves on by its source's level; a panel whose
+        wave changed waits to be drawn behind anything posted."""
+        with self._wake:
+            places = places_of(self._channel_masks, self._return[1])
+            for panel in PANELS:
+                if self._waves[panel].step(wave_level(self._source_peak(panel, places))):
+                    self._wave_due.add(panel)
+            for peaks in (self._stem_peaks, self._analog_peaks):
+                for key, (_, heard) in peaks.items():
+                    peaks[key] = (0.0, heard)
+            self._wake.notify()
+
+    def _source_peak(self, panel, places):
+        """Channel: the stem it plays, else its analog input. Return: the
+        loudest stem on it. Called with the lock held."""
+        if panel == return_panel():
+            peaks = [self._fresh(self._stem_peaks, pair)
+                     for pair, place in enumerate(places, 1) if place == RETURN_PLACE]
+            return max(peaks, default=0.0)
+        index = PANELS.index(panel)
+        if index in places:
+            return self._fresh(self._stem_peaks, places.index(index) + 1)
+        return self._fresh(self._analog_peaks, index)
+
+    def _fresh(self, peaks, key):
+        peak, heard = peaks.get(key, (0.0, None))
+        if heard is None or self._clock() - heard > METER_STALE_SECONDS:
+            return 0.0
+        return peak
 
     def start(self):
         threading.Thread(target=self._run, name="displays", daemon=True).start()
@@ -204,48 +297,37 @@ class Displays:
         self.show_return(0, (False,) * PAIRS)
 
     def drain(self):
-        """Draw everything posted so far, each panel once -- and every panel,
-        when the gate hands out new levels.
-
-        A posted panel (a turn, an announcement) always goes before the
-        level redraws still waiting: a batch of five takes ~150 ms on the
-        desk, and a turn that arrives meanwhile is drawn next."""
-        levels = self._gate.due()
-        with self._wake:
-            if levels:
-                self._levels = levels
-        waiting = list(PANELS) if levels else []
+        """Draw everything posted and every moved wave, each panel once. A
+        posted panel (a turn, an announcement) always goes before the wave
+        redraws still waiting: a batch of five takes ~150 ms on the desk,
+        and a turn that arrives meanwhile is drawn next."""
         while True:
-            panel = self._next_panel(waiting)
-            if panel is None:
-                return
-            self._draw(panel, self._squares_for(panel))
+            with self._wake:
+                posted = [panel for panel in PANELS if panel in self._posted]
+                waiting = [panel for panel in PANELS if panel in self._wave_due]
+                if not posted and not waiting:
+                    return
+                panel = (posted or waiting)[0]
+                self._posted.discard(panel)
+                self._wave_due.discard(panel)
+            self._draw(panel, self._picture_for(panel))
 
-    def _next_panel(self, waiting):
-        """The next panel to draw: a posted one first (in table order), then
-        the next level redraw. Each is taken off both lists."""
+    def _picture_for(self, panel):
+        """The picture of `panel` from its state and its wave, laid out for
+        whatever size the display turns out to be."""
         with self._wake:
-            posted = [panel for panel in PANELS if panel in self._posted]
-            panel = posted[0] if posted else (waiting[0] if waiting else None)
-            self._posted.discard(panel)
-        if panel in waiting:
-            waiting.remove(panel)
-        return panel
-
-    def _squares_for(self, panel):
-        """The picture of `panel` from its state and the levels, laid out
-        for whatever size the display turns out to be."""
-        with self._wake:
-            levels = dict(self._levels)
-            selected, plays = self._return
+            cursor, plays = self._return
             places = places_of(self._channel_masks, plays)
-            if panel == return_panel():
-                return lambda width, height: return_fields(
-                    places, selected, width, height, levels)
-            index = PANELS.index(panel)
-            chosen = self._selected[index]
-        return lambda width, height: channel_fields(
-            index, places, chosen, width, height, levels)
+            wave = self._waves[panel]
+            if panel != return_panel():
+                index = PANELS.index(panel)
+                cursor = self._selected[index]
+
+        def picture(width, height):
+            cells = (return_cells(places, cursor, width, height) if panel == return_panel()
+                     else channel_cells(index, places, cursor, width, height))
+            return Picture(cells, wave.columns(wave_box(width, height)))
+        return picture
 
     def _post(self, panel):
         with self._wake:
@@ -263,18 +345,20 @@ class Displays:
     def _run(self):
         while True:
             with self._wake:
-                # Woken by a post at once; otherwise every gate interval,
-                # to hand out levels that changed.
-                self._wake.wait_for(lambda: self._posted, timeout=self._gate.interval)
+                # Woken by a post at once; otherwise in time for the next
+                # wave step.
+                self._wake.wait_for(lambda: self._posted or self._wave_due,
+                                    timeout=1.0 / WAVE_STEPS_PER_SECOND)
+            self.tick()
             self.drain()
 
-    def _draw(self, panel, squares_for):
+    def _draw(self, panel, picture_for):
         """Never raises: a display that does not answer is a line on stderr.
-        `squares_for(width, height)` lays the picture out for this display."""
+        `picture_for(width, height)` lays the picture out for this display."""
         began = self._clock()
         try:
             with self._lock:
-                self._write(panel, squares_for)
+                self._write(panel, picture_for)
         except Exception as error:  # noqa: BLE001 -- any I2C excuse counts
             self._devices.pop(panel, None)
             self._complain(panel, error)
@@ -285,7 +369,7 @@ class Displays:
         if line:
             self._report(line)
 
-    def _write(self, panel, squares_for):
+    def _write(self, panel, picture_for):
         self._select(MULTIPLEXER_ADDRESS, panel.channel)
         device = self._devices.get(panel)
         if device is None:
@@ -294,7 +378,7 @@ class Displays:
             # a3-mixer-set-display.py for the measurement.
             device.persist = True
             self._devices[panel] = device
-        self._draw_fields(device, squares_for(device.width, device.height))
+        self._draw_fields(device, picture_for(device.width, device.height))
 
     def _complain(self, panel, error):
         # Once per outage: a dead display would otherwise fill the journal
@@ -323,7 +407,10 @@ class NoDisplays:
     def show_return(self, selected, plays):
         pass
 
-    def note_level(self, pair, step):
+    def note_peak(self, pair, peak):
+        pass
+
+    def note_analog(self, index, peak):
         pass
 
     def blank_all(self):
