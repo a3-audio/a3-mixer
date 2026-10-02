@@ -78,3 +78,30 @@ class HelloEvery:
     def due(self, now):
         """Whether it is time to say it (again)."""
         return self._last is None or now - self._last >= self._every
+
+
+class StateAsker:
+    """One pass of the desk's asking: the hello when due, the recall when
+    due. `send(kind)` sends "hello" or "recall". A send that fails -- the
+    desk up before its network, 2026-10-02 -- is said once per outage and
+    tried again on the next pass; it never ends the asking."""
+
+    def __init__(self, hello, recall, send, report):
+        self._hello, self._recall = hello, recall
+        self._send, self._report = send, report
+        self._failing = False
+
+    def ask(self, now):
+        try:
+            if self._hello.due(now):
+                self._send("hello")
+                self._hello.said(now)
+            if self._recall.due(now):
+                self._send("recall")
+                self._recall.asked(now)
+        except OSError as error:
+            if not self._failing:
+                self._report("a3-mixer: cannot reach Core yet, trying again: %s" % error)
+            self._failing = True
+            return
+        self._failing = False

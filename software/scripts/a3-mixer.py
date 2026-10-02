@@ -24,7 +24,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-from a3_mixer_recall import HelloEvery, RecallRequest
+from a3_mixer_recall import HelloEvery, RecallRequest, StateAsker
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
@@ -519,17 +519,21 @@ if __name__ == '__main__':
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen
     # als das Pult, und die Lampen sind bis dahin dunkel.
+    # Which truth the desk speaks, every 30 s for as long as it runs: a Core
+    # restarted at any hour hears it again (a3_mixer_recall). A send that
+    # fails -- the desk up before its network -- is tried again, not fatal.
+    def send_to_core(kind):
+        if kind == "hello":
+            osc_core.send_message(*osc.hello())
+        else:
+            osc_core.send_message(osc.address("state.recall"), 1)
+
+    asker = StateAsker(hello, recall, send_to_core,
+                       lambda line: print(line, file=sys.stderr, flush=True))
+
     def ask_for_the_state():
         while True:
-            now = time.monotonic()
-            # Which truth the desk speaks, every 30 s for as long as it runs:
-            # a Core restarted at any hour hears it again (a3_mixer_recall).
-            if hello.due(now):
-                osc_core.send_message(*osc.hello())
-                hello.said(now)
-            if recall.due(now):
-                osc_core.send_message(osc.address("state.recall"), 1)
-                recall.asked(now)
+            asker.ask(time.monotonic())
             time.sleep(1.0)
 
     threading.Thread(target=ask_for_the_state, daemon=True).start()
