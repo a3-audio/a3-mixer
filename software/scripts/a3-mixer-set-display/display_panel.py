@@ -228,7 +228,12 @@ class Wave:
         self._levels = [0.0] * width
 
     def step(self, level):
-        self._levels = self._levels[WAVE_COLUMNS_PER_STEP:] + [level] * WAVE_COLUMNS_PER_STEP
+        """Moves the wave on; False when it looks the same as before (a
+        silent wave stays silent), so nothing needs drawing."""
+        moved = self._levels[WAVE_COLUMNS_PER_STEP:] + [level] * WAVE_COLUMNS_PER_STEP
+        changed = moved != self._levels
+        self._levels = moved
+        return changed
 
     def columns(self, box):
         """(x, top, bottom) per column inside `box`, mirrored about its

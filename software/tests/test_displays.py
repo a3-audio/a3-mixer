@@ -230,16 +230,68 @@ class Waves(unittest.TestCase):
         return [picture for d, picture in self.rig.drawn if d is device][-1]
 
     def newest(self, label):
-        x, top, bottom = self.last_on(label).wave[-1]
+        """The newest column's height as the panel would be drawn now --
+        a silent wave is not redrawn, so the last drawing may be older."""
+        from display_panel import PANELS
+        panel = next(p for p in PANELS if p.label == label)
+        x, top, bottom = self.displays._picture_for(panel)(128, 64).wave[-1]
         return bottom - top
 
     def step(self):
         self.displays.step_waves()
         self.displays.drain()
 
-    def test_a_step_redraws_every_display(self):
+    def loud_everywhere(self):
+        """A meter on every panel's source: four analog inputs, and stem 1
+        on the return."""
+        self.displays.show_return(1, (True,) + (False,) * 7)
+        self.displays.drain()
+        self.rig.drawn.clear()
+        for index in range(4):
+            self.displays.note_analog(index, 1.0)
+        self.displays.note_peak(1, 1.0)
+
+    def test_a_step_redraws_every_display_whose_wave_moved(self):
+        self.loud_everywhere()
         self.step()
         self.assertEqual(5, len(self.rig.drawn))
+
+    def test_a_silent_wave_is_not_redrawn(self):
+        """Final review: in silence every step repainted all five for
+        nothing; an unchanged wave posts nothing."""
+        self.step()
+        self.assertEqual([], self.rig.drawn)
+
+    def test_the_wave_holds_the_peak_between_steps(self):
+        """Final review: StemDeck sends a 40 ms peak 25 times a second; a
+        step every 200 ms must show the loudest of them, not the last."""
+        self.displays.note_peak(1, 1.0)
+        self.displays.note_peak(1, 0.001)
+        self.displays.show_channel(0, stem(1))
+        self.step()
+        self.assertGreater(self.newest("Deck 1"), 20)
+        self.displays.note_peak(1, 0.001)
+        self.step()
+        self.assertLess(self.newest("Deck 1"), 4)
+
+    def test_a_turn_during_a_wave_step_goes_first(self):
+        """A step redraws every moving wave (~150 ms on the desk); a turn
+        arriving meanwhile is drawn next, not after the batch."""
+        self.loud_everywhere()
+        order = []
+        labels = {id(device): name for name, device in self.rig.built}
+        draw = self.rig.draw
+
+        def draw_and_turn(device, picture):
+            draw(device, picture)
+            order.append(labels[id(device)])
+            if len(order) == 1:
+                self.displays.show_selected(3, 5)   # Deck 4, last of the decks
+
+        self.displays._draw_fields = draw_and_turn
+        self.step()
+        self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
+        self.assertTrue(self.last_on("Deck 4").cells[4].inverted)
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -283,6 +335,7 @@ class Waves(unittest.TestCase):
 
     def test_the_clock_steps_at_the_rate(self):
         from display_panel import WAVE_STEPS_PER_SECOND
+        self.loud_everywhere()
         self.displays.tick()
         self.displays.drain()
         self.assertEqual(5, len(self.rig.drawn))
@@ -292,6 +345,9 @@ class Waves(unittest.TestCase):
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
         self.now = 1.0 / WAVE_STEPS_PER_SECOND
+        for index in range(4):
+            self.displays.note_analog(index, 0.5)
+        self.displays.note_peak(1, 0.5)
         self.displays.tick()
         self.displays.drain()
         self.assertEqual(5, len(self.rig.drawn))
@@ -391,6 +447,16 @@ class Painting(unittest.TestCase):
 class HowLongADrawTakes(unittest.TestCase):
     """One journal line per batch of draws, so the bus speed is measured on
     the desk instead of guessed."""
+
+    def test_the_desk_reports_seldom(self):
+        """Final review: with waves the displays draw all the time; a line
+        every 20 draws was one every 0.8 s in the journal."""
+        rig = Rig()
+        displays = rig.displays()
+        for pair in range(100):
+            displays.show_selected(0, pair % 9)
+            displays.drain()
+        self.assertEqual([], rig.reports)
 
     def test_a_line_after_every_batch(self):
         timer = DrawTimer(every=3)

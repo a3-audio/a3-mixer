@@ -185,7 +185,7 @@ class Displays:
     """
 
     def __init__(self, select, make_device, draw_fields, report=report,
-                 clock=time.monotonic, every=20, later=_later):
+                 clock=time.monotonic, every=500, later=_later):
         self._select = select
         self._make_device = make_device
         self._draw_fields = draw_fields
@@ -196,14 +196,16 @@ class Displays:
         self._devices = {}
         self._silent = set()  # panels already reported as not answering
         self._posted = set()  # panels to draw; each is drawn from its state
-        # What the displays show, so a level redraw keeps it: what plays on
+        self._wave_due = set()  # panels whose wave moved: drawn when nothing is posted
+        # What the displays show, so a wave redraw keeps it: what plays on
         # each channel, each channel's selection, and the return's selection
         # and what plays there (spec desk-stem-grid).
         self._channel_masks = [0] * (len(PANELS) - 1)
         self._selected = [0] * (len(PANELS) - 1)
         self._return = (0, (False,) * PAIRS)
-        # The meters: (peak, when heard) per stem pair and per channel's
-        # analog input; each panel's wave, stepped on the displays' clock.
+        # The meters: (loudest peak since the last step, when last heard)
+        # per stem pair and per channel's analog input; each panel's wave,
+        # stepped on the displays' clock.
         self._stem_peaks = {}
         self._analog_peaks = {}
         self._waves = {panel: Wave(WAVE_HISTORY) for panel in PANELS}
@@ -212,14 +214,22 @@ class Displays:
         self._wake = threading.Condition()
 
     def note_peak(self, pair, peak):
-        """A stem's peak, from the OSC thread: noted, never drawn here."""
+        """A stem's peak, from the OSC thread: noted, never drawn here.
+        StemDeck sends a 40 ms peak 25 times a second; the loudest since the
+        last step is held, so a hit between steps is not lost."""
         with self._wake:
-            self._stem_peaks[pair] = (peak, self._clock())
+            self._hold(self._stem_peaks, pair, peak)
 
     def note_analog(self, index, peak):
         """A channel's analog input peak, from the OSC thread."""
         with self._wake:
-            self._analog_peaks[index] = (peak, self._clock())
+            self._hold(self._analog_peaks, index, peak)
+
+    def _hold(self, peaks, key, peak):
+        if not isinstance(peak, (int, float)) or isinstance(peak, bool):
+            return
+        held, _ = peaks.get(key, (0.0, None))
+        peaks[key] = (max(held, peak), self._clock())
 
     def tick(self):
         """Steps the waves when a step is due (WAVE_STEPS_PER_SECOND)."""
@@ -230,13 +240,17 @@ class Displays:
         self.step_waves()
 
     def step_waves(self):
-        """Every panel's wave moves on by its source's level, and every
-        panel is posted."""
+        """Every panel's wave moves on by its source's level; a panel whose
+        wave changed waits to be drawn behind anything posted."""
         with self._wake:
             places = places_of(self._channel_masks, self._return[1])
             for panel in PANELS:
-                self._waves[panel].step(wave_level(self._source_peak(panel, places)))
-        self._post_all()
+                if self._waves[panel].step(wave_level(self._source_peak(panel, places))):
+                    self._wave_due.add(panel)
+            for peaks in (self._stem_peaks, self._analog_peaks):
+                for key, (_, heard) in peaks.items():
+                    peaks[key] = (0.0, heard)
+            self._wake.notify()
 
     def _source_peak(self, panel, places):
         """Channel: the stem it plays, else its analog input. Return: the
@@ -283,16 +297,19 @@ class Displays:
         self.show_return(0, (False,) * PAIRS)
 
     def drain(self):
-        """Draw everything posted so far, each panel once, in table order.
-        A panel posted again while the batch runs (a turn during a wave
-        step) is drawn again, with its latest state."""
+        """Draw everything posted and every moved wave, each panel once. A
+        posted panel (a turn, an announcement) always goes before the wave
+        redraws still waiting: a batch of five takes ~150 ms on the desk,
+        and a turn that arrives meanwhile is drawn next."""
         while True:
             with self._wake:
                 posted = [panel for panel in PANELS if panel in self._posted]
-                if not posted:
+                waiting = [panel for panel in PANELS if panel in self._wave_due]
+                if not posted and not waiting:
                     return
-                panel = posted[0]
+                panel = (posted or waiting)[0]
                 self._posted.discard(panel)
+                self._wave_due.discard(panel)
             self._draw(panel, self._picture_for(panel))
 
     def _picture_for(self, panel):
@@ -330,7 +347,7 @@ class Displays:
             with self._wake:
                 # Woken by a post at once; otherwise in time for the next
                 # wave step.
-                self._wake.wait_for(lambda: self._posted,
+                self._wake.wait_for(lambda: self._posted or self._wave_due,
                                     timeout=1.0 / WAVE_STEPS_PER_SECOND)
             self.tick()
             self.drain()
