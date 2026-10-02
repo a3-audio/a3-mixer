@@ -162,6 +162,14 @@ class StemMetersByName(unittest.TestCase):
     def test_other_meters_are_not_stems(self):
         self.assertIsNone(made_up().stem_pair(1))
 
+    def test_the_aux_meters_are_the_returns_left_and_right(self):
+        """Spec desk-stem-grid-2: the return shows the analog return's
+        meter, aux_L and aux_R, beside the eight stems."""
+        osc = made_up(vu_meters=["in1_pre", "aux_L", "aux_R"])
+        self.assertEqual((osc.aux_side(2), osc.aux_side(3)), (0, 1))
+        self.assertIsNone(osc.aux_side(1))
+        self.assertIsNone(osc.aux_side(9))
+
     def test_a_truth_without_stems_has_no_stem_meters(self):
         osc = made_up(vu_meters=["in1_pre", "in2_pre"])
         self.assertIsNone(osc.stem_pair(1))
