@@ -317,11 +317,12 @@ class Displays:
             self._wake.notify()
 
     def _source_peak(self, panel, places):
-        """A channel's wave: the stem it plays, else its analog input.
-        Called with the lock held."""
+        """A channel's wave: the louder of the stems it plays (one of each
+        deck at most), else its analog input. Called with the lock held."""
         index = PANELS.index(panel)
-        if index in places:
-            return self._fresh(self._stem_peaks, places.index(index) + 1)
+        pairs = [pair for pair, place in enumerate(places, 1) if place == index]
+        if pairs:
+            return max(self._fresh(self._stem_peaks, pair) for pair in pairs)
         return self._fresh(self._analog_peaks, index)
 
     def _fresh(self, peaks, key):

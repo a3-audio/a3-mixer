@@ -310,6 +310,13 @@ class Waves(unittest.TestCase):
         self.step()
         self.assertGreater(self.newest("Deck 1"), 20)
 
+    def test_a_channel_with_two_stems_follows_the_louder(self):
+        self.displays.show_channel(0, stem(2) | stem(6))
+        self.displays.note_peak(2, 0.001)
+        self.displays.note_peak(6, 1.0)
+        self.step()
+        self.assertGreater(self.newest("Deck 1"), 20)
+
     def test_an_analog_channel_follows_its_own_meter(self):
         self.displays.note_peak(1, 1.0)
         self.displays.note_analog(1, 1.0)
