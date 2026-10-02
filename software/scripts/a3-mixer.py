@@ -31,6 +31,8 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, menu_announcement,
                                mode_announcement, open_displays, return_announcement)
+# After a3_mixer_displays: that import puts display_panel on the path.
+from a3_mixer_stem_leds import StemLeds  # noqa: E402
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -64,6 +66,7 @@ fx_state = np.zeros(10)
 recall = RecallRequest()
 clicks = Clicks()
 pushes = PushHoldOff()
+stem_leds = StemLeds()
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
@@ -138,14 +141,14 @@ vu_channel_to_led_count = {
     1 : 8,
     2 : 8,
     3 : 8,
-    4 : 32,
-    5 : 32,
-    6 : 32,
-    7 : 32,
-    8 : 32,
-    9 : 32,
-    10 : 32,
-    11 : 32,
+    4 : 24,
+    5 : 24,
+    6 : 24,
+    7 : 24,
+    8 : 24,
+    9 : 24,
+    10 : 24,
+    11 : 24,
 }
 
 # The pots' and keys' addresses are a3_mixer_osc's tables (CHANNEL_POTS,
@@ -200,6 +203,11 @@ def vu_handler(address: str,
     pair = osc.stem_pair(number)
     if pair is not None:
         displays.note_peak(pair, osc_arguments[0])
+        # And on the main VU's top module, one column per stem -- a line
+        # only when its bar changed (spec desk-stem-grid-2).
+        line = stem_leds.line(pair, osc_arguments[0])
+        if line:
+            sendData(line)
         return
     # The analog return's meter: the return display's ninth, no LED.
     side = osc.aux_side(number)
