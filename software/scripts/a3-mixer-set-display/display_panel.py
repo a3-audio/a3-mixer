@@ -134,9 +134,8 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: The stem grid (spec desk-stem-grid, 2026-10-02): eight stems, StemDeck A's
-#: on top and B's below, and a fifth column -- a channel's A beside A's stems.
-#: A place is a channel index 0-3, or the aux return.
+#: Where a stem plays (specs desk-stem-grid, desk-stem-grid-2): a channel
+#: index 0-3, or the aux return. Pairs 1-4 are StemDeck deck 1, 5-8 deck 2.
 RETURN_PLACE = 4
 STEMS_PER_DECK = 4
 
@@ -151,59 +150,9 @@ def places_of(masks, plays):
     return places
 
 
-#: A cell of the stem grid (spec desk-stem-grid): `box` its square, `mark`
-#: "dot", "ring" or None, `digit` "1"-"5" or None, `inverted` the cursor.
-Cell = namedtuple("Cell", "box mark digit inverted")
-
-
-GRID_COLUMNS = STEMS_PER_DECK + 1   # deck 1 then A; deck 2 then the return's spare place
-A_CELL = PAIRS                      # grid_cells' index of A
-
-
-def grid_cells(width, height):
-    """The grid's squares in the upper half: pairs 1-8, then A, then the
-    spare place under it. Two rows fill the half; neighbours share an edge,
-    so the dots sit as close as the panel allows."""
-    pitch = height // 4 - 1
-    left = (width - GRID_COLUMNS * pitch) // 2
-    order = [(i % STEMS_PER_DECK, i // STEMS_PER_DECK) for i in range(PAIRS)]
-    order += [(STEMS_PER_DECK, 0), (STEMS_PER_DECK, 1)]
-    return [(left + c * pitch, r * pitch, left + (c + 1) * pitch, (r + 1) * pitch)
-            for c, r in order]
-
-
 def wave_box(width, height):
     """The lower half, for the waveform."""
     return (0, height // 2, width - 1, height - 1)
-
-
-def channel_cells(index, places, cursor, width, height):
-    """Channel `index`'s grid: pairs 1-8, then A. A dot where the channel may
-    choose, a ring where another channel plays, its own digit at what it
-    plays (A while analog), the cursor (0 = A) inverted."""
-    boxes = grid_cells(width, height)
-    digit = str(index + 1)
-    cells = []
-    for i, place in enumerate(places):
-        if place == index:
-            cells.append(Cell(boxes[i], None, digit, cursor == i + 1))
-            continue
-        on_other = place is not None and place != RETURN_PLACE
-        cells.append(Cell(boxes[i], "ring" if on_other else "dot", None, cursor == i + 1))
-    analog = index not in places
-    cells.append(Cell(boxes[A_CELL], None if analog else "dot", digit if analog else None,
-                      cursor == 0))
-    return cells
-
-
-def return_cells(places, cursor, width, height):
-    """The return's grid: at every stem the digit of where it plays (1-4 a
-    channel, 5 the return), a dot where it plays nowhere; the cursor
-    inverted (none for 0)."""
-    boxes = grid_cells(width, height)
-    return [Cell(boxes[i], "dot" if place is None else None,
-                 None if place is None else str(place + 1), cursor == i + 1)
-            for i, place in enumerate(places)]
 
 
 WAVE_STEPS_PER_SECOND = 5   # measured on the desk first (smoke-test/scripts/desk-wave-bench.py)
@@ -247,9 +196,131 @@ class Wave:
         return out
 
 
-def selected_announcement(args):
-    """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
-    1-8 a stem), or None if damaged."""
-    if len(args) != 1 or not _is_count(args[0], PAIRS):
+class WaveStrip:
+    """A wave and its picture, `width` x `height`: a step moves the picture
+    WAVE_COLUMNS_PER_STEP columns left and draws only the new columns --
+    repainting all 128 lines cost most of a 53 ms draw on the desk
+    (desk-stem-grid-2). Draws exactly what Wave.columns says."""
+
+    def __init__(self, width, height):
+        from PIL import Image, ImageDraw
+        self._wave = Wave(width)
+        self._box = (0, 0, width - 1, height - 1)
+        self.image = Image.new("1", (width, height))
+        draw = ImageDraw.Draw(self.image)
+        for x, top, bottom in self._wave.columns(self._box):
+            draw.line((x, top, x, bottom), fill="white")
+
+    def columns(self, box):
+        """The wave as (x, top, bottom) columns in any `box`."""
+        return self._wave.columns(box)
+
+    def shift(self, level):
+        """Moves the wave on; False when its picture did not change."""
+        from PIL import Image, ImageDraw
+        if not self._wave.step(level):
+            return False
+        width, height = self.image.size
+        n = WAVE_COLUMNS_PER_STEP
+        moved = Image.new("1", (width, height))
+        moved.paste(self.image.crop((n, 0, width, height)), (0, 0))
+        draw = ImageDraw.Draw(moved)
+        for x, top, bottom in self._wave.columns(self._box)[-n:]:
+            draw.line((x, top, x, bottom), fill="white")
+        self.image = moved
+        return True
+
+
+#: One entry of a menu in the upper half (spec desk-stem-grid-2): `inverted`
+#: is the cursor, `marked` what plays, `crossed` a stem another channel has,
+#: whose number is `note`.
+MenuItem = namedtuple("MenuItem", "box text inverted marked crossed note")
+
+#: A channel menu's levels and entries -- a3_core_stems' numbers.
+TOP_LEVEL = 0
+TOP_ENTRIES = ("D1", "D2", "A")
+BACK_ENTRY = "<"   # the default font has no arrow: "\u2190" drew an empty box
+
+
+def _slots(count, width, height):
+    """`count` boxes side by side across the upper half."""
+    half = height // 2
+    slot = width // count
+    top, bottom = round(half * 0.15), round(half * 0.85)
+    return [(i * slot + 1, top, (i + 1) * slot - 2, bottom) for i in range(count)]
+
+
+def _source(index, places):
+    """What channel `index` plays from: 0 = D1, 1 = D2, 2 = A."""
+    if index in places:
+        return 0 if places.index(index) < STEMS_PER_DECK else 1
+    return 2
+
+
+def menu_items(index, menu, places, width, height):
+    """Channel `index`'s menu: at the top D1 / D2 / A with the source
+    marked; in a deck its name, stems 1-4 and back -- the one this channel
+    plays marked, one another channel has crossed out with that channel's
+    number. The cursor inverted."""
+    level, cursor = menu
+    if level == TOP_LEVEL:
+        source = _source(index, places)
+        return [MenuItem(box, text, cursor == i, source == i, False, None)
+                for i, (box, text) in enumerate(zip(_slots(3, width, height), TOP_ENTRIES))]
+    boxes = _slots(STEMS_PER_DECK + 2, width, height)
+    items = [MenuItem(boxes[0], TOP_ENTRIES[level - 1], False, False, False, None)]
+    for stem in range(STEMS_PER_DECK):
+        place = places[(level - 1) * STEMS_PER_DECK + stem]
+        crossed = place is not None and place not in (index, RETURN_PLACE)
+        items.append(MenuItem(boxes[stem + 1], str(stem + 1), cursor == stem, place == index,
+                              crossed, str(place + 1) if crossed else None))
+    items.append(MenuItem(boxes[-1], BACK_ENTRY, cursor == STEMS_PER_DECK, False, False, None))
+    return items
+
+
+#: The aux return's modes -- a3_core_stems' numbers.
+ANALOG_MODE, STEM_MODE = 0, 1
+
+
+def return_items(mode, cursor, width, height):
+    """The return's two modes: the active one marked, the cursor inverted."""
+    boxes = _slots(2, width, height)
+    return [MenuItem(boxes[0], "STEM", cursor == STEM_MODE, mode == STEM_MODE, False, None),
+            MenuItem(boxes[1], "ANALOG", cursor == ANALOG_MODE, mode == ANALOG_MODE, False, None)]
+
+
+def return_bars(stem_levels, aux_levels, width, height):
+    """Nine meters in the lower half: the eight stems, then the analog
+    return as two thin halves (L, R). A box per bar, None where silent."""
+    half = height // 2
+    slot = width // 9
+    bottom = height - 1
+
+    def bar(x0, x1, level):
+        reach = round(level * (half - 2))
+        return (x0, bottom - reach, x1, bottom) if reach > 0 else None
+
+    bars = [bar(i * slot + 1, (i + 1) * slot - 2, level) for i, level in enumerate(stem_levels)]
+    left = 8 * slot + 1
+    middle = left + (slot - 3) // 2
+    bars.append(bar(left, middle - 1, aux_levels[0]))
+    bars.append(bar(middle + 1, (9 * slot) - 2, aux_levels[1]))
+    return bars
+
+
+def menu_announcement(args):
+    """(level, cursor) out of `/channel/{ch}/stem/menu`'s arguments, or None
+    if damaged: level 0-2, cursor 0-2 at the top, 0-4 in a deck."""
+    if len(args) != 2 or not all(_is_count(v, 4) for v in args):
+        return None
+    level, cursor = args
+    if level > 2 or cursor >= (len(TOP_ENTRIES) if level == TOP_LEVEL else STEMS_PER_DECK + 1):
+        return None
+    return level, cursor
+
+
+def mode_announcement(args):
+    """The return's mode out of `/aux-return/stem/mode`, or None."""
+    if len(args) != 1 or not _is_count(args[0], 1):
         return None
     return args[0]

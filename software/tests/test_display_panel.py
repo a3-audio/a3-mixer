@@ -127,70 +127,82 @@ W, H = 128, 64
 NOWHERE = [None] * 8
 
 
-class Grid(unittest.TestCase):
-    """The stem grid (spec desk-stem-grid, 2026-10-02): dots packed close in
-    the upper half, the waveform below."""
+class ChannelMenu(unittest.TestCase):
+    """Each channel encoder is a two-level menu (spec desk-stem-grid-2):
+    D1 / D2 / A, then a deck's stems 1-4 and back -- text in the upper half."""
 
-    def test_ten_square_adjacent_cells_in_the_upper_half(self):
-        from display_panel import grid_cells
-        boxes = grid_cells(W, H)
-        self.assertEqual(len(boxes), 10)
-        for x0, y0, x1, y1 in boxes:
-            self.assertEqual(x1 - x0, y1 - y0)
-            self.assertTrue(0 <= x0 and x1 < W and 0 <= y0 and y1 < H // 2)
-        self.assertEqual(boxes[1][0] - boxes[0][0], boxes[0][2] - boxes[0][0])
+    def test_the_top_level_is_d1_d2_a(self):
+        from display_panel import menu_items
+        items = menu_items(0, (0, 1), NOWHERE, W, H)
+        self.assertEqual([i.text for i in items], ["D1", "D2", "A"])
+        self.assertEqual([i.inverted for i in items], [False, True, False])
 
-    def test_the_grid_follows_the_panel(self):
-        from display_panel import grid_cells
-        self.assertTrue(all(y1 < 16 for _, _, _, y1 in grid_cells(128, 32)))
+    def test_the_source_is_marked(self):
+        from display_panel import menu_items
+        places = [None] * 5 + [2, None, None]          # pair 6 = deck 2 on channel 3
+        self.assertEqual([i.marked for i in menu_items(2, (0, 0), places, W, H)],
+                         [False, True, False])
+        self.assertEqual([i.marked for i in menu_items(0, (0, 0), places, W, H)],
+                         [False, False, True])         # channel 1 plays analog
 
-    def test_the_wave_has_the_lower_half(self):
-        from display_panel import wave_box
-        self.assertEqual(wave_box(W, H), (0, 32, 127, 63))
+    def test_a_deck_level_is_its_name_four_stems_and_back(self):
+        from display_panel import menu_items
+        items = menu_items(0, (2, 4), NOWHERE, W, H)
+        self.assertEqual([i.text for i in items], ["D2", "1", "2", "3", "4", "<"])
+        self.assertTrue(items[5].inverted)
+        self.assertFalse(items[0].inverted)
+
+    def test_a_stem_on_this_channel_is_marked_one_elsewhere_crossed(self):
+        from display_panel import menu_items
+        places = [0, 3, None, 4] + [None] * 4          # pair 1 here, pair 2 on ch 4, pair 4 on AUX
+        items = menu_items(0, (1, 0), places, W, H)
+        self.assertTrue(items[1].marked)
+        self.assertTrue(items[2].crossed)
+        self.assertEqual(items[2].note, "4")
+        self.assertFalse(items[4].crossed)             # on the return: loadable
+
+    def test_the_items_sit_in_the_upper_half_side_by_side(self):
+        from display_panel import menu_items
+        for menu in ((0, 0), (1, 0)):
+            boxes = [i.box for i in menu_items(0, menu, NOWHERE, W, H)]
+            self.assertTrue(all(0 <= x0 < x1 < W and 0 <= y0 < y1 < H // 2
+                                for x0, y0, x1, y1 in boxes))
+            self.assertTrue(all(a[2] <= b[0] for a, b in zip(boxes, boxes[1:])))
+
+    def test_the_menu_follows_the_panel(self):
+        from display_panel import menu_items
+        self.assertTrue(all(i.box[3] < 16 for i in menu_items(0, (1, 0), NOWHERE, 128, 32)))
 
 
-class ChannelCells(unittest.TestCase):
-    def test_a_stem_on_another_channel_is_a_ring(self):
-        from display_panel import channel_cells
-        places = [1, None, 4, None, None, None, None, None]   # pair 3 on the return
-        cells = channel_cells(0, places, 0, W, H)
-        self.assertEqual(cells[0].mark, "ring")
-        self.assertEqual(cells[2].mark, "dot")
+class TheReturn(unittest.TestCase):
+    """The return knows stem and analog, and shows nine meters instead of a
+    wave (spec desk-stem-grid-2)."""
 
-    def test_the_own_digit_stands_at_what_is_loaded(self):
-        from display_panel import channel_cells
-        places = [None, 0, None, None, None, None, None, None]
-        cells = channel_cells(0, places, 0, W, H)
-        self.assertEqual([c.digit for c in cells], [None, "1"] + [None] * 7)
-        self.assertIsNone(cells[1].mark)
+    def test_two_fields_the_mode_marked_the_cursor_inverted(self):
+        from display_panel import return_items
+        items = return_items(1, 0, W, H)
+        self.assertEqual([i.text for i in items], ["STEM", "ANALOG"])
+        self.assertEqual([i.marked for i in items], [True, False])
+        self.assertEqual([i.inverted for i in items], [False, True])
 
-    def test_analog_carries_the_digit_at_a(self):
-        from display_panel import channel_cells
-        self.assertEqual(channel_cells(2, NOWHERE, 0, W, H)[8].digit, "3")
+    def test_nine_bars_the_last_split_in_two(self):
+        from display_panel import return_bars
+        bars = return_bars([1.0] * 8, (1.0, 1.0), W, H)
+        self.assertEqual(len(bars), 10)
+        for x0, y0, x1, y1 in bars:
+            self.assertTrue(H // 2 <= y0 <= y1 < H and 0 <= x0 <= x1 < W)
+        left, right = bars[8], bars[9]
+        self.assertLess(left[2], right[0])
 
-    def test_the_cursor_is_inverted(self):
-        from display_panel import channel_cells
-        cells = channel_cells(0, NOWHERE, 5, W, H)
-        self.assertEqual([c.inverted for c in cells].index(True), 4)
-        self.assertTrue(channel_cells(0, NOWHERE, 0, W, H)[8].inverted)
+    def test_a_silent_meter_has_no_bar(self):
+        from display_panel import return_bars
+        bars = return_bars([0.0] * 8, (0.0, 0.5), W, H)
+        self.assertEqual([b is None for b in bars], [True] * 9 + [False])
 
-
-class ReturnCells(unittest.TestCase):
-    def test_every_stem_shows_where_it_plays(self):
-        from display_panel import return_cells
-        places = [0, 4, None, 2, None, None, None, None]
-        cells = return_cells(places, 3, W, H)
-        self.assertEqual([c.digit for c in cells], ["1", "5", None, "3", None, None, None, None])
-        self.assertEqual(cells[2].mark, "dot")
-        self.assertTrue(cells[2].inverted)
-
-    def test_nothing_free_inverts_nothing(self):
-        from display_panel import return_cells
-        self.assertFalse(any(c.inverted for c in return_cells([0] * 8, 0, W, H)))
-
-    def test_the_cells_sit_in_the_grid(self):
-        from display_panel import grid_cells, return_cells
-        self.assertEqual([c.box for c in return_cells(NOWHERE, 1, W, H)], grid_cells(W, H)[:8])
+    def test_a_louder_meter_is_taller(self):
+        from display_panel import return_bars
+        bars = return_bars([0.25, 1.0] + [0.0] * 6, (0.0, 0.0), W, H)
+        self.assertLess(bars[1][1], bars[0][1])
 
 
 class Waveform(unittest.TestCase):
@@ -237,13 +249,50 @@ class Waveform(unittest.TestCase):
         self.assertTrue(32 < top < bottom < 63)
 
 
-class SelectionAnnouncements(unittest.TestCase):
-    def test_a_selection_announcement_is_zero_to_eight(self):
-        from display_panel import selected_announcement
-        self.assertEqual(selected_announcement((4,)), 4)
-        self.assertEqual(selected_announcement((0,)), 0)
-        for args in ((9,), (-1,), ("1",), (True,), ()):
-            self.assertIsNone(selected_announcement(args), args)
+class TheWaveStrip(unittest.TestCase):
+    """The wave's picture is moved, not repainted (desk-stem-grid-2: the
+    128 lines cost most of a 53 ms draw on the desk)."""
+
+    def painted(self, wave, width, height):
+        from PIL import Image, ImageDraw
+        image = Image.new("1", (width, height))
+        draw = ImageDraw.Draw(image)
+        for x, top, bottom in wave.columns((0, 0, width - 1, height - 1)):
+            draw.line((x, top, x, bottom), fill="white")
+        return image
+
+    def test_shifting_draws_what_a_full_repaint_draws(self):
+        import random
+        from display_panel import Wave, WaveStrip
+        rng = random.Random(7)
+        strip, wave = WaveStrip(128, 32), Wave(128)
+        for _ in range(40):
+            level = rng.choice([0.0, rng.random(), 1.0])
+            strip.shift(level)
+            wave.step(level)
+            self.assertEqual(list(strip.image.getdata()),
+                             list(self.painted(wave, 128, 32).getdata()))
+
+    def test_a_silent_shift_is_no_change(self):
+        from display_panel import WaveStrip
+        strip = WaveStrip(128, 32)
+        self.assertFalse(strip.shift(0.0))
+        self.assertTrue(strip.shift(0.7))
+
+
+class MenuAnnouncements(unittest.TestCase):
+    def test_a_menu_is_a_level_and_a_cursor(self):
+        from display_panel import menu_announcement
+        self.assertEqual(menu_announcement((0, 2)), (0, 2))
+        self.assertEqual(menu_announcement((2, 4)), (2, 4))
+        for args in ((0, 3), (3, 0), (1, 5), (-1, 0), ("0", 1), (True, 0), (0,), ()):
+            self.assertIsNone(menu_announcement(args), args)
+
+    def test_a_mode_is_zero_or_one(self):
+        from display_panel import mode_announcement
+        self.assertEqual(mode_announcement((1,)), 1)
+        for args in ((2,), (-1,), (True,), ()):
+            self.assertIsNone(mode_announcement(args), args)
 
 
 class StemPanels(unittest.TestCase):

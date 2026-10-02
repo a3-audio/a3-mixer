@@ -55,9 +55,9 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_two_draws_build_the_device_once(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_selected(0, 1)
+        displays.show_menu(0, 1, 0)
         displays.drain()
-        displays.show_selected(0, 2)
+        displays.show_menu(0, 1, 1)
         displays.drain()
         self.assertEqual(1, len(rig.built))
         self.assertEqual(2, len(rig.drawn))
@@ -65,16 +65,16 @@ class OneDevicePerPanel(unittest.TestCase):
     def test_the_device_persists_past_exit(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_selected(0, 1)
+        displays.show_menu(0, 1, 0)
         displays.drain()
         self.assertTrue(rig.built[0][1].persist)
 
     def test_the_multiplexer_is_selected_before_every_draw(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_selected(0, 1)
+        displays.show_menu(0, 1, 0)
         displays.drain()
-        displays.show_selected(0, 2)
+        displays.show_menu(0, 1, 1)
         displays.drain()
         displays.show_return(1, (True,) * 8)   # what plays where: all five redraw
         displays.drain()
@@ -100,10 +100,10 @@ class LatestWins(unittest.TestCase):
         rig = Rig()
         displays = rig.displays()
         for pair in (1, 2, 3, 4):
-            displays.show_selected(0, pair)
+            displays.show_menu(0, 1, pair - 1)
         displays.drain()
         self.assertEqual(1, len(rig.drawn))
-        self.assertEqual([c.inverted for c in rig.drawn[0][1].cells].index(True), 3)
+        self.assertEqual([i.inverted for i in rig.drawn[0][1].items].index(True), 4)
 
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
@@ -126,51 +126,55 @@ class LatestWins(unittest.TestCase):
 
 
 class WhatIsDrawn(unittest.TestCase):
-    def test_the_grid_is_sized_to_the_device(self):
+    def test_the_menu_is_sized_to_the_device(self):
         rig = Rig()
         rig.make_device = lambda panel: type(
             "Device", (), {"persist": False, "width": 128, "height": 32})()
         displays = rig.displays()
         displays.show_channel(0, stem(1))
         displays.drain()
-        device, picture = rig.drawn[-1]
-        self.assertTrue(all(c.box[3] < 16 for c in picture.cells))
-        self.assertEqual(picture.cells[0].digit, "1")   # pair 1 plays on channel 1
+        device, picture = rig.drawn[0]                 # Deck 1, first in the table
+        self.assertTrue(all(i.box[3] < 16 for i in picture.items))
+        self.assertEqual([i.marked for i in picture.items], [True, False, False])  # D1 plays
         self.assertTrue(all(16 <= top <= bottom < 32 for _, top, bottom in picture.wave))
 
-    def test_the_return_shows_its_cursor(self):
+    def test_the_return_shows_its_mode_and_cursor(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_return(3, (True,) * 8)
+        displays.show_return(0, (True,) * 8)
+        displays.show_return_mode(1)
         displays.drain()
         device, picture = rig.drawn[-1]
-        self.assertEqual([c.inverted for c in picture.cells].index(True), 2)
-        self.assertEqual({c.digit for c in picture.cells}, {"5"})
+        self.assertEqual([i.text for i in picture.items], ["STEM", "ANALOG"])
+        self.assertEqual([i.inverted for i in picture.items], [False, True])
+        self.assertEqual([i.marked for i in picture.items], [True, False])
+        self.assertEqual(picture.wave, [])
+        self.assertEqual(len(picture.bars), 10)
 
 
 class AfterAFailure(unittest.TestCase):
     def test_a_failed_draw_drops_the_device_and_the_next_rebuilds(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_selected(0, 1)
+        displays.show_menu(0, 1, 0)
         displays.drain()
         rig.fail_draw = True
-        displays.show_selected(0, 2)
+        displays.show_menu(0, 1, 1)
         displays.drain()
         rig.fail_draw = False
-        displays.show_selected(0, 3)
+        displays.show_menu(0, 1, 2)
         displays.drain()
         self.assertEqual(2, len(rig.built))
-        framed = [c.inverted for c in rig.drawn[-1][1].cells]
-        self.assertEqual(framed.index(True), 2)   # pair 3 drawn after the rebuild
+        framed = [i.inverted for i in rig.drawn[-1][1].items]
+        self.assertEqual(framed.index(True), 3)   # stem 3 drawn after the rebuild
 
     def test_a_failure_never_raises_and_is_reported_once(self):
         rig = Rig()
         displays = rig.displays()
         rig.fail_draw = True
-        displays.show_selected(1, 1)
+        displays.show_menu(1, 1, 0)
         displays.drain()
-        displays.show_selected(1, 2)
+        displays.show_menu(1, 1, 1)
         displays.drain()
         self.assertEqual(1, len(rig.reports))
 
@@ -183,31 +187,31 @@ class TryingAgain(unittest.TestCase):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_selected(0, 3)
+        displays.show_menu(0, 1, 2)
         displays.drain()
         self.assertEqual(1, len(scheduled))
         rig.fail_draw = False
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([c.inverted for c in rig.drawn[-1][1].cells].index(True), 2)
+        self.assertEqual([i.inverted for i in rig.drawn[-1][1].items].index(True), 3)
 
     def test_the_retry_draws_what_was_posted_since(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_selected(0, 3)
+        displays.show_menu(0, 1, 2)
         displays.drain()
         rig.fail_draw = False
-        displays.show_selected(0, 5)
+        displays.show_menu(0, 1, 4)
         displays.drain()
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([c.inverted for c in rig.drawn[-1][1].cells].index(True), 4)
+        self.assertEqual([i.inverted for i in rig.drawn[-1][1].items].index(True), 5)
 
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
-        displays.show_selected(0, 3)
+        displays.show_menu(0, 1, 2)
         displays.drain()
         self.assertEqual([], scheduled)
 
@@ -286,12 +290,12 @@ class Waves(unittest.TestCase):
             draw(device, picture)
             order.append(labels[id(device)])
             if len(order) == 1:
-                self.displays.show_selected(3, 5)   # Deck 4, last of the decks
+                self.displays.show_menu(3, 1, 4)   # Deck 4, last of the decks
 
         self.displays._draw_fields = draw_and_turn
         self.step()
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
-        self.assertTrue(self.last_on("Deck 4").cells[4].inverted)
+        self.assertTrue(self.last_on("Deck 4").items[5].inverted)
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -313,13 +317,31 @@ class Waves(unittest.TestCase):
         self.assertGreater(self.newest("Deck 2"), 20)
         self.assertLess(self.newest("Deck 1"), 2)
 
-    def test_the_return_follows_the_loudest_stem_on_it(self):
-        self.displays.show_return(1, (False, True, True) + (False,) * 5)
-        self.displays.note_peak(1, 1.0)
-        self.displays.note_peak(2, 10 ** (-24 / 20))
-        self.displays.note_peak(3, 10 ** (-12 / 20))
+    def return_bars(self):
+        from display_panel import return_panel
+        return self.displays._picture_for(return_panel())(128, 64).bars
+
+    def test_the_return_meters_every_stem_and_its_analog_input(self):
+        """Spec desk-stem-grid-2: no wave on the return; nine meters."""
+        self.displays.note_peak(2, 1.0)
+        self.displays.note_aux(0, 1.0)
         self.step()
-        self.assertTrue(18 < self.newest("Aux Return") < 26)
+        bars = self.return_bars()
+        self.assertIsNone(bars[0])
+        self.assertIsNotNone(bars[1])
+        self.assertIsNotNone(bars[8])
+        self.assertIsNone(bars[9])
+
+    def test_a_stale_aux_meter_is_an_empty_bar(self):
+        self.displays.note_aux(1, 1.0)
+        self.now = 5.0
+        self.step()
+        self.assertIsNone(self.return_bars()[9])
+
+    def test_meters_that_did_not_move_do_not_redraw_the_return(self):
+        self.step()
+        self.assertNotIn("Aux Return", [n for n, d in self.rig.built
+                                        for dd, _ in self.rig.drawn if dd is d])
 
     def test_without_meters_every_wave_is_flat(self):
         for _ in range(3):
@@ -356,10 +378,10 @@ class Waves(unittest.TestCase):
         self.displays.note_analog(0, 1.0)
         self.step()
         self.rig.drawn.clear()
-        self.displays.show_selected(0, 2)
+        self.displays.show_menu(0, 1, 1)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].cells[1].inverted)
+        self.assertTrue(self.rig.drawn[0][1].items[2].inverted)
         self.assertGreater(self.newest("Deck 1"), 20)
 
 
@@ -379,10 +401,10 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual(5, len(self.rig.drawn))
 
     def test_a_selection_redraws_its_own_display(self):
-        self.displays.show_selected(1, 4)
+        self.displays.show_menu(1, 1, 3)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].cells[3].inverted)
+        self.assertTrue(self.rig.drawn[0][1].items[4].inverted)
 
     def test_there_is_no_cue_on_the_display_any_more(self):
         self.assertFalse(hasattr(self.displays, "show_cue"))
@@ -401,47 +423,126 @@ class Painting(unittest.TestCase):
             image.resize((512, 256)).save(Path(folder) / f"desk-stem-grid-{name}.png")
         return image
 
-    def picture(self, panel, places, cursor, level):
-        from display_panel import Wave, channel_cells, return_cells, wave_box
-        cells = (return_cells(places, cursor, 128, 64) if panel == "return"
-                 else channel_cells(panel, places, cursor, 128, 64))
+    def channel(self, index, menu, places, level):
+        from display_panel import Wave, menu_items, wave_box
         wave = Wave(128)
         for step in range(20):
             wave.step(level * (step % 5) / 4)
-        return Picture(cells, wave.columns(wave_box(128, 64)))
+        return Picture(menu_items(index, menu, places, 128, 64), wave.columns(wave_box(128, 64)))
+
+    def the_return(self, mode, cursor, stems, aux):
+        from display_panel import return_bars, return_items
+        return Picture(return_items(mode, cursor, 128, 64), [], None,
+                       return_bars(stems, aux, 128, 64))
 
     def lit(self, image, box):
         return any(image.getpixel((x, y)) for x in range(box[0], box[2] + 1)
                    for y in range(box[1], box[3] + 1))
 
     def test_each_state_paints(self):
+        places = [1, None, 3, None, 0, None, None, None]   # pair 5 (D2 stem 1) on channel 1
         states = {
-            "channel-loaded": self.picture(0, [None, 0, 1, None, 4, None, None, None], 5, 1.0),
-            "channel-analog": self.picture(2, [None] * 8, 0, 0.6),
-            "return": self.picture("return", [0, 4, None, 2, 4, None, 1, None], 3, 0.8),
-            "return-nothing-free": self.picture("return", [0, 1, 2, 3] * 2, 0, 0.0),
+            "channel-top": self.channel(0, (0, 0), places, 1.0),
+            "channel-deck": self.channel(0, (2, 1), places, 0.7),
+            "channel-deck-crossed": self.channel(1, (1, 2), places, 0.4),
+            "return-stem": self.the_return(1, 1, [0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6], (0.7, 0.5)),
+            "return-analog": self.the_return(0, 1, [0.0] * 8, (0.8, 0.8)),
         }
         for name, picture in states.items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
-                self.assertTrue(self.lit(image, (0, 0, 127, 31)), "the grid painted")
-                for cell in picture.cells:
-                    if cell.inverted:
-                        x0, y0, x1, y1 = cell.box
+                self.assertTrue(self.lit(image, (0, 0, 127, 31)), "the menu painted")
+                for item in picture.items:
+                    x0, y0, x1, y1 = item.box
+                    if item.inverted:
                         self.assertEqual(image.getpixel((x0, y0)), 255)
                         self.assertEqual(image.getpixel((x1, y1)), 255)
+                    else:
+                        self.assertTrue(self.lit(image, item.box), item.text)
                 for x, top, bottom in picture.wave:
                     self.assertTrue(image.getpixel((x, top)) and image.getpixel((x, bottom)))
-                    self.assertFalse(top > 32 and image.getpixel((x, 32)))
+                for bar in picture.bars or []:
+                    if bar:
+                        self.assertEqual(image.getpixel((bar[0], bar[3])), 255)
 
-    def test_a_ring_is_hollow_and_a_dot_is_not(self):
-        cells = self.picture(0, [1] + [None] * 7, 3, 0.0).cells
-        image = self.paint_state("ring", Picture(cells, []))
-        ring, dot = cells[0].box, cells[1].box
-        middle = lambda b: ((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
-        self.assertFalse(image.getpixel(middle(ring)))
-        self.assertTrue(image.getpixel(middle(dot)))
-        self.assertTrue(self.lit(image, ring))
+    def test_nothing_spills_out_of_its_box(self):
+        """Seen in the snapshots: ANALOG ran past the panel's edge, and the
+        back arrow was a box the font did not have."""
+        for name, picture in {
+                "deck": self.channel(0, (1, 4), [3] + [None] * 7, 0.0),
+                "return": self.the_return(0, 1, [0.0] * 8, (0.0, 0.0))}.items():
+            with self.subTest(name):
+                image = self.paint_state(f"fit-{name}", picture)
+                inside = set()
+                for item in picture.items:
+                    x0, y0, x1, y1 = item.box
+                    bottom = y1 + 2 if item.marked else y1      # the mark sits under its box
+                    inside |= {(x, y) for x in range(x0, x1 + 1) for y in range(y0, bottom + 1)}
+                spilled = [(x, y) for x in range(128) for y in range(32)
+                           if image.getpixel((x, y)) and (x, y) not in inside]
+                self.assertEqual(spilled, [])
+                for item in picture.items:
+                    if item.inverted or item.crossed:
+                        continue
+                    x0, y0, x1, y1 = item.box
+                    edges = [(x, y) for x in (x0, x1) for y in range(y0, y1)
+                             if image.getpixel((x, y))]
+                    self.assertEqual(edges, [], item.text)
+
+    def test_back_is_a_glyph_the_font_has(self):
+        from display_panel import BACK_ENTRY
+        from PIL import Image, ImageDraw
+        from a3_mixer_displays import _font
+        image = Image.new("1", (40, 20))
+        ImageDraw.Draw(image).text((2, 2), BACK_ENTRY, fill="white", font=_font(14))
+        tofu = Image.new("1", (40, 20))
+        ImageDraw.Draw(tofu).text((2, 2), "\uffff", fill="white", font=_font(14))
+        self.assertNotEqual(list(image.getdata()), list(tofu.getdata()))
+
+    def test_the_mark_shows_under_the_cursor_too(self):
+        """Final review: after a push the cursor stands on what plays, and a
+        black underline inside the white box read as 'nothing loaded'."""
+        picture = self.channel(0, (0, 0), [0] + [None] * 7, 0.0)   # D1 plays, cursor on D1
+        image = self.paint_state("marked-under-cursor", picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        self.assertTrue(picture.items[0].inverted and picture.items[0].marked)
+        self.assertTrue(self.lit(image, (x0, y1 + 1, x1, min(31, y1 + 3))))
+
+    def test_marked_is_underlined(self):
+        picture = self.channel(0, (0, 2), [None] * 8, 0.0)   # A plays, cursor on A
+        unmarked = self.channel(0, (0, 2), [0] + [None] * 7, 0.0)
+        image, other = self.paint_state("marked", picture), self.paint_state("unmarked", unmarked)
+        x0, y0, x1, y1 = picture.items[0].box                 # D1: marked in `unmarked` only
+        self.assertFalse(self.lit(image, (x0, y1 + 1, x1, min(31, y1 + 3))))
+        self.assertTrue(self.lit(other, (x0, y1 + 1, x1, min(31, y1 + 3))))
+
+    def test_a_crossed_stem_carries_a_line_and_its_channel(self):
+        picture = self.channel(0, (1, 4), [3] + [None] * 7, 0.0)   # stem 1 plays on channel 4
+        image = self.paint_state("crossed", picture)
+        crossed, plain = picture.items[1], picture.items[2]
+        self.assertTrue(crossed.crossed and not plain.crossed)
+        corner = lambda b: (b[0], b[3] - 2, b[0] + 2, b[3])
+        self.assertTrue(self.lit(image, corner(crossed.box)))
+        self.assertFalse(self.lit(image, corner(plain.box)))
+
+    def test_the_upper_half_is_painted_once_per_state(self):
+        from a3_mixer_displays import upper_half
+        items = self.channel(0, (0, 1), [None] * 8, 0.0).items
+        self.assertIs(upper_half(tuple(items), 128, 64), upper_half(tuple(items), 128, 64))
+
+    def test_a_strip_paints_what_its_columns_paint(self):
+        """The fast path (desk-stem-grid-2): the wave's picture is pasted,
+        and looks exactly like the 128 lines it replaces."""
+        from PIL import Image
+        from display_panel import WaveStrip, wave_box
+        strip = WaveStrip(128, 32)
+        for level in (0.2, 0.9, 0.0, 0.6, 1.0):
+            strip.shift(level)
+        columns = strip.columns(wave_box(128, 64))
+        pasted, drawn = Image.new("1", (128, 64)), Image.new("1", (128, 64))
+        paint(pasted, Picture([], columns, strip.image))
+        paint(drawn, Picture([], columns))
+        self.assertEqual(list(pasted.getdata()), list(drawn.getdata()))
 
 
 class HowLongADrawTakes(unittest.TestCase):
@@ -454,7 +555,7 @@ class HowLongADrawTakes(unittest.TestCase):
         rig = Rig()
         displays = rig.displays()
         for pair in range(100):
-            displays.show_selected(0, pair % 9)
+            displays.show_menu(0, 1, pair % 5)
             displays.drain()
         self.assertEqual([], rig.reports)
 
@@ -477,9 +578,9 @@ class HowLongADrawTakes(unittest.TestCase):
         rig = Rig()
         ticks = iter([0.0, 0.012, 1.0, 1.020])
         displays = rig.displays(clock=lambda: next(ticks), every=2)
-        displays.show_selected(0, 1)
+        displays.show_menu(0, 1, 0)
         displays.drain()
-        displays.show_selected(1, 1)
+        displays.show_menu(1, 1, 0)
         displays.drain()
         self.assertEqual(rig.reports, ["displays: 2 draws, mean 16.0 ms, max 20.0 ms"])
 

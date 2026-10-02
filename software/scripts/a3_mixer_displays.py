@@ -32,54 +32,102 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "a3-mixer-set-display")
 )
 
+import functools  # noqa: E402
 from collections import namedtuple  # noqa: E402
 
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
-                           selected_announcement, channel_cells, return_cells, places_of,
-                           panel_for_channel, return_panel, wave_box, wave_level, Wave,
-                           RETURN_PLACE, WAVE_STEPS_PER_SECOND, PAIRS, PANELS)
+                           menu_announcement, mode_announcement, menu_items, return_items,
+                           return_bars, places_of, panel_for_channel, return_panel, wave_box,
+                           wave_level, STEM_MODE, WAVE_STEPS_PER_SECOND, PAIRS, PANELS,
+                           WaveStrip)
 
-#: What a panel shows (spec desk-stem-grid): the grid's cells, and the wave
-#: as (x, top, bottom) columns.
-Picture = namedtuple("Picture", "cells wave")
+#: What a panel shows (spec desk-stem-grid-2): the menu's items in the upper
+#: half; below, a channel's wave as (x, top, bottom) columns and -- the fast
+#: path -- its picture to paste (WaveStrip), or the return's nine bars.
+Picture = namedtuple("Picture", "items wave strip bars", defaults=(None, None))
 
-#: A dot's diameter, as a share of its cell's side.
-DOT_OF_CELL = 1 / 3
-
-#: The widest panel's columns: how much history a wave keeps (SSD1306).
+#: The panel's wave half, as the SSD1306 has it: how much history a wave
+#: keeps and the size of its picture. A panel of another size gets the
+#: wave as columns instead of the picture.
 WAVE_HISTORY = 128
+WAVE_HEIGHT = 32
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
 #: stopped, and the last peak must not stand on the display for ever.
 METER_STALE_SECONDS = 0.5
 
+#: Text height as a share of its item's box; a note (a crossed stem's
+#: channel) is smaller still.
+TEXT_OF_ITEM = 0.75
+NOTE_OF_ITEM = 0.45
+
+
+@functools.lru_cache(maxsize=8)
+def _font(size):
+    from PIL import ImageFont
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:   # a Pillow before 10.1 has one bitmap size only
+        return ImageFont.load_default()
+
+
+def _text(draw, box, text, size, ink, anchor):
+    """`text` in `box`, as large as `size` and no larger than fits:
+    ANALOG at the menu's size ran past the panel's edge."""
+    x0, y0, x1, y1 = box
+    size = max(6, size)
+    while True:
+        font = _font(size)
+        left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+        if size == 6 or (right - left <= x1 - x0 - 3 and bottom - top <= y1 - y0 - 2):
+            break
+        size -= 1
+    if anchor == "centre":
+        at = ((x0 + x1 - left - right) / 2, (y0 + y1 - top - bottom) / 2)
+    else:   # top right
+        at = (x1 - right, y0 - top)
+    draw.text(at, text, fill=ink, font=font)
+
+
+@functools.lru_cache(maxsize=64)
+def upper_half(items, width, height):
+    """The menu's picture: painted once per state, then taken from here --
+    repainting it on every wave step cost 8 ms a draw on the desk."""
+    from PIL import Image, ImageDraw
+
+    image = Image.new("1", (width, height // 2))
+    draw = ImageDraw.Draw(image)
+    for item in items:
+        x0, y0, x1, y1 = item.box
+        ink = "white"
+        if item.inverted:
+            draw.rectangle(item.box, fill="white")
+            ink = "black"
+        size = round((y1 - y0) * TEXT_OF_ITEM)
+        _text(draw, item.box, item.text, size, ink, "centre")
+        if item.marked:
+            # Under the box, always white: under the cursor's white box a
+            # black line inside it vanished (final review, 2026-10-02).
+            draw.line((x0 + 1, y1 + 2, x1 - 1, y1 + 2), fill="white")
+        if item.crossed:
+            draw.line((x0, y1, x1, y0), fill=ink)
+            _text(draw, item.box, item.note, round((y1 - y0) * NOTE_OF_ITEM), ink, "top right")
+    return image
+
 
 def paint(image, picture):
-    """Draw `picture` onto a 1-bit PIL image: the cursor a white box with
-    its content black, a dot filled, a ring hollow, a digit in the default
-    font, the wave as vertical lines."""
-    from PIL import ImageDraw, ImageFont
+    """Draw `picture` onto a 1-bit PIL image: the menu (cached), then the
+    wave pasted or drawn, or the return's bars."""
+    from PIL import ImageDraw
 
+    image.paste(upper_half(tuple(picture.items), image.width, image.height), (0, 0))
     draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
-    for cell in picture.cells:
-        x0, y0, x1, y1 = cell.box
-        ink = "white"
-        if cell.inverted:
-            draw.rectangle(cell.box, fill="white")
-            ink = "black"
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        if cell.digit:
-            left, top, right, bottom = draw.textbbox((0, 0), cell.digit, font=font)
-            draw.text((cx - (left + right) / 2, cy - (top + bottom) / 2), cell.digit,
-                      fill=ink, font=font)
-        elif cell.mark:
-            radius = max(1, round((x1 - x0) * DOT_OF_CELL / 2))
-            dot = (cx - radius, cy - radius, cx + radius, cy + radius)
-            if cell.mark == "dot":
-                draw.ellipse(dot, fill=ink)
-            else:
-                draw.ellipse(dot, outline=ink)
+    for bar in picture.bars or []:
+        if bar:
+            draw.rectangle(bar, fill="white")
+    if picture.strip is not None:
+        image.paste(picture.strip, (0, image.height - picture.strip.height))
+        return
     for x, top, bottom in picture.wave:
         draw.line((x, top, x, bottom), fill="white")
 
@@ -198,17 +246,21 @@ class Displays:
         self._posted = set()  # panels to draw; each is drawn from its state
         self._wave_due = set()  # panels whose wave moved: drawn when nothing is posted
         # What the displays show, so a wave redraw keeps it: what plays on
-        # each channel, each channel's selection, and the return's selection
-        # and what plays there (spec desk-stem-grid).
+        # each channel, each channel's menu, the return's cursor and what
+        # plays there, and its mode (spec desk-stem-grid-2).
         self._channel_masks = [0] * (len(PANELS) - 1)
-        self._selected = [0] * (len(PANELS) - 1)
-        self._return = (0, (False,) * PAIRS)
+        self._menus = [(0, 0)] * (len(PANELS) - 1)
+        self._return = (STEM_MODE, (False,) * PAIRS)
+        self._return_mode = STEM_MODE
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair and per channel's analog input; each panel's wave,
         # stepped on the displays' clock.
         self._stem_peaks = {}
         self._analog_peaks = {}
-        self._waves = {panel: Wave(WAVE_HISTORY) for panel in PANELS}
+        self._aux_peaks = {}
+        channels = [panel for panel in PANELS if panel != return_panel()]
+        self._waves = {panel: WaveStrip(WAVE_HISTORY, WAVE_HEIGHT) for panel in channels}
+        self._return_levels = ((0.0,) * PAIRS, (0.0, 0.0))
         self._next_step = None
         self._later = later
         self._wake = threading.Condition()
@@ -225,6 +277,11 @@ class Displays:
         with self._wake:
             self._hold(self._analog_peaks, index, peak)
 
+    def note_aux(self, side, peak):
+        """The analog return's peak, L (0) or R (1), from the OSC thread."""
+        with self._wake:
+            self._hold(self._aux_peaks, side, peak)
+
     def _hold(self, peaks, key, peak):
         if not isinstance(peak, (int, float)) or isinstance(peak, bool):
             return
@@ -240,25 +297,28 @@ class Displays:
         self.step_waves()
 
     def step_waves(self):
-        """Every panel's wave moves on by its source's level; a panel whose
-        wave changed waits to be drawn behind anything posted."""
+        """Every channel's wave moves on by its source's level, and the
+        return's meters take the latest peaks; a panel whose picture changed
+        waits to be drawn behind anything posted."""
         with self._wake:
             places = places_of(self._channel_masks, self._return[1])
-            for panel in PANELS:
-                if self._waves[panel].step(wave_level(self._source_peak(panel, places))):
+            for panel, wave in self._waves.items():
+                if wave.shift(wave_level(self._source_peak(panel, places))):
                     self._wave_due.add(panel)
-            for peaks in (self._stem_peaks, self._analog_peaks):
+            levels = (tuple(wave_level(self._fresh(self._stem_peaks, pair))
+                            for pair in range(1, PAIRS + 1)),
+                      tuple(wave_level(self._fresh(self._aux_peaks, side)) for side in (0, 1)))
+            if levels != self._return_levels:
+                self._return_levels = levels
+                self._wave_due.add(return_panel())
+            for peaks in (self._stem_peaks, self._analog_peaks, self._aux_peaks):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
 
     def _source_peak(self, panel, places):
-        """Channel: the stem it plays, else its analog input. Return: the
-        loudest stem on it. Called with the lock held."""
-        if panel == return_panel():
-            peaks = [self._fresh(self._stem_peaks, pair)
-                     for pair, place in enumerate(places, 1) if place == RETURN_PLACE]
-            return max(peaks, default=0.0)
+        """A channel's wave: the stem it plays, else its analog input.
+        Called with the lock held."""
         index = PANELS.index(panel)
         if index in places:
             return self._fresh(self._stem_peaks, places.index(index) + 1)
@@ -279,22 +339,27 @@ class Displays:
             self._channel_masks[index] = mask
         self._post_all()
 
-    def show_selected(self, index, selected):
-        """A channel's selection: its own display only."""
+    def show_menu(self, index, level, cursor):
+        """A channel's menu: its own display only."""
         with self._wake:
-            self._selected[index] = selected
+            self._menus[index] = (level, cursor)
         self._post(panel_for_channel(index))
 
-    def show_return(self, selected, plays):
+    def show_return(self, cursor, plays):
         with self._wake:
-            self._return = (selected, tuple(plays))
+            self._return = (cursor, tuple(plays))
         self._post_all()
+
+    def show_return_mode(self, mode):
+        with self._wake:
+            self._return_mode = mode
+        self._post(return_panel())
 
     def blank_all(self):
         """Until Core speaks: every square empty, nothing claimed to play."""
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
-        self.show_return(0, (False,) * PAIRS)
+        self.show_return(STEM_MODE, (False,) * PAIRS)
 
     def drain(self):
         """Draw everything posted and every moved wave, each panel once. A
@@ -313,20 +378,24 @@ class Displays:
             self._draw(panel, self._picture_for(panel))
 
     def _picture_for(self, panel):
-        """The picture of `panel` from its state and its wave, laid out for
-        whatever size the display turns out to be."""
+        """The picture of `panel` from its state, laid out for whatever size
+        the display turns out to be."""
         with self._wake:
             cursor, plays = self._return
             places = places_of(self._channel_masks, plays)
-            wave = self._waves[panel]
-            if panel != return_panel():
-                index = PANELS.index(panel)
-                cursor = self._selected[index]
+            if panel == return_panel():
+                mode, (stems, aux) = self._return_mode, self._return_levels
+                return lambda width, height: Picture(
+                    return_items(mode, cursor, width, height), [], None,
+                    return_bars(stems, aux, width, height))
+            index = PANELS.index(panel)
+            menu, wave = self._menus[index], self._waves[panel]
 
         def picture(width, height):
-            cells = (return_cells(places, cursor, width, height) if panel == return_panel()
-                     else channel_cells(index, places, cursor, width, height))
-            return Picture(cells, wave.columns(wave_box(width, height)))
+            box = wave_box(width, height)
+            fits = wave.image.size == (box[2] - box[0] + 1, box[3] - box[1] + 1)
+            return Picture(menu_items(index, menu, places, width, height),
+                           wave.columns(box), wave.image if fits else None)
         return picture
 
     def _post(self, panel):
@@ -401,10 +470,16 @@ class NoDisplays:
     def show_channel(self, index, mask):
         pass
 
-    def show_selected(self, index, selected):
+    def show_menu(self, index, level, cursor):
         pass
 
-    def show_return(self, selected, plays):
+    def show_return(self, cursor, plays):
+        pass
+
+    def show_return_mode(self, mode):
+        pass
+
+    def note_aux(self, side, peak):
         pass
 
     def note_peak(self, pair, peak):

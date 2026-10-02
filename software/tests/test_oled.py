@@ -9,6 +9,7 @@ desk's 100 kHz, and builds it pixel by pixel in Python. The SSD1306 takes a
 column and page window instead, so a square that changed costs its own bytes
 (2026-10-01: the stem displays lagged behind the encoders)."""
 
+import math
 import random
 import sys
 import unittest
@@ -111,6 +112,40 @@ class ChangedWindows(unittest.TestCase):
         after = before.copy()
         after.paste(1, (38, 6, 58, 26))
         self.assertEqual(changed_windows(before, after), [(38, 57, 0, 3)])
+
+
+def wave(shift):
+    """The desk's stem wave (desk-stem-grid): a smooth envelope in the lower
+    half, mirrored about row 48, moved `shift` columns -- one step moves it
+    two. Shifted, it changes only scattered columns in each band."""
+    image = Image.new("1", (WIDTH, HEIGHT))
+    for x in range(WIDTH):
+        reach = int(1 + 14 * (0.5 + 0.5 * math.sin((x + shift) / 6)))
+        for y in range(48 - reach, 48 + reach):
+            image.putpixel((x, y), 1)
+    return image
+
+
+class AScrollingWave(unittest.TestCase):
+    """Measured 2026-10-02 on the desk: a moving wave changed a little in
+    nearly every column and went out as ~10 windows, each a transaction of
+    its own behind the multiplexer -- 53 ms a draw. It goes as one."""
+
+    def test_a_moving_wave_is_one_window(self):
+        windows = changed_windows(wave(0), wave(2))
+        self.assertEqual(len(windows), 1)
+        x0, x1, page0, page1 = windows[0]
+        self.assertEqual((page0, page1), (4, 7))
+
+    def test_it_is_one_window_on_a_turned_panel_too(self):
+        windows = changed_windows(wave(0).rotate(180), wave(2).rotate(180))
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0][2:], (0, 3))
+
+    def test_a_wave_and_a_turn_are_two_windows(self):
+        before, after = wave(0), wave(2)
+        after.paste(1, (40, 2, 52, 14))         # the menu's cursor moved, upper half
+        self.assertEqual(len(changed_windows(before, after)), 2)
 
 
 class Sending(unittest.TestCase):
