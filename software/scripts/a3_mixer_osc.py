@@ -27,7 +27,10 @@ import os
 import re
 from pathlib import Path
 
-#: Where the deploy puts the desk's copy.
+from a3_mixer_truth import cache_path
+
+#: The old copy the deploy put beside the script -- a fallback for one
+#: release, until every desk has fetched Core's truth once.
 BESIDE_THE_SCRIPT = Path(__file__).resolve().with_name("a3-osc.json")
 
 #: The channel strip's pots, by the index the firmware reports.
@@ -81,7 +84,7 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
        "device.hello", "channel.stem.turn", "aux-return.stem.turn",
        "aux-return.stem.push", "channel.stem", "aux-return.stem",
-       "channel.stem.push", "channel.stem.selected")
+       "channel.stem.push", "channel.stem.selected", "core.here")
 
 
 def _pattern_regex(pattern):
@@ -192,6 +195,12 @@ class MixerOsc:
         name = meters[number - 1]
         return VU_SLOTS.index(name) if name in VU_SLOTS else None
 
+    @property
+    def digest(self):
+        """The sha256 of the truth's bytes: Core's fingerprint, when it is the
+        body Core served."""
+        return self._digest
+
     def hello(self):
         """(address, [name, sha256 of the copy]): the desk tells Core which
         truth it speaks, and Core's window shows whether it is Core's own."""
@@ -202,11 +211,26 @@ class MixerOsc:
         return [key for key in KEYS_USED if key not in self._data["addresses"]]
 
 
+def truth_path():
+    """Where the desk's truth is (spec truth-from-core, step 2): $A3_OSC_TRUTH,
+    else what Core last served (a3_mixer_truth's cache), else the old copy
+    beside the script -- kept as a fallback for one release -- else None."""
+    named = os.environ.get("A3_OSC_TRUTH")
+    if named:
+        return Path(named)
+    for candidate in (cache_path(), BESIDE_THE_SCRIPT):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def load(path=None):
-    """The truth: `path`, else $A3_OSC_TRUTH, else the copy beside the script."""
-    path = Path(path or os.environ.get("A3_OSC_TRUTH") or BESIDE_THE_SCRIPT)
+    """The truth from `path`, else truth_path(). TruthMissing if there is
+    none: the desk then waits for Core's (a3-mixer.py)."""
+    path = Path(path) if path else truth_path()
+    if path is None:
+        raise TruthMissing(f"no truth at {cache_path()} or {BESIDE_THE_SCRIPT}")
     if not path.exists():
-        raise TruthMissing(f"no a3-osc.json at {path} -- copy the Core's "
-                           "/usr/share/a3/a3-osc.json there")
+        raise TruthMissing(f"no a3-osc.json at {path}")
     raw = path.read_bytes()
     return MixerOsc(json.loads(raw), hashlib.sha256(raw).hexdigest())
