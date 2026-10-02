@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import json
 import os
 import sys
 import math
@@ -13,6 +14,7 @@ import numpy as np
 import board
 import neopixel
 
+import socket
 import threading
 from multiprocessing import Process
 
@@ -31,8 +33,10 @@ from a3_mixer_displays import (channel_announcement, open_displays,
                                return_announcement, selected_announcement)
 from a3_mixer_levels import level_step
 from a3_mixer_watchdog import watch_child
+from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
+                            wait_for_truth)
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
-                          TruthMissing, load as load_osc_truth)
+                          MixerOsc, TruthMissing, load as load_osc_truth)
 
 pixel_pin = board.D12
 num_pixels = 14
@@ -72,15 +76,53 @@ hello = HelloEvery()
 # desk a third, and none was reachable after the rig moved subnets. OSC over
 # UDP has no way of saying that nobody was listening.
 #
-# Without the truth, or with a word missing from it, the desk stops at once
-# and says why: a desk that cannot know where Core is has nothing to send,
-# and a key failing mid-set would kill the serial reader instead.
+# The truth comes from Core (spec truth-from-core, step 2): the desk starts on
+# what Core last served (a3_mixer_truth), and listens for Core's /core/here.
+# Without a truth, or with a word missing from it, it does not exit any more
+# -- systemd only started it into the same exit, a restart loop seen more than
+# once. It waits for Core's truth, stores it, and restarts once on it.
+announce_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+announce_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+announce_socket.bind(("", ANNOUNCE_PORT))
+
+
+def say(text):
+    print(f"a3-mixer: {text}", file=sys.stderr, flush=True)
+
+
+def usable(body):
+    """Core's truth is only worth a restart if it has every word the desk
+    uses -- otherwise the restart would come straight back here."""
+    try:
+        lacking = MixerOsc(json.loads(body)).missing()
+    except (ValueError, KeyError, TypeError, AttributeError) as problem:
+        return f"not a truth: {problem!r}"
+    return "Core's truth lacks " + ", ".join(lacking) if lacking else None
+
+
 try:
     osc = load_osc_truth()
+    lacking = osc.missing()
 except TruthMissing as missing:
-    sys.exit(f"a3-mixer: {missing}")
-if osc.missing():
-    sys.exit("a3-mixer: a3-osc.json has no " + ", ".join(osc.missing()))
+    osc, lacking = None, [str(missing)]
+if lacking:
+    say("the truth lacks " + ", ".join(lacking) + " -- waiting for Core's")
+    wait_for_truth(announce_socket, cache_path(), say,
+                   own=osc.digest if osc else None, usable=usable)
+    say("Core's truth stored, restarting on it")
+    os._exit(1)
+
+# $A3_OSC_TRUTH wins at every start, so following Core would only restart the
+# desk into the same file forever: with it set, the desk says so and stays.
+if follows_core(os.environ):
+    threading.Thread(
+        target=keep, daemon=True, name="truth keeper",
+        args=(announce_socket, osc.digest, cache_path(),
+              lambda: (say("Core announced another truth, restarting on it"), os._exit(1)),
+              say, lambda: True),
+    ).start()
+else:
+    say("A3_OSC_TRUTH is set: not following Core's truth")
 
 osc_core = SimpleUDPClient(*osc.core())
 

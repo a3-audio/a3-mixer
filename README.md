@@ -36,9 +36,15 @@ the same tag name is set in every repository at once — `v03.0` is the first.
 
 ## Addresses and ports
 
-The desk speaks what the one truth says: a3-core ships every OSC address,
-port and IP of the system in `/usr/share/a3/a3-osc.json`. The desk reads a
-copy of it beside its script, `software/scripts/a3-osc.json` (not in git —
-copy it over from the Core machine whenever the package there changes), or
-the file `$A3_OSC_TRUTH` names. Without it the service stops at once and
-says where it looked.
+The desk speaks what the one truth says, and it gets the truth from Core:
+Core announces every 2 s by UDP broadcast on port 7790 (`/core/here`) where
+the truth is and what its fingerprint is. The desk keeps the last truth it
+fetched in `~/.cache/a3/a3-osc.json` (root's home: the service runs as
+root). When Core announces another fingerprint, the desk fetches the truth
+from `http://<core>:9080/api/truth`, checks it, stores it and restarts. No
+copying by hand.
+
+At start the desk reads `$A3_OSC_TRUTH` if set, else that cache, else the
+old copy beside the script (`software/scripts/a3-osc.json`, kept as a
+fallback for one release). Without any, or with a word missing from it, it
+waits for Core's announcement instead of stopping.
