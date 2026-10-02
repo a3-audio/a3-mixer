@@ -17,6 +17,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "a3-mix
 from a3_mixer_stem_leds import StemLeds  # noqa: E402
 
 
+class OnlyWhenFlashed(unittest.TestCase):
+    """2026-10-02, live: the desk sent SVU to a Teensy still on the old
+    firmware. It took SVU for an unknown command and the rest of the line
+    for the next ones -- the VU meters broke and readStringUntil waited for
+    a ':' while no key or encoder was read. SVU goes out only when the desk
+    is told the firmware knows it (A3_STEM_LEDS=1, set after the flash)."""
+
+    def test_off_unless_told(self):
+        from a3_mixer_stem_leds import stem_leds_from
+        self.assertIsNone(stem_leds_from({}).line(1, 1.0))
+        self.assertIsNone(stem_leds_from({"A3_STEM_LEDS": "0"}).line(1, 1.0))
+
+    def test_on_when_told(self):
+        from a3_mixer_stem_leds import stem_leds_from
+        self.assertEqual(stem_leds_from({"A3_STEM_LEDS": "1"}).line(1, 1.0), "SVU:0:8")
+
+    def test_the_desk_asks_the_environment(self):
+        script = (Path(__file__).resolve().parents[1] / "scripts/a3-mixer.py").read_text()
+        self.assertIn("stem_leds_from(os.environ)", script)
+
+
 class StemLines(unittest.TestCase):
     def test_a_full_stem_lights_eight(self):
         self.assertEqual(StemLeds().line(1, 1.0), "SVU:0:8")

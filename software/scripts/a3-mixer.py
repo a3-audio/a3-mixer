@@ -32,7 +32,7 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
 from a3_mixer_displays import (channel_announcement, menu_announcement,
                                mode_announcement, open_displays, return_announcement)
 # After a3_mixer_displays: that import puts display_panel on the path.
-from a3_mixer_stem_leds import StemLeds  # noqa: E402
+from a3_mixer_stem_leds import stem_leds_from  # noqa: E402
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -66,7 +66,7 @@ fx_state = np.zeros(10)
 recall = RecallRequest()
 clicks = Clicks()
 pushes = PushHoldOff()
-stem_leds = StemLeds()
+stem_leds = stem_leds_from(os.environ)
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
