@@ -43,7 +43,9 @@ class HelloEveryThirtySeconds(unittest.TestCase):
     def test_the_desk_uses_it(self):
         source = (Path(__file__).resolve().parents[1] / "scripts/a3-mixer.py").read_text()
         self.assertIn("HelloEvery()", source)
-        self.assertIn("hello.due(", source)
+        # Asked through StateAsker, which tests the due-ness itself
+        # (test_recall_request.AskingSurvivesTheNetwork).
+        self.assertIn("StateAsker(hello, recall,", source)
 
 
 if __name__ == "__main__":

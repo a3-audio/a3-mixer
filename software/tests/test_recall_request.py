@@ -69,5 +69,46 @@ class TheDeskActuallyAsks(unittest.TestCase):
         self.assertFalse(hasattr(RecallRequest, "ADDRESS"))
 
 
+
+class AskingSurvivesTheNetwork(unittest.TestCase):
+    """2026-10-02, after a reboot: the desk started before its network, the
+    first hello raised 'Network is unreachable' and ended the thread -- no
+    state from Core, no hello to it, until the next restart. A failed send
+    is said once and tried again a second later."""
+
+    def setUp(self):
+        from a3_mixer_recall import HelloEvery, RecallRequest, StateAsker
+        self.sent, self.reports, self.send = [], [], None
+        self.asker = StateAsker(HelloEvery(), RecallRequest(),
+                                lambda kind: self.send(kind), self.reports.append)
+
+    def ask(self, now, send):
+        self.send = send
+        self.asker.ask(now)
+
+    def failing(self, kind):
+        raise OSError(101, "Network is unreachable")
+
+    def test_a_failed_send_does_not_raise(self):
+        self.ask(0.0, self.failing)
+        self.assertEqual(len(self.reports), 1)
+
+    def test_it_is_tried_again(self):
+        self.ask(0.0, self.failing)
+        self.ask(1.0, lambda kind: self.sent.append(kind))
+        self.assertEqual(self.sent, ["hello", "recall"])
+
+    def test_an_outage_is_said_once(self):
+        for second in range(5):
+            self.ask(float(second), self.failing)
+        self.assertEqual(len(self.reports), 1)
+
+    def test_the_loop_uses_it(self):
+        from pathlib import Path
+        script = (Path(__file__).resolve().parents[1] / "scripts/a3-mixer.py").read_text()
+        loop = script[script.index("def ask_for_the_state"):]
+        loop = loop[:loop.index("threading.Thread")]
+        self.assertIn("asker.ask(", loop)
+
 if __name__ == "__main__":
     unittest.main()
