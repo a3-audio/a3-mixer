@@ -36,6 +36,11 @@ def page_bytes(image, x0, x1, page0, page1):
 
 MERGE_GAP = 8   # columns: closer changes share a window, which costs ~7 bytes
 
+#: More runs than this in one band go as one: a scrolling wave changes
+#: scattered columns in every band, and each window is a transaction of its
+#: own behind the multiplexer -- 11 of them made a draw 53 ms (2026-10-02).
+MAX_RUNS_PER_BAND = 2
+
 
 def changed_windows(before, after):
     """[(x0, x1, page0, page1), ...]: one window per changed area.
@@ -52,8 +57,30 @@ def changed_windows(before, after):
         band = diff.crop((0, page * PAGE, diff.width, (page + 1) * PAGE))
         # Transposed, each column is one byte: non-zero where it changed.
         columns = band.transpose(Image.Transpose.TRANSPOSE).tobytes()
-        for x0, x1 in _runs([x for x, byte in enumerate(columns) if byte]):
+        runs = _runs([x for x, byte in enumerate(columns) if byte])
+        if len(runs) > MAX_RUNS_PER_BAND:
+            runs = [(runs[0][0], runs[-1][1])]
+        for x0, x1 in runs:
             _extend_or_add(windows, x0, x1, page)
+    return _merge_neighbours(windows)
+
+
+def _merge_neighbours(windows):
+    """Windows on touching pages whose columns overlap become one: the bands
+    of one moving shape go out together, not band by band."""
+    merged = True
+    while merged:
+        merged = False
+        for i, (a0, a1, ap0, ap1) in enumerate(windows):
+            for j in range(i + 1, len(windows)):
+                b0, b1, bp0, bp1 = windows[j]
+                if a0 <= b1 and b0 <= a1 and ap0 <= bp1 + 1 and bp0 <= ap1 + 1:
+                    windows[i] = (min(a0, b0), max(a1, b1), min(ap0, bp0), max(ap1, bp1))
+                    del windows[j]
+                    merged = True
+                    break
+            if merged:
+                break
     return windows
 
 

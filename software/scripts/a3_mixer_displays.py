@@ -37,17 +37,21 @@ from collections import namedtuple  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            selected_announcement, channel_cells, return_cells, places_of,
                            panel_for_channel, return_panel, wave_box, wave_level, Wave,
-                           RETURN_PLACE, WAVE_STEPS_PER_SECOND, PAIRS, PANELS)
+                           RETURN_PLACE, WAVE_STEPS_PER_SECOND, PAIRS, PANELS, WaveStrip)
 
-#: What a panel shows (spec desk-stem-grid): the grid's cells, and the wave
-#: as (x, top, bottom) columns.
-Picture = namedtuple("Picture", "cells wave")
+#: What a panel shows (spec desk-stem-grid): the grid's cells, the wave as
+#: (x, top, bottom) columns, and -- the fast path -- the wave's picture to
+#: paste (WaveStrip), when it fits the panel's lower half.
+Picture = namedtuple("Picture", "cells wave strip", defaults=(None,))
 
 #: A dot's diameter, as a share of its cell's side.
 DOT_OF_CELL = 1 / 3
 
-#: The widest panel's columns: how much history a wave keeps (SSD1306).
+#: The panel's wave half, as the SSD1306 has it: how much history a wave
+#: keeps and the size of its picture. A panel of another size gets the
+#: wave as columns instead of the picture.
 WAVE_HISTORY = 128
+WAVE_HEIGHT = 32
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
 #: stopped, and the last peak must not stand on the display for ever.
@@ -80,6 +84,9 @@ def paint(image, picture):
                 draw.ellipse(dot, fill=ink)
             else:
                 draw.ellipse(dot, outline=ink)
+    if picture.strip is not None:
+        image.paste(picture.strip, (0, image.height - picture.strip.height))
+        return
     for x, top, bottom in picture.wave:
         draw.line((x, top, x, bottom), fill="white")
 
@@ -208,7 +215,7 @@ class Displays:
         # stepped on the displays' clock.
         self._stem_peaks = {}
         self._analog_peaks = {}
-        self._waves = {panel: Wave(WAVE_HISTORY) for panel in PANELS}
+        self._waves = {panel: WaveStrip(WAVE_HISTORY, WAVE_HEIGHT) for panel in PANELS}
         self._next_step = None
         self._later = later
         self._wake = threading.Condition()
@@ -245,7 +252,7 @@ class Displays:
         with self._wake:
             places = places_of(self._channel_masks, self._return[1])
             for panel in PANELS:
-                if self._waves[panel].step(wave_level(self._source_peak(panel, places))):
+                if self._waves[panel].shift(wave_level(self._source_peak(panel, places))):
                     self._wave_due.add(panel)
             for peaks in (self._stem_peaks, self._analog_peaks):
                 for key, (_, heard) in peaks.items():
@@ -326,7 +333,9 @@ class Displays:
         def picture(width, height):
             cells = (return_cells(places, cursor, width, height) if panel == return_panel()
                      else channel_cells(index, places, cursor, width, height))
-            return Picture(cells, wave.columns(wave_box(width, height)))
+            box = wave_box(width, height)
+            fits = wave.image.size == (box[2] - box[0] + 1, box[3] - box[1] + 1)
+            return Picture(cells, wave.columns(box), wave.image if fits else None)
         return picture
 
     def _post(self, panel):

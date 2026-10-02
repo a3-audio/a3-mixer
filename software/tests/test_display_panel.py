@@ -237,6 +237,37 @@ class Waveform(unittest.TestCase):
         self.assertTrue(32 < top < bottom < 63)
 
 
+class TheWaveStrip(unittest.TestCase):
+    """The wave's picture is moved, not repainted (desk-stem-grid-2: the
+    128 lines cost most of a 53 ms draw on the desk)."""
+
+    def painted(self, wave, width, height):
+        from PIL import Image, ImageDraw
+        image = Image.new("1", (width, height))
+        draw = ImageDraw.Draw(image)
+        for x, top, bottom in wave.columns((0, 0, width - 1, height - 1)):
+            draw.line((x, top, x, bottom), fill="white")
+        return image
+
+    def test_shifting_draws_what_a_full_repaint_draws(self):
+        import random
+        from display_panel import Wave, WaveStrip
+        rng = random.Random(7)
+        strip, wave = WaveStrip(128, 32), Wave(128)
+        for _ in range(40):
+            level = rng.choice([0.0, rng.random(), 1.0])
+            strip.shift(level)
+            wave.step(level)
+            self.assertEqual(list(strip.image.getdata()),
+                             list(self.painted(wave, 128, 32).getdata()))
+
+    def test_a_silent_shift_is_no_change(self):
+        from display_panel import WaveStrip
+        strip = WaveStrip(128, 32)
+        self.assertFalse(strip.shift(0.0))
+        self.assertTrue(strip.shift(0.7))
+
+
 class SelectionAnnouncements(unittest.TestCase):
     def test_a_selection_announcement_is_zero_to_eight(self):
         from display_panel import selected_announcement

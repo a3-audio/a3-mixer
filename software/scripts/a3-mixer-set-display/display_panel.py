@@ -247,6 +247,41 @@ class Wave:
         return out
 
 
+class WaveStrip:
+    """A wave and its picture, `width` x `height`: a step moves the picture
+    WAVE_COLUMNS_PER_STEP columns left and draws only the new columns --
+    repainting all 128 lines cost most of a 53 ms draw on the desk
+    (desk-stem-grid-2). Draws exactly what Wave.columns says."""
+
+    def __init__(self, width, height):
+        from PIL import Image, ImageDraw
+        self._wave = Wave(width)
+        self._box = (0, 0, width - 1, height - 1)
+        self.image = Image.new("1", (width, height))
+        draw = ImageDraw.Draw(self.image)
+        for x, top, bottom in self._wave.columns(self._box):
+            draw.line((x, top, x, bottom), fill="white")
+
+    def columns(self, box):
+        """The wave as (x, top, bottom) columns in any `box`."""
+        return self._wave.columns(box)
+
+    def shift(self, level):
+        """Moves the wave on; False when its picture did not change."""
+        from PIL import Image, ImageDraw
+        if not self._wave.step(level):
+            return False
+        width, height = self.image.size
+        n = WAVE_COLUMNS_PER_STEP
+        moved = Image.new("1", (width, height))
+        moved.paste(self.image.crop((n, 0, width, height)), (0, 0))
+        draw = ImageDraw.Draw(moved)
+        for x, top, bottom in self._wave.columns(self._box)[-n:]:
+            draw.line((x, top, x, bottom), fill="white")
+        self.image = moved
+        return True
+
+
 def selected_announcement(args):
     """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
     1-8 a stem), or None if damaged."""

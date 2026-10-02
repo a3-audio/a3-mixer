@@ -434,6 +434,20 @@ class Painting(unittest.TestCase):
                     self.assertTrue(image.getpixel((x, top)) and image.getpixel((x, bottom)))
                     self.assertFalse(top > 32 and image.getpixel((x, 32)))
 
+    def test_a_strip_paints_what_its_columns_paint(self):
+        """The fast path (desk-stem-grid-2): the wave's picture is pasted,
+        and looks exactly like the 128 lines it replaces."""
+        from PIL import Image
+        from display_panel import WaveStrip, wave_box
+        strip = WaveStrip(128, 32)
+        for level in (0.2, 0.9, 0.0, 0.6, 1.0):
+            strip.shift(level)
+        columns = strip.columns(wave_box(128, 64))
+        pasted, drawn = Image.new("1", (128, 64)), Image.new("1", (128, 64))
+        paint(pasted, Picture([], columns, strip.image))
+        paint(drawn, Picture([], columns))
+        self.assertEqual(list(pasted.getdata()), list(drawn.getdata()))
+
     def test_a_ring_is_hollow_and_a_dot_is_not(self):
         cells = self.picture(0, [1] + [None] * 7, 3, 0.0).cells
         image = self.paint_state("ring", Picture(cells, []))
