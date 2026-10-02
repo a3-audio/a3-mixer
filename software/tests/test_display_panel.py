@@ -145,6 +145,13 @@ class ChannelMenu(unittest.TestCase):
         self.assertEqual([i.marked for i in menu_items(0, (0, 0), places, W, H)],
                          [False, False, True])         # channel 1 plays analog
 
+    def test_a_stem_of_each_deck_marks_both(self):
+        """2026-10-02: a channel may play one stem of each deck."""
+        from display_panel import menu_items
+        places = [None, 1, None, None, None, None, 1, None]   # pairs 2 and 7 on channel 2
+        self.assertEqual([i.marked for i in menu_items(1, (0, 0), places, W, H)],
+                         [True, True, False])
+
     def test_a_deck_level_is_its_name_four_stems_and_back(self):
         from display_panel import menu_items
         items = menu_items(0, (2, 4), NOWHERE, W, H)

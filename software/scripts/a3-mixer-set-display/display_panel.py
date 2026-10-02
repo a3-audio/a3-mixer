@@ -250,22 +250,22 @@ def _slots(count, width, height):
     return [(i * slot + 1, top, (i + 1) * slot - 2, bottom) for i in range(count)]
 
 
-def _source(index, places):
-    """What channel `index` plays from: 0 = D1, 1 = D2, 2 = A."""
-    if index in places:
-        return 0 if places.index(index) < STEMS_PER_DECK else 1
-    return 2
+def _sources(index, places):
+    """What channel `index` plays from: {0} D1, {1} D2, both -- one stem of
+    each deck may play (2026-10-02) -- or {2} A."""
+    decks = {pair // STEMS_PER_DECK for pair, place in enumerate(places) if place == index}
+    return decks or {2}
 
 
 def menu_items(index, menu, places, width, height):
-    """Channel `index`'s menu: at the top D1 / D2 / A with the source
-    marked; in a deck its name, stems 1-4 and back -- the one this channel
+    """Channel `index`'s menu: at the top D1 / D2 / A with what it plays
+    from marked (D1 and D2 both, with a stem of each); in a deck its name, stems 1-4 and back -- the one this channel
     plays marked, one another channel has crossed out with that channel's
     number. The cursor inverted."""
     level, cursor = menu
     if level == TOP_LEVEL:
-        source = _source(index, places)
-        return [MenuItem(box, text, cursor == i, source == i, False, None)
+        sources = _sources(index, places)
+        return [MenuItem(box, text, cursor == i, i in sources, False, None)
                 for i, (box, text) in enumerate(zip(_slots(3, width, height), TOP_ENTRIES))]
     boxes = _slots(STEMS_PER_DECK + 2, width, height)
     items = [MenuItem(boxes[0], TOP_ENTRIES[level - 1], False, False, False, None)]
