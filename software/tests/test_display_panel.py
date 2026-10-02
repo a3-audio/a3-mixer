@@ -216,6 +216,76 @@ class SymbolShapes(unittest.TestCase):
         self.assertEqual((kind, len(coords)), ("polygon", 20))
 
 
+W, H = 128, 64
+NOWHERE = [None] * 8
+
+
+class Grid(unittest.TestCase):
+    """The stem grid (spec desk-stem-grid, 2026-10-02): dots packed close in
+    the upper half, the waveform below."""
+
+    def test_ten_square_adjacent_cells_in_the_upper_half(self):
+        from display_panel import grid_cells
+        boxes = grid_cells(W, H)
+        self.assertEqual(len(boxes), 10)
+        for x0, y0, x1, y1 in boxes:
+            self.assertEqual(x1 - x0, y1 - y0)
+            self.assertTrue(0 <= x0 and x1 < W and 0 <= y0 and y1 < H // 2)
+        self.assertEqual(boxes[1][0] - boxes[0][0], boxes[0][2] - boxes[0][0])
+
+    def test_the_grid_follows_the_panel(self):
+        from display_panel import grid_cells
+        self.assertTrue(all(y1 < 16 for _, _, _, y1 in grid_cells(128, 32)))
+
+    def test_the_wave_has_the_lower_half(self):
+        from display_panel import wave_box
+        self.assertEqual(wave_box(W, H), (0, 32, 127, 63))
+
+
+class ChannelCells(unittest.TestCase):
+    def test_a_stem_on_another_channel_is_a_ring(self):
+        from display_panel import channel_cells
+        places = [1, None, 4, None, None, None, None, None]   # pair 3 on the return
+        cells = channel_cells(0, places, 0, W, H)
+        self.assertEqual(cells[0].mark, "ring")
+        self.assertEqual(cells[2].mark, "dot")
+
+    def test_the_own_digit_stands_at_what_is_loaded(self):
+        from display_panel import channel_cells
+        places = [None, 0, None, None, None, None, None, None]
+        cells = channel_cells(0, places, 0, W, H)
+        self.assertEqual([c.digit for c in cells], [None, "1"] + [None] * 7)
+        self.assertIsNone(cells[1].mark)
+
+    def test_analog_carries_the_digit_at_a(self):
+        from display_panel import channel_cells
+        self.assertEqual(channel_cells(2, NOWHERE, 0, W, H)[8].digit, "3")
+
+    def test_the_cursor_is_inverted(self):
+        from display_panel import channel_cells
+        cells = channel_cells(0, NOWHERE, 5, W, H)
+        self.assertEqual([c.inverted for c in cells].index(True), 4)
+        self.assertTrue(channel_cells(0, NOWHERE, 0, W, H)[8].inverted)
+
+
+class ReturnCells(unittest.TestCase):
+    def test_every_stem_shows_where_it_plays(self):
+        from display_panel import return_cells
+        places = [0, 4, None, 2, None, None, None, None]
+        cells = return_cells(places, 3, W, H)
+        self.assertEqual([c.digit for c in cells], ["1", "5", None, "3", None, None, None, None])
+        self.assertEqual(cells[2].mark, "dot")
+        self.assertTrue(cells[2].inverted)
+
+    def test_nothing_free_inverts_nothing(self):
+        from display_panel import return_cells
+        self.assertFalse(any(c.inverted for c in return_cells([0] * 8, 0, W, H)))
+
+    def test_the_cells_sit_in_the_grid(self):
+        from display_panel import grid_cells, return_cells
+        self.assertEqual([c.box for c in return_cells(NOWHERE, 1, W, H)], grid_cells(W, H)[:8])
+
+
 class SelectionAnnouncements(unittest.TestCase):
     def test_a_selection_announcement_is_zero_to_eight(self):
         from display_panel import selected_announcement

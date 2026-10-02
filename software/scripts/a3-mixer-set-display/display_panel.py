@@ -234,6 +234,61 @@ def symbol_shape(symbol, box):
     return "polygon", tuple(points)
 
 
+#: A cell of the stem grid (spec desk-stem-grid): `box` its square, `mark`
+#: "dot", "ring" or None, `digit` "1"-"5" or None, `inverted` the cursor.
+Cell = namedtuple("Cell", "box mark digit inverted")
+
+
+GRID_COLUMNS = STEMS_PER_DECK + 1   # deck 1 then A; deck 2 then the return's spare place
+A_CELL = PAIRS                      # grid_cells' index of A
+
+
+def grid_cells(width, height):
+    """The grid's squares in the upper half: pairs 1-8, then A, then the
+    spare place under it. Two rows fill the half; neighbours share an edge,
+    so the dots sit as close as the panel allows."""
+    pitch = height // 4 - 1
+    left = (width - GRID_COLUMNS * pitch) // 2
+    order = [(i % STEMS_PER_DECK, i // STEMS_PER_DECK) for i in range(PAIRS)]
+    order += [(STEMS_PER_DECK, 0), (STEMS_PER_DECK, 1)]
+    return [(left + c * pitch, r * pitch, left + (c + 1) * pitch, (r + 1) * pitch)
+            for c, r in order]
+
+
+def wave_box(width, height):
+    """The lower half, for the waveform."""
+    return (0, height // 2, width - 1, height - 1)
+
+
+def channel_cells(index, places, cursor, width, height):
+    """Channel `index`'s grid: pairs 1-8, then A. A dot where the channel may
+    choose, a ring where another channel plays, its own digit at what it
+    plays (A while analog), the cursor (0 = A) inverted."""
+    boxes = grid_cells(width, height)
+    digit = str(index + 1)
+    cells = []
+    for i, place in enumerate(places):
+        if place == index:
+            cells.append(Cell(boxes[i], None, digit, cursor == i + 1))
+            continue
+        on_other = place is not None and place != RETURN_PLACE
+        cells.append(Cell(boxes[i], "ring" if on_other else "dot", None, cursor == i + 1))
+    analog = index not in places
+    cells.append(Cell(boxes[A_CELL], None if analog else "dot", digit if analog else None,
+                      cursor == 0))
+    return cells
+
+
+def return_cells(places, cursor, width, height):
+    """The return's grid: at every stem the digit of where it plays (1-4 a
+    channel, 5 the return), a dot where it plays nowhere; the cursor
+    inverted (none for 0)."""
+    boxes = grid_cells(width, height)
+    return [Cell(boxes[i], "dot" if place is None else None,
+                 None if place is None else str(place + 1), cursor == i + 1)
+            for i, place in enumerate(places)]
+
+
 def selected_announcement(args):
     """The selection out of `/channel/{ch}/stem/selected`'s arguments (0 = A,
     1-8 a stem), or None if damaged."""
