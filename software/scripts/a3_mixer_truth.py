@@ -17,6 +17,7 @@ truth. Stdlib only: the announcement is an address and two strings.
 """
 
 import hashlib
+import http.client
 import os
 import struct
 import urllib.request
@@ -24,6 +25,12 @@ from pathlib import Path
 
 ANNOUNCE_PORT = 7790
 ANNOUNCE_ADDRESS = "/core/here"
+
+
+def follows_core(environ):
+    """False while $A3_OSC_TRUTH names a truth: that file wins at every start,
+    so following Core would restart the desk into the same file forever."""
+    return not environ.get("A3_OSC_TRUTH")
 
 
 def cache_path():
@@ -73,17 +80,33 @@ def fetch(url, timeout=5.0):
         return reply.read(), reply.headers.get("X-A3-Truth", "")
 
 
-def take(url, announced, path, fetch=fetch):
-    """Fetch, check and store the truth. False, and nothing written, if any
-    of it fails."""
+#: Everything a fetch or a write can raise that is not the desk's fault: a
+#: refusal, never a dead keeper thread (final review 2026-10-02).
+REFUSED = (OSError, ValueError, http.client.HTTPException)
+
+
+def attempt(url, announced, path, fetch=fetch, usable=None):
+    """Fetch, check and store the truth: None, or the reason it was refused
+    (and nothing written). `usable(body)` may refuse it too, with a reason."""
     try:
         body, header = fetch(url)
-    except (OSError, ValueError):
-        return False
+    except REFUSED as problem:
+        return f"fetch failed: {problem!r}"
     if not verified(body, header, announced):
-        return False
-    write_whole(path, body)
-    return True
+        return "body, header and announcement do not agree"
+    reason = usable(body) if usable else None
+    if reason:
+        return reason
+    try:
+        write_whole(path, body)
+    except REFUSED as problem:
+        return f"cannot write {path}: {problem}"
+    return None
+
+
+def take(url, announced, path, fetch=fetch, usable=None):
+    """True if the truth was fetched, checked and stored."""
+    return attempt(url, announced, path, fetch=fetch, usable=usable) is None
 
 
 def keep(sock, own, path, restart, report, running, fetch=fetch):
@@ -95,20 +118,28 @@ def keep(sock, own, path, restart, report, running, fetch=fetch):
         if found is None or not needs_fetch(found[1], own):
             continue
         url, announced = found
-        if take(url, announced, path, fetch=fetch):
+        reason = attempt(url, announced, path, fetch=fetch)
+        if reason is None:
             restart()
         else:
-            report(f"truth from {url} refused (fetch failed or did not match)")
+            report(f"truth from {url} refused: {reason}")
 
 
-def wait_for_truth(sock, path, report, fetch=fetch):
-    """Until the first announcement whose truth can be taken."""
+def wait_for_truth(sock, path, report, own=None, usable=None, fetch=fetch):
+    """Until the first announcement whose truth can be taken and is usable.
+    The truth the desk already has (`own`) is not fetched again, and a
+    refusal is said once per reason -- not every 2 s while Core lacks a word
+    too (final review 2026-10-02: that was the restart loop again)."""
+    said = None
     while True:
         data, _ = sock.recvfrom(4096)
         found = announcement(data)
-        if found is None:
+        if found is None or found[1] == own:
             continue
         url, announced = found
-        if take(url, announced, path, fetch=fetch):
+        reason = attempt(url, announced, path, fetch=fetch, usable=usable)
+        if reason is None:
             return
-        report(f"truth from {url} refused (fetch failed or did not match)")
+        if reason != said:
+            report(f"truth from {url} refused: {reason}")
+            said = reason

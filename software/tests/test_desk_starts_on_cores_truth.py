@@ -59,6 +59,17 @@ class WhereTheTruthComesFrom(unittest.TestCase):
             self.assertEqual(a3_mixer_osc.truth_path(), Path("/x/a3-osc.json"))
 
 
+class AnUnreadableCache(unittest.TestCase):
+    """Spec: missing *or unreadable* -> wait for Core (final review)."""
+
+    def test_garbage_is_missing_not_a_crash(self):
+        for raw in (b"", b"{", b"[]", b'{"no": "addresses"}'):
+            path = Path(tempfile.mkdtemp()) / "a3-osc.json"
+            path.write_bytes(raw)
+            with self.assertRaises(a3_mixer_osc.TruthMissing, msg=raw):
+                a3_mixer_osc.load(path)
+
+
 class TheBootstrapIsTheTruths(unittest.TestCase):
     """The two literals a desk knows before it has a truth (a3-core's guard
     allows them by name) are the truth's own."""
@@ -93,6 +104,14 @@ class TheDeskWaitsInsteadOfLooping(unittest.TestCase):
 
     def test_the_keeper_runs_beside_the_desk(self):
         self.assertIn("target=keep", self.source)
+
+    def test_the_wait_skips_its_own_and_checks_the_words(self):
+        call = self.source.split("wait_for_truth(announce_socket", 1)[1].split("\n    say(", 1)[0]
+        self.assertIn("own=", call)
+        self.assertIn("usable=usable", call)
+
+    def test_an_override_is_not_followed(self):
+        self.assertIn("follows_core(os.environ)", self.source)
 
 
 if __name__ == "__main__":

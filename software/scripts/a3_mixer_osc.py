@@ -232,5 +232,10 @@ def load(path=None):
         raise TruthMissing(f"no truth at {cache_path()} or {BESIDE_THE_SCRIPT}")
     if not path.exists():
         raise TruthMissing(f"no a3-osc.json at {path}")
-    raw = path.read_bytes()
-    return MixerOsc(json.loads(raw), hashlib.sha256(raw).hexdigest())
+    # Unreadable is missing too (spec): the desk then waits for Core's truth
+    # instead of crashing into a restart loop on a damaged cache.
+    try:
+        raw = path.read_bytes()
+        return MixerOsc(json.loads(raw), hashlib.sha256(raw).hexdigest())
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as problem:
+        raise TruthMissing(f"{path} is unreadable: {problem!r}") from None

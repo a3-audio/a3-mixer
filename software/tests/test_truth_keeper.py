@@ -171,5 +171,53 @@ class TheLoop(unittest.TestCase):
         self.assertEqual(path.read_bytes(), body)
 
 
+
+class NoNewLoops(unittest.TestCase):
+    """Final review 2026-10-02: the old restart loop came back in new shapes."""
+
+    def test_waiting_skips_the_truth_the_desk_already_has(self):
+        body, mark = marked(b'{"a":1}')
+        other, other_mark = marked(b'{"a":2}')
+        fetched, path = [], Path(tempfile.mkdtemp()) / "a3-osc.json"
+        sock = FakeSocket([osc(ANNOUNCE_ADDRESS, "http://same", mark),
+                           osc(ANNOUNCE_ADDRESS, "http://other", other_mark)])
+        wait_for_truth(sock, path, print, own=mark,
+                       fetch=lambda url: (fetched.append(url), (other, other_mark))[1])
+        self.assertEqual(fetched, ["http://other"])
+
+    def test_waiting_keeps_waiting_while_cores_truth_lacks_the_word_too(self):
+        lacking, lacking_mark = marked(b'{"old":1}')
+        good, good_mark = marked(b'{"new":1}')
+        reports, path = [], Path(tempfile.mkdtemp()) / "a3-osc.json"
+        bodies = {"http://a": (lacking, lacking_mark), "http://b": (good, good_mark)}
+        sock = FakeSocket([osc(ANNOUNCE_ADDRESS, "http://a", lacking_mark),
+                           osc(ANNOUNCE_ADDRESS, "http://a", lacking_mark),
+                           osc(ANNOUNCE_ADDRESS, "http://b", good_mark)])
+        wait_for_truth(sock, path, reports.append, fetch=lambda url: bodies[url],
+                       usable=lambda body: None if b"new" in body else "lacks x")
+        self.assertEqual(path.read_bytes(), good)
+        self.assertEqual(sum("lacks x" in r for r in reports), 1)   # said once, not every 2 s
+
+    def test_an_unexpected_http_failure_is_a_refusal_not_a_dead_keeper(self):
+        import http.client
+
+        def broken(url):
+            raise http.client.IncompleteRead(b"")
+        self.assertFalse(take("http://x", "a" * 64, Path(tempfile.mkdtemp()) / "t.json",
+                              fetch=broken))
+
+    def test_a_cache_that_cannot_be_written_is_a_refusal(self):
+        body, mark = marked(b'{"a":1}')
+        blocked = Path(tempfile.mkdtemp()) / "file"
+        blocked.write_text("")
+        self.assertFalse(take("http://x", mark, blocked / "a3-osc.json",
+                              fetch=lambda url: (body, mark)))
+
+    def test_with_an_override_the_desk_does_not_follow_core(self):
+        from a3_mixer_truth import follows_core
+        self.assertTrue(follows_core({}))
+        self.assertFalse(follows_core({"A3_OSC_TRUTH": "/x.json"}))
+
+
 if __name__ == "__main__":
     unittest.main()
