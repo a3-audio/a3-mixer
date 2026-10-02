@@ -476,7 +476,8 @@ class Painting(unittest.TestCase):
                 inside = set()
                 for item in picture.items:
                     x0, y0, x1, y1 = item.box
-                    inside |= {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
+                    bottom = y1 + 2 if item.marked else y1      # the mark sits under its box
+                    inside |= {(x, y) for x in range(x0, x1 + 1) for y in range(y0, bottom + 1)}
                 spilled = [(x, y) for x in range(128) for y in range(32)
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
@@ -498,13 +499,22 @@ class Painting(unittest.TestCase):
         ImageDraw.Draw(tofu).text((2, 2), "\uffff", fill="white", font=_font(14))
         self.assertNotEqual(list(image.getdata()), list(tofu.getdata()))
 
+    def test_the_mark_shows_under_the_cursor_too(self):
+        """Final review: after a push the cursor stands on what plays, and a
+        black underline inside the white box read as 'nothing loaded'."""
+        picture = self.channel(0, (0, 0), [0] + [None] * 7, 0.0)   # D1 plays, cursor on D1
+        image = self.paint_state("marked-under-cursor", picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        self.assertTrue(picture.items[0].inverted and picture.items[0].marked)
+        self.assertTrue(self.lit(image, (x0, y1 + 1, x1, min(31, y1 + 3))))
+
     def test_marked_is_underlined(self):
         picture = self.channel(0, (0, 2), [None] * 8, 0.0)   # A plays, cursor on A
         unmarked = self.channel(0, (0, 2), [0] + [None] * 7, 0.0)
         image, other = self.paint_state("marked", picture), self.paint_state("unmarked", unmarked)
         x0, y0, x1, y1 = picture.items[0].box                 # D1: marked in `unmarked` only
-        self.assertFalse(self.lit(image, (x0, y1 - 1, x1, y1)))
-        self.assertTrue(self.lit(other, (x0, y1 - 1, x1, y1)))
+        self.assertFalse(self.lit(image, (x0, y1 + 1, x1, min(31, y1 + 3))))
+        self.assertTrue(self.lit(other, (x0, y1 + 1, x1, min(31, y1 + 3))))
 
     def test_a_crossed_stem_carries_a_line_and_its_channel(self):
         picture = self.channel(0, (1, 4), [3] + [None] * 7, 0.0)   # stem 1 plays on channel 4

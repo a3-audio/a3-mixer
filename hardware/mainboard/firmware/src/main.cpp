@@ -237,6 +237,9 @@ void leds()
             color = pixels.Color(0,0,0);
           pixels.setPixelColor(vupxlstrips[i][j], color);
         }
+        // Only here, the one place that sets NeoPixels: show() keeps
+        // interrupts off ~1.4 ms, and on every line it starved the encoders.
+        pixels.show();
       }
       // output VU meters
       else if(vu_index >= 4 && vu_index < 12) {
@@ -265,7 +268,6 @@ void leds()
         }
       }
     }
-    pixels.show();
   }
 }
 

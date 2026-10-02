@@ -62,6 +62,15 @@ class TheMainMeterGivesUpItsTopModule(unittest.TestCase):
         self.assertIn("j < 24", output[:output.index("}")])
         self.assertIn('command.equals("SVU")', source)
 
+    def test_only_neopixel_changes_show_the_neopixels(self):
+        """Final review: pixels.show() keeps interrupts off ~1.4 ms on 48
+        pixels; on every SVU and output-VU line it starved the encoders."""
+        leds = self.FIRMWARE.read_text()
+        leds = leds[leds.index("void leds()"):leds.index("void readEncoder()")]
+        self.assertEqual(leds.count("pixels.show()"), 1)   # the input VU: the only NeoPixels
+        svu = leds[leds.index('command.equals("SVU")'):]
+        self.assertNotIn("pixels.show()", svu)
+
 
 if __name__ == "__main__":
     unittest.main()

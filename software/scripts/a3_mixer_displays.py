@@ -106,7 +106,9 @@ def upper_half(items, width, height):
         size = round((y1 - y0) * TEXT_OF_ITEM)
         _text(draw, item.box, item.text, size, ink, "centre")
         if item.marked:
-            draw.line((x0 + 1, y1, x1 - 1, y1), fill=ink)
+            # Under the box, always white: under the cursor's white box a
+            # black line inside it vanished (final review, 2026-10-02).
+            draw.line((x0 + 1, y1 + 2, x1 - 1, y1 + 2), fill="white")
         if item.crossed:
             draw.line((x0, y1, x1, y0), fill=ink)
             _text(draw, item.box, item.note, round((y1 - y0) * NOTE_OF_ITEM), ink, "top right")
