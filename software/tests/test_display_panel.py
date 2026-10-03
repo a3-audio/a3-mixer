@@ -128,45 +128,51 @@ NOWHERE = [None] * 8
 
 
 class ChannelMenu(unittest.TestCase):
-    """Each channel encoder is a two-level menu (spec desk-stem-grid-2):
-    D1 / D2 / A, then a deck's stems 1-4 and back -- text in the upper half."""
+    """Each channel encoder is a two-level menu (spec desk-stem-grid-2). The
+    top level says which deck and which stem play: D1.3  D2.-  A
+    (2026-10-03); a deck's level shows one large entry at a time."""
 
-    def test_the_top_level_is_d1_d2_a(self):
+    def test_the_top_level_names_deck_and_stem(self):
         from display_panel import menu_items
-        items = menu_items(0, (0, 1), NOWHERE, W, H)
-        self.assertEqual([i.text for i in items], ["D1", "D2", "A"])
+        places = [None, None, 0, None] + [None] * 4    # pair 3 = D1 stem 3 on channel 1
+        items = menu_items(0, (0, 1), places, W, H)
+        self.assertEqual([i.text for i in items], ["D1.3", "D2.-", "A"])
         self.assertEqual([i.inverted for i in items], [False, True, False])
 
-    def test_the_source_is_marked(self):
+    def test_a_stem_of_each_deck_shows_both(self):
         from display_panel import menu_items
-        places = [None] * 5 + [2, None, None]          # pair 6 = deck 2 on channel 3
-        self.assertEqual([i.marked for i in menu_items(2, (0, 0), places, W, H)],
-                         [False, True, False])
-        self.assertEqual([i.marked for i in menu_items(0, (0, 0), places, W, H)],
-                         [False, False, True])         # channel 1 plays analog
+        places = [None, 1, None, None, None, None, 1, None]   # D1.2 and D2.3 on channel 2
+        items = menu_items(1, (0, 0), places, W, H)
+        self.assertEqual([i.text for i in items], ["D1.2", "D2.3", "A"])
+        self.assertEqual([i.marked for i in items], [True, True, False])
 
-    def test_a_stem_of_each_deck_marks_both(self):
-        """2026-10-02: a channel may play one stem of each deck."""
+    def test_analog_is_marked(self):
         from display_panel import menu_items
-        places = [None, 1, None, None, None, None, 1, None]   # pairs 2 and 7 on channel 2
-        self.assertEqual([i.marked for i in menu_items(1, (0, 0), places, W, H)],
-                         [True, True, False])
+        self.assertEqual([i.marked for i in menu_items(0, (0, 0), NOWHERE, W, H)],
+                         [False, False, True])
 
-    def test_a_deck_level_is_its_name_four_stems_and_back(self):
+    def test_a_deck_level_shows_one_large_entry(self):
         from display_panel import menu_items
-        items = menu_items(0, (2, 4), NOWHERE, W, H)
-        self.assertEqual([i.text for i in items], ["D2", "1", "2", "3", "4", "<"])
-        self.assertTrue(items[5].inverted)
+        items = menu_items(0, (2, 2), NOWHERE, W, H)
+        self.assertEqual([i.text for i in items], ["D2.3"])
+        x0, y0, x1, y1 = items[0].box
+        self.assertGreater(x1 - x0, W // 2)
         self.assertFalse(items[0].inverted)
 
-    def test_a_stem_on_this_channel_is_marked_one_elsewhere_crossed(self):
+    def test_back_is_its_own_entry(self):
+        from display_panel import menu_items
+        self.assertEqual([i.text for i in menu_items(0, (1, 4), NOWHERE, W, H)], ["<"])
+
+    def test_the_stem_this_channel_plays_is_marked_one_elsewhere_crossed(self):
         from display_panel import menu_items
         places = [0, 3, None, 4] + [None] * 4          # pair 1 here, pair 2 on ch 4, pair 4 on AUX
-        items = menu_items(0, (1, 0), places, W, H)
-        self.assertTrue(items[1].marked)
-        self.assertTrue(items[2].crossed)
-        self.assertEqual(items[2].note, "4")
-        self.assertFalse(items[4].crossed)             # on the return: loadable
+        here = menu_items(0, (1, 0), places, W, H)[0]
+        elsewhere = menu_items(0, (1, 1), places, W, H)[0]
+        on_aux = menu_items(0, (1, 3), places, W, H)[0]
+        self.assertTrue(here.marked and not here.crossed)
+        self.assertTrue(elsewhere.crossed)
+        self.assertEqual(elsewhere.note, "4")
+        self.assertFalse(on_aux.crossed)               # on the return: loadable
 
     def test_the_items_sit_in_the_upper_half_side_by_side(self):
         from display_panel import menu_items
