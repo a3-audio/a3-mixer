@@ -185,24 +185,29 @@ class ChannelMenu(unittest.TestCase):
         self.assertTrue(menu_items(0, (1, 4), [0] + [None] * 7, W, H)[0].marked)
         self.assertFalse(menu_items(0, (1, 4), NOWHERE, W, H)[0].marked)
 
-    def test_the_stem_this_channel_plays_is_marked_one_elsewhere_crossed(self):
+    def test_the_stem_this_channel_plays_is_marked(self):
         from display_panel import menu_items
         places = [0, 3, None, 4] + [None] * 4          # pair 1 here, pair 2 on ch 4, pair 4 on AUX
         here = menu_items(0, (1, 0), places, W, H)[0]
-        elsewhere = menu_items(0, (1, 1), places, W, H)[0]
         on_aux = menu_items(0, (1, 3), places, W, H)[0]
-        self.assertTrue(here.marked and not here.crossed)
-        self.assertTrue(elsewhere.crossed)
-        self.assertFalse(elsewhere.marked)
-        self.assertEqual(elsewhere.note, "4")
-        self.assertFalse(on_aux.crossed)               # on the return: loadable
+        self.assertTrue(here.marked)
+        self.assertEqual((on_aux.text, on_aux.cursor_from), ("D1.4", 3))   # on the return: loadable
 
-    def test_a_crossed_deck_2_stem_crosses_the_d2_field(self):
-        from display_panel import menu_items
+    def test_a_stem_on_another_channel_points_there(self):
+        """Maintainer, 2026-10-03: the crossed field was unreadable. It reads
+        D1.2>4 instead, and is no cursor: a push there does nothing."""
+        from display_panel import TAKEN_ARROW, menu_items
+        places = [0, 3, None, 4] + [None] * 4          # pair 2 plays on channel 4
+        taken = menu_items(0, (1, 1), places, W, H)[0]
+        self.assertEqual(taken.text, "D1.2" + TAKEN_ARROW + "4")
+        self.assertFalse(taken.inverted or taken.marked)
+        self.assertIsNone(taken.cursor_from)
+
+    def test_a_taken_deck_2_stem_points_from_the_d2_field(self):
+        from display_panel import TAKEN_ARROW, menu_items
         places = [None] * 4 + [2, None, None, None]    # D2.1 on channel 3
         items = menu_items(0, (2, 0), places, W, H)
-        self.assertEqual([i.crossed for i in items], [False, True, False])
-        self.assertEqual(items[1].note, "3")
+        self.assertEqual([i.text for i in items], ["D1.-", "D2.1" + TAKEN_ARROW + "3", "A"])
 
     def test_the_items_sit_in_the_upper_half_side_by_side(self):
         from display_panel import menu_items

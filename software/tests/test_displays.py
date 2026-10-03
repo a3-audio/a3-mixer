@@ -451,7 +451,7 @@ class Painting(unittest.TestCase):
             "channel-top": self.channel(0, (0, 0), places, 1.0),
             "channel-deck": self.channel(0, (2, 1), places, 0.7),
             "channel-deck-back": self.channel(0, (1, 4), places, 0.7),
-            "channel-deck-crossed": self.channel(1, (1, 2), places, 0.4),
+            "channel-deck-taken": self.channel(1, (1, 2), places, 0.4),
             "return-stem": self.the_return(1, 1, [0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6], (0.7, 0.5)),
             "return-analog": self.the_return(0, 1, [0.0] * 8, (0.8, 0.8)),
         }
@@ -477,6 +477,7 @@ class Painting(unittest.TestCase):
         back arrow was a box the font did not have."""
         for name, picture in {
                 "deck": self.channel(0, (1, 4), [3] + [None] * 7, 0.0),
+                "taken": self.channel(0, (1, 0), [3] + [None] * 7, 0.0),
                 "return": self.the_return(0, 1, [0.0] * 8, (0.0, 0.0))}.items():
             with self.subTest(name):
                 image = self.paint_state(f"fit-{name}", picture)
@@ -489,22 +490,30 @@ class Painting(unittest.TestCase):
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
                 for item in picture.items:
-                    if item.inverted or item.crossed or item.cursor_from is not None:
+                    if item.inverted or item.cursor_from is not None:
                         continue
                     x0, y0, x1, y1 = item.box
                     edges = [(x, y) for x in (x0, x1) for y in range(y0, y1)
                              if image.getpixel((x, y))]
                     self.assertEqual(edges, [], item.text)
 
-    def test_back_is_a_glyph_the_font_has(self):
-        from display_panel import BACK_ENTRY
+    def assert_the_font_has(self, glyph):
         from PIL import Image, ImageDraw
         from a3_mixer_displays import _font
         image = Image.new("1", (40, 20))
-        ImageDraw.Draw(image).text((2, 2), BACK_ENTRY, fill="white", font=_font(14))
+        ImageDraw.Draw(image).text((2, 2), glyph, fill="white", font=_font(14))
         tofu = Image.new("1", (40, 20))
         ImageDraw.Draw(tofu).text((2, 2), "\uffff", fill="white", font=_font(14))
         self.assertNotEqual(list(image.getdata()), list(tofu.getdata()))
+
+    def test_back_is_a_glyph_the_font_has(self):
+        from display_panel import BACK_ENTRY
+        self.assert_the_font_has(BACK_ENTRY)
+
+    def test_the_taken_arrow_is_a_glyph_the_font_has(self):
+        """The default font has no \u2192: it drew the same empty box."""
+        from display_panel import TAKEN_ARROW
+        self.assert_the_font_has(TAKEN_ARROW)
 
     def test_the_mark_shows_under_the_cursor_too(self):
         """Final review: after a push the cursor stands on what plays, and a
@@ -539,6 +548,16 @@ class Painting(unittest.TestCase):
         deck = self.text_height(self.channel(0, (1, 0), places, 0.0), "size-deck")
         self.assertEqual(deck, top)
 
+    def test_a_taken_stem_is_no_cursor(self):
+        """D1.1>4, white on black, whole and inside its field: no bar, no
+        line (maintainer, 2026-10-03)."""
+        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)   # D1.1 plays on channel 4
+        image = self.paint_state("taken", picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        self.assertFalse(self.lit(image, (x0, y0, x1, y0)), "no inverted bar")
+        self.assertFalse(self.lit(image, (x0, y1 - 1, x1, y1)), "no line under the text")
+        self.assertTrue(self.lit(image, (x0, y0, x1, y1)))
+
     def test_only_the_part_behind_the_dot_is_inverted(self):
         picture = self.channel(0, (1, 1), [None] * 8, 0.0)   # D1.2, the 2 the cursor
         image = self.paint_state("behind-the-dot", picture)
@@ -554,38 +573,6 @@ class Painting(unittest.TestCase):
         self.assertIn(0, list(bar.getdata()))
         # D1. is drawn white on black left of it.
         self.assertTrue(self.lit(image, (x0, y0, min(lit) - 2, y1)))
-
-    def test_the_crossed_field_keeps_its_note_inside(self):
-        """The edit field is a third of the width: the channel's number has
-        to fit beside the crossed text."""
-        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)
-        image = self.paint_state("crossed-fits", picture)
-        x0, y0, x1, y1 = picture.items[0].box
-        next_x0 = picture.items[1].box[0]
-        self.assertFalse(self.lit(image, (x1 + 1, 0, next_x0 - 1, 31)))
-        self.assertFalse(self.lit(image, (0, 0, x0 - 1, 31)))
-        # At the full size the text filled the field and the note sat on
-        # the digit: a crossed text gives way.
-        # The top of the D tells its size: the cross runs below it there.
-        plain = self.channel(0, (1, 1), [3] + [None] * 7, 0.0)
-        self.assertGreater(self.text_top(picture, "crossed-top"),
-                           self.text_top(plain, "plain-top"))
-
-    def text_top(self, picture, name):
-        """The first lit row in the left quarter of the first item's box."""
-        image = self.paint_state(name, picture)
-        x0, y0, x1, y1 = picture.items[0].box
-        return min(y for y in range(y0, y1 + 1)
-                   if any(image.getpixel((x, y)) for x in range(x0, x0 + (x1 - x0) // 4)))
-
-    def test_a_crossed_stem_carries_a_line_and_its_channel(self):
-        places = [3] + [None] * 7                                  # D1.1 plays on channel 4
-        crossed = self.channel(0, (1, 0), places, 0.0)
-        plain = self.channel(0, (1, 1), places, 0.0)
-        self.assertTrue(crossed.items[0].crossed and not plain.items[0].crossed)
-        count = lambda image: sum(1 for v in image.crop((0, 0, 128, 32)).getdata() if v)
-        self.assertGreater(count(self.paint_state("crossed", crossed)),
-                           count(self.paint_state("plain", plain)) + 10)
 
     def test_the_upper_half_is_painted_once_per_state(self):
         from a3_mixer_displays import upper_half

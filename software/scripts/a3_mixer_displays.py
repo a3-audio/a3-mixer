@@ -56,10 +56,8 @@ WAVE_HEIGHT = 32
 #: stopped, and the last peak must not stand on the display for ever.
 METER_STALE_SECONDS = 0.5
 
-#: Text height as a share of its item's box; a note (a crossed stem's
-#: channel) is smaller still.
+#: Text height as a share of its item's box.
 TEXT_OF_ITEM = 0.75
-NOTE_OF_ITEM = 0.45
 
 
 @functools.lru_cache(maxsize=8)
@@ -101,7 +99,7 @@ def _text(draw, box, text, size, ink, anchor):
 
 def _invert(image, box):
     """Turns white to black and back inside `box` -- the cursor over part
-    of a field, drawn after its text, cross and note."""
+    of a field, drawn after its text."""
     x0, y0, x1, y1 = box
     area = (x0, y0, x1 + 1, y1 + 1)
     image.paste(image.crop(area).point(lambda v: 255 - v), area[:2])
@@ -129,36 +127,18 @@ def _item(image, draw, item):
         draw.rectangle(item.box, fill="white")
         ink = "black"
     size = round((y1 - y0) * TEXT_OF_ITEM)
-    note_size = round((y1 - y0) * NOTE_OF_ITEM)
-    text_box = item.box
-    if item.crossed:
-        # Room for the channel's number beside the text: in a third of the
-        # panel the text filled the field and the note fell off its edge.
-        note_width = draw.textlength(item.note, font=_font(note_size))
-        text_box = (x0, y0, x1 - round(note_width) - 2, y1)
-    font, at, (tx0, ty0, tx1, ty1) = _fit(draw, text_box, item.text, size, "centre")
+    font, at, (tx0, _, tx1, _) = _fit(draw, item.box, item.text, size, "centre")
     draw.text(at, item.text, fill=ink, font=font)
-    cursor_x0 = None
-    if item.cursor_from is not None:
-        # From just after the dot's ink: from its advance the bar bit the
-        # dot off (snapshot, 2026-10-03).
-        prefix = draw.textbbox(at, item.text[:item.cursor_from], font=font)[2]
-        cursor_x0 = max(x0, round(prefix) + 1)
     # Marks follow the text, not the box (2026-10-03).
     if item.marked:
         # Under the box, always white: under the cursor's white box a
         # black line inside it vanished (final review, 2026-10-02).
         draw.line((max(x0, tx0 - 1), y1 + 2, min(x1, tx1 + 1), y1 + 2), fill="white")
-    if item.crossed:
-        # Across the whole text, shallow: over the stem alone the line read
-        # as part of a narrow 1, and an X hid the digit (snapshots,
-        # 2026-10-03).
-        draw.line((tx0 - 1, ty1 + 1, tx1 + 1, ty0 - 1), fill=ink)
-        note = (min(tx1 + 2, x1 - 2), y0, x1, ty1)
-        _text(draw, note, item.note, note_size, ink, "after")
-    if cursor_x0 is not None:
-        _invert(image, (cursor_x0, y0, x1, y1))
-
+    if item.cursor_from is not None:
+        # From just after the dot's ink: from its advance the bar bit the
+        # dot off (snapshot, 2026-10-03).
+        prefix = draw.textbbox(at, item.text[:item.cursor_from], font=font)[2]
+        _invert(image, (max(x0, round(prefix) + 1), y0, x1, y1))
 
 def paint(image, picture):
     """Draw `picture` onto a 1-bit PIL image: the menu (cached), then the
