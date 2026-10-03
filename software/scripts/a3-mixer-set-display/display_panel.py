@@ -232,14 +232,16 @@ class WaveStrip:
 
 
 #: One entry of a menu in the upper half (spec desk-stem-grid-2): `inverted`
-#: is the cursor, `marked` what plays, `crossed` a stem another channel has,
-#: whose number is `note`.
-MenuItem = namedtuple("MenuItem", "box text inverted marked crossed note")
+#: is the cursor, `marked` what plays. `cursor_from` is the cursor inside the
+#: text -- the index where its inverted part starts (2026-10-03: behind the
+#: dot of D1.3 while a deck is edited) -- or None.
+MenuItem = namedtuple("MenuItem", "box text inverted marked cursor_from", defaults=(None,))
 
 #: A channel menu's levels and entries -- a3_core_stems' numbers.
 TOP_LEVEL = 0
 TOP_ENTRIES = ("D1", "D2", "A")
 BACK_ENTRY = "<"   # the default font has no arrow: "\u2190" drew an empty box
+TAKEN_ARROW = ">"  # D1.2>4: stem 2 plays on channel 4; "\u2192" drew an empty box too
 
 
 def _slots(count, width, height):
@@ -257,33 +259,56 @@ def _sources(index, places):
     return decks or {2}
 
 
-def _deck_label(deck, places, index):
-    """'D1.3' -- the deck and the stem of it this channel plays -- or 'D1.-'."""
+def _stem_here(deck, places, index):
+    """The stem (0-3) of `deck` channel `index` plays, or None."""
     stems = [stem for stem in range(STEMS_PER_DECK)
              if places[deck * STEMS_PER_DECK + stem] == index]
-    return "D%d.%s" % (deck + 1, stems[0] + 1 if stems else "-")
+    return stems[0] if stems else None
+
+
+def _deck_label(deck, places, index):
+    """'D1.3' -- the deck and the stem of it this channel plays -- or 'D1.-'."""
+    stem = _stem_here(deck, places, index)
+    return "D%d.%s" % (deck + 1, "-" if stem is None else stem + 1)
+
+
+def _top_items(index, cursor, places, boxes):
+    sources = _sources(index, places)
+    texts = [_deck_label(0, places, index), _deck_label(1, places, index), "A"]
+    return [MenuItem(box, text, cursor == i, i in sources)
+            for i, (box, text) in enumerate(zip(boxes, texts))]
+
+
+def _edit_item(index, deck, cursor, places, box):
+    """The edited deck's field: the candidate behind the dot -- 'D1.2', or
+    'D1.<' for back -- marked when it plays here. A stem another channel
+    plays points there, 'D1.2>4', and is no cursor: a push on it does
+    nothing (maintainer, 2026-10-03: crossed out, it was unreadable)."""
+    prefix = "D%d." % (deck + 1)
+    if cursor == STEMS_PER_DECK:
+        playing = _stem_here(deck, places, index) is not None
+        return MenuItem(box, prefix + BACK_ENTRY, False, playing, len(prefix))
+    text = prefix + str(cursor + 1)
+    place = places[deck * STEMS_PER_DECK + cursor]
+    if place is not None and place not in (index, RETURN_PLACE):
+        return MenuItem(box, text + TAKEN_ARROW + str(place + 1), False, False)
+    return MenuItem(box, text, False, place == index, len(prefix))
 
 
 def menu_items(index, menu, places, width, height):
     """Channel `index`'s menu. At the top: D1.3  D2.-  A -- which stem of
     each deck plays (2026-10-03), what plays marked, the cursor inverted.
-    In a deck: one large entry, the cursor's -- 'D1.3' or '<' -- marked when
-    it plays here, crossed with the channel's number when it plays on
-    another; the small displays had no room for the row of five."""
+    In a deck the same row, the deck's own field edited in place
+    (2026-10-03: no sub-level screen): the candidate stem or '<' behind the
+    dot, and only that part is the cursor."""
     level, cursor = menu
+    boxes = _slots(3, width, height)
     if level == TOP_LEVEL:
-        sources = _sources(index, places)
-        texts = [_deck_label(0, places, index), _deck_label(1, places, index), "A"]
-        return [MenuItem(box, text, cursor == i, i in sources, False, None)
-                for i, (box, text) in enumerate(zip(_slots(3, width, height), texts))]
-    half = height // 2
-    box = (2, 0, width - 3, half - 3)   # the whole upper half, the mark below: one entry, large
-    if cursor == STEMS_PER_DECK:
-        return [MenuItem(box, BACK_ENTRY, False, False, False, None)]
-    place = places[(level - 1) * STEMS_PER_DECK + cursor]
-    crossed = place is not None and place not in (index, RETURN_PLACE)
-    return [MenuItem(box, "D%d.%d" % (level, cursor + 1), False, place == index,
-                     crossed, str(place + 1) if crossed else None)]
+        return _top_items(index, cursor, places, boxes)
+    deck = level - 1
+    items = _top_items(index, None, places, boxes)
+    items[deck] = _edit_item(index, deck, cursor, places, boxes[deck])
+    return items
 
 
 #: The aux return's modes -- a3_core_stems' numbers.
@@ -293,8 +318,8 @@ ANALOG_MODE, STEM_MODE = 0, 1
 def return_items(mode, cursor, width, height):
     """The return's two modes: the active one marked, the cursor inverted."""
     boxes = _slots(2, width, height)
-    return [MenuItem(boxes[0], "STEM", cursor == STEM_MODE, mode == STEM_MODE, False, None),
-            MenuItem(boxes[1], "ANALOG", cursor == ANALOG_MODE, mode == ANALOG_MODE, False, None)]
+    return [MenuItem(boxes[0], "STEM", cursor == STEM_MODE, mode == STEM_MODE),
+            MenuItem(boxes[1], "ANALOG", cursor == ANALOG_MODE, mode == ANALOG_MODE)]
 
 
 def return_bars(stem_levels, aux_levels, width, height):

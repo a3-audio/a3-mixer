@@ -130,7 +130,8 @@ NOWHERE = [None] * 8
 class ChannelMenu(unittest.TestCase):
     """Each channel encoder is a two-level menu (spec desk-stem-grid-2). The
     top level says which deck and which stem play: D1.3  D2.-  A
-    (2026-10-03); a deck's level shows one large entry at a time."""
+    (2026-10-03); a deck's level edits its field in place, the cursor only
+    behind the dot (2026-10-03)."""
 
     def test_the_top_level_names_deck_and_stem(self):
         from display_panel import menu_items
@@ -151,28 +152,62 @@ class ChannelMenu(unittest.TestCase):
         self.assertEqual([i.marked for i in menu_items(0, (0, 0), NOWHERE, W, H)],
                          [False, False, True])
 
-    def test_a_deck_level_shows_one_large_entry(self):
+    def test_a_deck_level_keeps_the_three_fields(self):
+        """2026-10-03: no sub-level screen -- the edit happens in the deck's
+        own field, behind its dot; the other two stay as they are."""
         from display_panel import menu_items
-        items = menu_items(0, (2, 2), NOWHERE, W, H)
-        self.assertEqual([i.text for i in items], ["D2.3"])
-        x0, y0, x1, y1 = items[0].box
-        self.assertGreater(x1 - x0, W // 2)
-        self.assertFalse(items[0].inverted)
+        places = [None, None, 0, None, None, 0, None, None]   # D1.3 and D2.2 on channel 1
+        items = menu_items(0, (1, 1), places, W, H)
+        self.assertEqual([i.text for i in items], ["D1.2", "D2.2", "A"])
+        self.assertEqual([i.box for i in items], [i.box for i in menu_items(0, (0, 0), places, W, H)])
 
-    def test_back_is_its_own_entry(self):
+    def test_the_cursor_is_only_behind_the_dot(self):
         from display_panel import menu_items
-        self.assertEqual([i.text for i in menu_items(0, (1, 4), NOWHERE, W, H)], ["<"])
+        items = menu_items(0, (2, 3), NOWHERE, W, H)
+        self.assertEqual([i.text for i in items], ["D1.-", "D2.4", "A"])
+        self.assertEqual([i.inverted for i in items], [False, False, False])
+        self.assertEqual([i.cursor_from for i in items], [None, 3, None])
 
-    def test_the_stem_this_channel_plays_is_marked_one_elsewhere_crossed(self):
+    def test_the_top_level_inverts_whole_fields(self):
+        from display_panel import menu_items
+        self.assertEqual([i.cursor_from for i in menu_items(0, (0, 1), NOWHERE, W, H)],
+                         [None, None, None])
+
+    def test_back_shows_behind_the_dot(self):
+        from display_panel import menu_items
+        items = menu_items(0, (1, 4), NOWHERE, W, H)
+        self.assertEqual(items[0].text, "D1.<")
+        self.assertEqual(items[0].cursor_from, 3)
+
+    def test_back_is_marked_while_the_deck_plays_here(self):
+        """'<' changes nothing: the field keeps the mark of what plays."""
+        from display_panel import menu_items
+        self.assertTrue(menu_items(0, (1, 4), [0] + [None] * 7, W, H)[0].marked)
+        self.assertFalse(menu_items(0, (1, 4), NOWHERE, W, H)[0].marked)
+
+    def test_the_stem_this_channel_plays_is_marked(self):
         from display_panel import menu_items
         places = [0, 3, None, 4] + [None] * 4          # pair 1 here, pair 2 on ch 4, pair 4 on AUX
         here = menu_items(0, (1, 0), places, W, H)[0]
-        elsewhere = menu_items(0, (1, 1), places, W, H)[0]
         on_aux = menu_items(0, (1, 3), places, W, H)[0]
-        self.assertTrue(here.marked and not here.crossed)
-        self.assertTrue(elsewhere.crossed)
-        self.assertEqual(elsewhere.note, "4")
-        self.assertFalse(on_aux.crossed)               # on the return: loadable
+        self.assertTrue(here.marked)
+        self.assertEqual((on_aux.text, on_aux.cursor_from), ("D1.4", 3))   # on the return: loadable
+
+    def test_a_stem_on_another_channel_points_there(self):
+        """Maintainer, 2026-10-03: the crossed field was unreadable. It reads
+        D1.2>4 instead, and is no cursor: a push there does nothing."""
+        from display_panel import TAKEN_ARROW, menu_items
+        places = [0, 3, None, 4] + [None] * 4          # pair 2 plays on channel 4
+        taken = menu_items(0, (1, 1), places, W, H)[0]
+        self.assertEqual(taken.text, "D1.2" + TAKEN_ARROW + "4")
+        self.assertFalse(taken.inverted or taken.marked)
+        self.assertIsNone(taken.cursor_from)
+
+    def test_a_taken_deck_2_stem_points_from_the_d2_field(self):
+        from display_panel import TAKEN_ARROW, menu_items
+        places = [None] * 4 + [2, None, None, None]    # D2.1 on channel 3
+        items = menu_items(0, (2, 0), places, W, H)
+        self.assertEqual([i.text for i in items], ["D1.-", "D2.1" + TAKEN_ARROW + "3", "A"])
 
     def test_the_items_sit_in_the_upper_half_side_by_side(self):
         from display_panel import menu_items
