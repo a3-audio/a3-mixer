@@ -205,7 +205,7 @@ class TryingAgain(unittest.TestCase):
         displays.drain()
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual(rig.drawn[-1][1].items[0].text, "<")
+        self.assertEqual(rig.drawn[-1][1].items[0].text, "D1.<")
 
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
@@ -294,7 +294,7 @@ class Waves(unittest.TestCase):
         self.displays._draw_fields = draw_and_turn
         self.step()
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
-        self.assertEqual(self.last_on("Deck 4").items[0].text, "<")
+        self.assertEqual(self.last_on("Deck 4").items[0].text, "D1.<")
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -450,6 +450,7 @@ class Painting(unittest.TestCase):
         states = {
             "channel-top": self.channel(0, (0, 0), places, 1.0),
             "channel-deck": self.channel(0, (2, 1), places, 0.7),
+            "channel-deck-back": self.channel(0, (1, 4), places, 0.7),
             "channel-deck-crossed": self.channel(1, (1, 2), places, 0.4),
             "return-stem": self.the_return(1, 1, [0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6], (0.7, 0.5)),
             "return-analog": self.the_return(0, 1, [0.0] * 8, (0.8, 0.8)),
@@ -488,7 +489,7 @@ class Painting(unittest.TestCase):
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
                 for item in picture.items:
-                    if item.inverted or item.crossed:
+                    if item.inverted or item.crossed or item.cursor_from is not None:
                         continue
                     x0, y0, x1, y1 = item.box
                     edges = [(x, y) for x in (x0, x1) for y in range(y0, y1)
@@ -523,29 +524,59 @@ class Painting(unittest.TestCase):
         self.assertTrue(self.lit(other, (x0, y1 + 1, x1, min(31, y1 + 3))))
 
     def text_height(self, picture, name):
-        """Rows lit inside the first item's box: the text, no underline."""
+        """Rows lit in the left half of the first item's box -- the text
+        before any cursor behind its dot, no underline."""
         image = self.paint_state(name, picture)
         x0, y0, x1, y1 = picture.items[0].box
         rows = [y for y in range(y0, y1 + 1)
-                if any(image.getpixel((x, y)) for x in range(x0, x1 + 1))]
+                if any(image.getpixel((x, y)) for x in range(x0, (x0 + x1) // 2))]
         return max(rows) - min(rows) + 1
 
-    def test_a_decks_entry_is_larger_than_the_top_level(self):
-        """2026-10-03: the deck's level shows one entry, large."""
+    def test_a_decks_field_is_as_large_as_the_top_level(self):
+        """2026-10-03: the deck's level is the top level's row, edited in place."""
         places = [None] * 8
         top = self.text_height(self.channel(0, (0, 1), places, 0.0), "size-top")
         deck = self.text_height(self.channel(0, (1, 0), places, 0.0), "size-deck")
-        self.assertGreaterEqual(deck, top * 1.3, (top, deck))
+        self.assertEqual(deck, top)
 
-    def test_the_cross_stays_with_the_text(self):
-        """Seen in the snapshot: across the wide entry the line ran from edge
-        to edge and the channel number sat at the far right."""
-        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)
-        image = self.paint_state("cross-with-text", picture)
+    def test_only_the_part_behind_the_dot_is_inverted(self):
+        picture = self.channel(0, (1, 1), [None] * 8, 0.0)   # D1.2, the 2 the cursor
+        image = self.paint_state("behind-the-dot", picture)
         x0, y0, x1, y1 = picture.items[0].box
-        edge = (x0, y0, x0 + (x1 - x0) // 8, y1)
-        self.assertFalse(self.lit(image, edge))
-        self.assertFalse(self.lit(image, (x1 - (x1 - x0) // 8, y0, x1, y1)))
+        self.assertEqual(picture.items[0].cursor_from, 3)
+        lit = [x for x in range(x0, x1 + 1) if image.getpixel((x, y0))]
+        self.assertTrue(lit, "a white bar behind the dot")
+        self.assertFalse(image.getpixel((x0, y0)), "D1. stays uninverted")
+        self.assertGreater(min(lit), x0 + (x1 - x0) // 2)
+        self.assertEqual(image.getpixel((x1 - 1, y1)), 255)
+        # The 2 is drawn black inside the white: the bar is not solid.
+        bar = image.crop((min(lit), y0, max(lit) + 1, y1 + 1))
+        self.assertIn(0, list(bar.getdata()))
+        # D1. is drawn white on black left of it.
+        self.assertTrue(self.lit(image, (x0, y0, min(lit) - 2, y1)))
+
+    def test_the_crossed_field_keeps_its_note_inside(self):
+        """The edit field is a third of the width: the channel's number has
+        to fit beside the crossed text."""
+        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)
+        image = self.paint_state("crossed-fits", picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        next_x0 = picture.items[1].box[0]
+        self.assertFalse(self.lit(image, (x1 + 1, 0, next_x0 - 1, 31)))
+        self.assertFalse(self.lit(image, (0, 0, x0 - 1, 31)))
+        # At the full size the text filled the field and the note sat on
+        # the digit: a crossed text gives way.
+        # The top of the D tells its size: the cross runs below it there.
+        plain = self.channel(0, (1, 1), [3] + [None] * 7, 0.0)
+        self.assertGreater(self.text_top(picture, "crossed-top"),
+                           self.text_top(plain, "plain-top"))
+
+    def text_top(self, picture, name):
+        """The first lit row in the left quarter of the first item's box."""
+        image = self.paint_state(name, picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        return min(y for y in range(y0, y1 + 1)
+                   if any(image.getpixel((x, y)) for x in range(x0, x0 + (x1 - x0) // 4)))
 
     def test_a_crossed_stem_carries_a_line_and_its_channel(self):
         places = [3] + [None] * 7                                  # D1.1 plays on channel 4
