@@ -241,7 +241,6 @@ MenuItem = namedtuple("MenuItem", "box text inverted marked cursor_from", defaul
 TOP_LEVEL = 0
 TOP_ENTRIES = ("D1", "D2", "A")
 BACK_ENTRY = "<"   # the default font has no arrow: "\u2190" drew an empty box
-TAKEN_ARROW = ">"  # D1.2>4: stem 2 plays on channel 4; "\u2192" drew an empty box too
 
 
 def _slots(count, width, height):
@@ -281,18 +280,15 @@ def _top_items(index, cursor, places, boxes):
 
 def _edit_item(index, deck, cursor, places, box):
     """The edited deck's field: the candidate behind the dot -- 'D1.2', or
-    'D1.<' for back -- marked when it plays here. A stem another channel
-    plays points there, 'D1.2>4', and is no cursor: a push on it does
-    nothing (maintainer, 2026-10-03: crossed out, it was unreadable)."""
+    'D1.<' for back -- marked when it plays here. Always exactly one
+    character changes, whatever channel the stem plays on: a longer label
+    ('D1.2>4') shrank the font (maintainer, 2026-10-03)."""
     prefix = "D%d." % (deck + 1)
     if cursor == STEMS_PER_DECK:
         playing = _stem_here(deck, places, index) is not None
         return MenuItem(box, prefix + BACK_ENTRY, False, playing, len(prefix))
-    text = prefix + str(cursor + 1)
     place = places[deck * STEMS_PER_DECK + cursor]
-    if place is not None and place not in (index, RETURN_PLACE):
-        return MenuItem(box, text + TAKEN_ARROW + str(place + 1), False, False)
-    return MenuItem(box, text, False, place == index, len(prefix))
+    return MenuItem(box, prefix + str(cursor + 1), False, place == index, len(prefix))
 
 
 def menu_items(index, menu, places, width, height):

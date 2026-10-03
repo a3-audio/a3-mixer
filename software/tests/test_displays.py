@@ -510,11 +510,6 @@ class Painting(unittest.TestCase):
         from display_panel import BACK_ENTRY
         self.assert_the_font_has(BACK_ENTRY)
 
-    def test_the_taken_arrow_is_a_glyph_the_font_has(self):
-        """The default font has no \u2192: it drew the same empty box."""
-        from display_panel import TAKEN_ARROW
-        self.assert_the_font_has(TAKEN_ARROW)
-
     def test_the_mark_shows_under_the_cursor_too(self):
         """Final review: after a push the cursor stands on what plays, and a
         black underline inside the white box read as 'nothing loaded'."""
@@ -548,15 +543,14 @@ class Painting(unittest.TestCase):
         deck = self.text_height(self.channel(0, (1, 0), places, 0.0), "size-deck")
         self.assertEqual(deck, top)
 
-    def test_a_taken_stem_is_no_cursor(self):
-        """D1.1>4, white on black, whole and inside its field: no bar, no
-        line (maintainer, 2026-10-03)."""
-        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)   # D1.1 plays on channel 4
-        image = self.paint_state("taken", picture)
-        x0, y0, x1, y1 = picture.items[0].box
-        self.assertFalse(self.lit(image, (x0, y0, x1, y0)), "no inverted bar")
-        self.assertFalse(self.lit(image, (x0, y1 - 1, x1, y1)), "no line under the text")
-        self.assertTrue(self.lit(image, (x0, y0, x1, y1)))
+    def test_a_taken_stem_is_as_large_as_any_other_and_a_cursor(self):
+        """D1.1 on a stem that channel 4 plays: still one character behind the
+        dot, same size as the top level, inverted (maintainer, 2026-10-03)."""
+        places = [3] + [None] * 7
+        top = self.text_height(self.channel(0, (0, 1), places, 0.0), "size-top-taken")
+        picture = self.channel(0, (1, 0), places, 0.0)
+        self.assertEqual(self.text_height(picture, "taken"), top)
+        self.assertEqual(picture.items[0].cursor_from, 3)
 
     def test_only_the_part_behind_the_dot_is_inverted(self):
         picture = self.channel(0, (1, 1), [None] * 8, 0.0)   # D1.2, the 2 the cursor

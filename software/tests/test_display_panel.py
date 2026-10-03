@@ -193,21 +193,21 @@ class ChannelMenu(unittest.TestCase):
         self.assertTrue(here.marked)
         self.assertEqual((on_aux.text, on_aux.cursor_from), ("D1.4", 3))   # on the return: loadable
 
-    def test_a_stem_on_another_channel_points_there(self):
-        """Maintainer, 2026-10-03: the crossed field was unreadable. It reads
-        D1.2>4 instead, and is no cursor: a push there does nothing."""
-        from display_panel import TAKEN_ARROW, menu_items
+    def test_a_stem_on_another_channel_is_still_one_character(self):
+        """Maintainer, 2026-10-03: D1.2>4 shrank the field and showed several
+        characters. In the edit state only the single character behind the
+        dot changes -- taken or not."""
+        from display_panel import menu_items
         places = [0, 3, None, 4] + [None] * 4          # pair 2 plays on channel 4
         taken = menu_items(0, (1, 1), places, W, H)[0]
-        self.assertEqual(taken.text, "D1.2" + TAKEN_ARROW + "4")
-        self.assertFalse(taken.inverted or taken.marked)
-        self.assertIsNone(taken.cursor_from)
+        self.assertEqual(taken.text, "D1.2")
+        self.assertEqual(taken.cursor_from, 3)
 
-    def test_a_taken_deck_2_stem_points_from_the_d2_field(self):
-        from display_panel import TAKEN_ARROW, menu_items
+    def test_a_taken_deck_2_stem_is_one_character_in_the_d2_field(self):
+        from display_panel import menu_items
         places = [None] * 4 + [2, None, None, None]    # D2.1 on channel 3
         items = menu_items(0, (2, 0), places, W, H)
-        self.assertEqual([i.text for i in items], ["D1.-", "D2.1" + TAKEN_ARROW + "3", "A"])
+        self.assertEqual([i.text for i in items], ["D1.-", "D2.1", "A"])
 
     def test_the_items_sit_in_the_upper_half_side_by_side(self):
         from display_panel import menu_items
