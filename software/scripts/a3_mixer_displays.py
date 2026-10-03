@@ -84,9 +84,12 @@ def _text(draw, box, text, size, ink, anchor):
         size -= 1
     if anchor == "centre":
         at = ((x0 + x1 - left - right) / 2, (y0 + y1 - top - bottom) / 2)
+    elif anchor == "after":   # just right of `box`, at its top
+        at = (x0 - left, y0 - top)
     else:   # top right
         at = (x1 - right, y0 - top)
     draw.text(at, text, fill=ink, font=font)
+    return (round(at[0] + left), round(at[1] + top), round(at[0] + right), round(at[1] + bottom))
 
 
 @functools.lru_cache(maxsize=64)
@@ -104,14 +107,17 @@ def upper_half(items, width, height):
             draw.rectangle(item.box, fill="white")
             ink = "black"
         size = round((y1 - y0) * TEXT_OF_ITEM)
-        _text(draw, item.box, item.text, size, ink, "centre")
+        tx0, ty0, tx1, ty1 = _text(draw, item.box, item.text, size, ink, "centre")
+        # Marks follow the text, not the box: across the deck level's one
+        # wide entry they ran from edge to edge (2026-10-03).
         if item.marked:
             # Under the box, always white: under the cursor's white box a
             # black line inside it vanished (final review, 2026-10-02).
-            draw.line((x0 + 1, y1 + 2, x1 - 1, y1 + 2), fill="white")
+            draw.line((max(x0, tx0 - 1), y1 + 2, min(x1, tx1 + 1), y1 + 2), fill="white")
         if item.crossed:
-            draw.line((x0, y1, x1, y0), fill=ink)
-            _text(draw, item.box, item.note, round((y1 - y0) * NOTE_OF_ITEM), ink, "top right")
+            draw.line((tx0 - 1, ty1 + 1, tx1 + 1, ty0 - 1), fill=ink)
+            note = (min(tx1 + 2, x1 - 2), y0, x1, ty1)
+            _text(draw, note, item.note, round((y1 - y0) * NOTE_OF_ITEM), ink, "after")
     return image
 
 

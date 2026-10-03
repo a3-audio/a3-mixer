@@ -257,25 +257,33 @@ def _sources(index, places):
     return decks or {2}
 
 
+def _deck_label(deck, places, index):
+    """'D1.3' -- the deck and the stem of it this channel plays -- or 'D1.-'."""
+    stems = [stem for stem in range(STEMS_PER_DECK)
+             if places[deck * STEMS_PER_DECK + stem] == index]
+    return "D%d.%s" % (deck + 1, stems[0] + 1 if stems else "-")
+
+
 def menu_items(index, menu, places, width, height):
-    """Channel `index`'s menu: at the top D1 / D2 / A with what it plays
-    from marked (D1 and D2 both, with a stem of each); in a deck its name, stems 1-4 and back -- the one this channel
-    plays marked, one another channel has crossed out with that channel's
-    number. The cursor inverted."""
+    """Channel `index`'s menu. At the top: D1.3  D2.-  A -- which stem of
+    each deck plays (2026-10-03), what plays marked, the cursor inverted.
+    In a deck: one large entry, the cursor's -- 'D1.3' or '<' -- marked when
+    it plays here, crossed with the channel's number when it plays on
+    another; the small displays had no room for the row of five."""
     level, cursor = menu
     if level == TOP_LEVEL:
         sources = _sources(index, places)
+        texts = [_deck_label(0, places, index), _deck_label(1, places, index), "A"]
         return [MenuItem(box, text, cursor == i, i in sources, False, None)
-                for i, (box, text) in enumerate(zip(_slots(3, width, height), TOP_ENTRIES))]
-    boxes = _slots(STEMS_PER_DECK + 2, width, height)
-    items = [MenuItem(boxes[0], TOP_ENTRIES[level - 1], False, False, False, None)]
-    for stem in range(STEMS_PER_DECK):
-        place = places[(level - 1) * STEMS_PER_DECK + stem]
-        crossed = place is not None and place not in (index, RETURN_PLACE)
-        items.append(MenuItem(boxes[stem + 1], str(stem + 1), cursor == stem, place == index,
-                              crossed, str(place + 1) if crossed else None))
-    items.append(MenuItem(boxes[-1], BACK_ENTRY, cursor == STEMS_PER_DECK, False, False, None))
-    return items
+                for i, (box, text) in enumerate(zip(_slots(3, width, height), texts))]
+    half = height // 2
+    box = (2, 0, width - 3, half - 3)   # the whole upper half, the mark below: one entry, large
+    if cursor == STEMS_PER_DECK:
+        return [MenuItem(box, BACK_ENTRY, False, False, False, None)]
+    place = places[(level - 1) * STEMS_PER_DECK + cursor]
+    crossed = place is not None and place not in (index, RETURN_PLACE)
+    return [MenuItem(box, "D%d.%d" % (level, cursor + 1), False, place == index,
+                     crossed, str(place + 1) if crossed else None)]
 
 
 #: The aux return's modes -- a3_core_stems' numbers.

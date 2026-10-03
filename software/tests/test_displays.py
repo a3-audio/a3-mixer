@@ -103,7 +103,7 @@ class LatestWins(unittest.TestCase):
             displays.show_menu(0, 1, pair - 1)
         displays.drain()
         self.assertEqual(1, len(rig.drawn))
-        self.assertEqual([i.inverted for i in rig.drawn[0][1].items].index(True), 4)
+        self.assertEqual(rig.drawn[0][1].items[0].text, "D1.4")
 
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
@@ -165,8 +165,7 @@ class AfterAFailure(unittest.TestCase):
         displays.show_menu(0, 1, 2)
         displays.drain()
         self.assertEqual(2, len(rig.built))
-        framed = [i.inverted for i in rig.drawn[-1][1].items]
-        self.assertEqual(framed.index(True), 3)   # stem 3 drawn after the rebuild
+        self.assertEqual(rig.drawn[-1][1].items[0].text, "D1.3")   # drawn after the rebuild
 
     def test_a_failure_never_raises_and_is_reported_once(self):
         rig = Rig()
@@ -193,7 +192,7 @@ class TryingAgain(unittest.TestCase):
         rig.fail_draw = False
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([i.inverted for i in rig.drawn[-1][1].items].index(True), 3)
+        self.assertEqual(rig.drawn[-1][1].items[0].text, "D1.3")
 
     def test_the_retry_draws_what_was_posted_since(self):
         rig, scheduled = Rig(), []
@@ -206,7 +205,7 @@ class TryingAgain(unittest.TestCase):
         displays.drain()
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual([i.inverted for i in rig.drawn[-1][1].items].index(True), 5)
+        self.assertEqual(rig.drawn[-1][1].items[0].text, "<")
 
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
@@ -295,7 +294,7 @@ class Waves(unittest.TestCase):
         self.displays._draw_fields = draw_and_turn
         self.step()
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3", "Aux Return"])
-        self.assertTrue(self.last_on("Deck 4").items[5].inverted)
+        self.assertEqual(self.last_on("Deck 4").items[0].text, "<")
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -388,7 +387,7 @@ class Waves(unittest.TestCase):
         self.displays.show_menu(0, 1, 1)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].items[2].inverted)
+        self.assertEqual(self.rig.drawn[0][1].items[0].text, "D1.2")
         self.assertGreater(self.newest("Deck 1"), 20)
 
 
@@ -411,7 +410,7 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.show_menu(1, 1, 3)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].items[4].inverted)
+        self.assertEqual(self.rig.drawn[0][1].items[0].text, "D1.4")
 
     def test_there_is_no_cue_on_the_display_any_more(self):
         self.assertFalse(hasattr(self.displays, "show_cue"))
@@ -523,14 +522,39 @@ class Painting(unittest.TestCase):
         self.assertFalse(self.lit(image, (x0, y1 + 1, x1, min(31, y1 + 3))))
         self.assertTrue(self.lit(other, (x0, y1 + 1, x1, min(31, y1 + 3))))
 
+    def text_height(self, picture, name):
+        """Rows lit inside the first item's box: the text, no underline."""
+        image = self.paint_state(name, picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        rows = [y for y in range(y0, y1 + 1)
+                if any(image.getpixel((x, y)) for x in range(x0, x1 + 1))]
+        return max(rows) - min(rows) + 1
+
+    def test_a_decks_entry_is_larger_than_the_top_level(self):
+        """2026-10-03: the deck's level shows one entry, large."""
+        places = [None] * 8
+        top = self.text_height(self.channel(0, (0, 1), places, 0.0), "size-top")
+        deck = self.text_height(self.channel(0, (1, 0), places, 0.0), "size-deck")
+        self.assertGreaterEqual(deck, top * 1.3, (top, deck))
+
+    def test_the_cross_stays_with_the_text(self):
+        """Seen in the snapshot: across the wide entry the line ran from edge
+        to edge and the channel number sat at the far right."""
+        picture = self.channel(0, (1, 0), [3] + [None] * 7, 0.0)
+        image = self.paint_state("cross-with-text", picture)
+        x0, y0, x1, y1 = picture.items[0].box
+        edge = (x0, y0, x0 + (x1 - x0) // 8, y1)
+        self.assertFalse(self.lit(image, edge))
+        self.assertFalse(self.lit(image, (x1 - (x1 - x0) // 8, y0, x1, y1)))
+
     def test_a_crossed_stem_carries_a_line_and_its_channel(self):
-        picture = self.channel(0, (1, 4), [3] + [None] * 7, 0.0)   # stem 1 plays on channel 4
-        image = self.paint_state("crossed", picture)
-        crossed, plain = picture.items[1], picture.items[2]
-        self.assertTrue(crossed.crossed and not plain.crossed)
-        corner = lambda b: (b[0], b[3] - 2, b[0] + 2, b[3])
-        self.assertTrue(self.lit(image, corner(crossed.box)))
-        self.assertFalse(self.lit(image, corner(plain.box)))
+        places = [3] + [None] * 7                                  # D1.1 plays on channel 4
+        crossed = self.channel(0, (1, 0), places, 0.0)
+        plain = self.channel(0, (1, 1), places, 0.0)
+        self.assertTrue(crossed.items[0].crossed and not plain.items[0].crossed)
+        count = lambda image: sum(1 for v in image.crop((0, 0, 128, 32)).getdata() if v)
+        self.assertGreater(count(self.paint_state("crossed", crossed)),
+                           count(self.paint_state("plain", plain)) + 10)
 
     def test_the_upper_half_is_painted_once_per_state(self):
         from a3_mixer_displays import upper_half
