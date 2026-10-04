@@ -13,14 +13,16 @@ import configparser
 import unittest
 from pathlib import Path
 
-UNIT = (Path(__file__).resolve().parents[2]
-        / "platform-config/raspianos/etc/systemd/system/a3-mixer.service")
+SYSTEMD = Path(__file__).resolve().parents[2] / "platform-config/raspianos/etc/systemd"
+UNITS = SYSTEMD / "system"
+UNIT = UNITS / "a3-mixer.service"
+DISPLAY_UNIT = UNITS / "a3-mixer-set-display.service"
 
 
-def service():
+def service(unit=UNIT):
     parser = configparser.ConfigParser(strict=False, interpolation=None)
     parser.optionxform = str
-    parser.read_string(UNIT.read_text())
+    parser.read_string(unit.read_text())
     return parser["Service"]
 
 
@@ -34,6 +36,25 @@ class TheDesksUnit(unittest.TestCase):
 
     def test_a_crash_is_restarted(self):
         self.assertEqual(service().get("Restart"), "on-failure")
+
+
+class TheDisplaysUnit(unittest.TestCase):
+    def test_it_runs_the_display_script_on_the_venvs_python(self):
+        self.assertEqual(
+            service(DISPLAY_UNIT)["ExecStart"],
+            "/home/aaa/.venv/bin/python /home/aaa/a3-mixer/software/scripts/"
+            "a3-mixer-set-display/a3-mixer-set-display.py")
+
+    def test_a_crash_is_restarted(self):
+        self.assertEqual(service(DISPLAY_UNIT).get("Restart"), "on-failure")
+
+
+class OnePlaceForTheUnits(unittest.TestCase):
+    """Two copies of each unit drifted apart until one started a path the
+    repository no longer has (2026-10-04). system/ is the place the docs name."""
+
+    def test_no_unit_file_outside_system(self):
+        self.assertEqual(sorted(p.name for p in SYSTEMD.glob("*.service")), [])
 
 
 if __name__ == "__main__":

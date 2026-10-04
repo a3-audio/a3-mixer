@@ -20,7 +20,7 @@ the KiCad hardware (`hardware/`).
 
 The desk (V02: a Raspberry Pi with RaspbianOS) runs
 `software/scripts/a3-mixer.py` as the systemd unit `a3-mixer.service` from
-`platform-config/raspianos/`. The unit expects this repository at
+`platform-config/raspianos/etc/systemd/system/`. The unit expects this repository at
 `/home/aaa/a3-mixer` and a Python venv at `/home/aaa/.venv` with
 `software/scripts/requirements.txt` installed.
 
