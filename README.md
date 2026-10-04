@@ -1,50 +1,43 @@
 # A³ Mixer
 
-**An open-source mixer controller for the [A³ Audio](https://a3-audio.github.io/) project.**
+The 4-channel DJ mixer of [A³ Audio](https://github.com/a3-audio/a3-system). It
+sends its faders, knobs and buttons to A³ Core over OSC and shows the meters
+and lamps that come back. This repository holds the control scripts
+(`software/scripts/`), the panel firmware (`hardware/mainboard/firmware/`) and
+the KiCad hardware (`hardware/`).
 
-**Runs on a Raspberry Pi 3B+ or newer**, which carries the OSC control scripts
-in `software/scripts/`; the panel's own I/O is handled by a microcontroller on
-the mainboard (`hardware/`). Moving that split onto a Raspberry Pi Pico board
-is a goal below, not the current state.
+**Documentation: https://a3-audio.github.io/a3-doc/**
 
-After extensive experimentation and usability testing, we've decided to rebuild the controller from the ground up to better meet requirements.
+- [Using A³ Mixer](https://a3-audio.github.io/a3-doc/user/a3mix.html)
+- [Configuration](https://a3-audio.github.io/a3-doc/configuration/mic.html):
+  V02 (shipping) and V03 (in development) hardware
+- [Development](https://a3-audio.github.io/a3-doc/development/mic.html):
+  `a3-mixer.py`, how the desk
+  [gets its addresses from Core](https://a3-audio.github.io/a3-doc/development/mic.html#mic-truth),
+  the panel firmware
 
----
+## Run and test
 
-## 📌 **Project Goals**
-- **Hardware Upgrade**:
-  - Replacing Raspberry Pi + Teensy with a **Raspberry Pi Pico Dev Board** (planned: **WIZnet W5500-EVB-Pico** or **W5500-EVB-Pico2**).
-  - **USB-C port** for modern connectivity.
-  - **Stereo Jack**:
-    - 6.3mm front jack → 3.5mm adapter for headphones.
-- **Mechanics**:
-  - **45mm faders** for precise channel control.
+The desk (V02: a Raspberry Pi with RaspbianOS) runs
+`software/scripts/a3-mixer.py` as the systemd unit `a3-mixer.service` from
+`platform-config/raspianos/`. The unit expects this repository at
+`/home/aaa/a3-mixer` and a Python venv at `/home/aaa/.venv` with
+`software/scripts/requirements.txt` installed.
 
----
+The tests check the desk against the real OSC truth, `a3-osc.json` from an
+[a3-core](https://github.com/a3-audio/a3-core) checkout beside this one (or
+`/usr/share/a3/a3-osc.json` on a Core). Point `A3_OSC_TRUTH` at it:
 
-## 🚀 **Current Progress**
-- **PCB Design**:
-  - New board layout in **KiCad** (project: [`hardware/mainboard/pcb/`](hardware/mainboard/pcb/)).
-## Where this fits
+```sh
+A3_OSC_TRUTH=../a3-core/platform-config/debian-x86_64/a3-core/usr/share/a3/a3-osc.json \
+  python3 -m unittest discover -s software/tests
+```
 
-A³ is seven repositories and one system. **The structure, the workflow and the
-versioning are described once, in the umbrella:**
-[a3-audio/a3-system](https://github.com/a3-audio/a3-system#repositories-and-versioning).
+The panel firmware is a PlatformIO project: `pio run` in
+`hardware/mainboard/firmware/`.
 
-The short of it: work happens on `main`, a version is an annotated tag, and
-the same tag name is set in every repository at once — `v03.0` is the first.
+## License
 
-## Addresses and ports
-
-The desk speaks what the one truth says, and it gets the truth from Core:
-Core announces every 2 s by UDP broadcast on port 7790 (`/core/here`) where
-the truth is and what its fingerprint is. The desk keeps the last truth it
-fetched in `~/.cache/a3/a3-osc.json` (root's home: the service runs as
-root). When Core announces another fingerprint, the desk fetches the truth
-from `http://<core>:9080/api/truth`, checks it, stores it and restarts. No
-copying by hand.
-
-At start the desk reads `$A3_OSC_TRUTH` if set, else that cache, else the
-old copy beside the script (`software/scripts/a3-osc.json`, kept as a
-fallback for one release). Without any, or with a word missing from it, it
-waits for Core's announcement instead of stopping.
+REUSE-compliant: the license of each path is in `.reuse/dep5`, the texts are in
+`LICENSES/` (GPL-3.0-or-later for software, CERN-OHL-S-2.0 for hardware,
+CC-BY-SA-4.0 and CC0-1.0 for docs and config).
