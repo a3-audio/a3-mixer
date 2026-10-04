@@ -96,8 +96,12 @@ def _pattern_regex(pattern):
 STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
                "stem_b1", "stem_b2", "stem_b3", "stem_b4")
 
-#: The analog return's meter, left and right: the return display's ninth.
+#: The analog return's meter, left and right: the return display's A.
 AUX_METERS = ("aux_L", "aux_R")
+
+#: StemDeck's AUX bus, left and right: the return display's SA (2026-10-04).
+#: A truth from before has no such names, and the desk falls back.
+STEM_AUX_METERS = ("stem_aux_L", "stem_aux_R")
 
 
 class TruthMissing(Exception):
@@ -192,10 +196,19 @@ class MixerOsc:
     def aux_side(self, number):
         """0 for the analog return's left meter (aux_L), 1 for its right
         (aux_R), None for any other /vu/<number> (spec desk-stem-grid-2)."""
+        return self._side(number, AUX_METERS)
+
+    def stem_aux_side(self, number):
+        """0 for StemDeck's AUX bus left meter (stem_aux_L), 1 for its right
+        (stem_aux_R), None for any other /vu/<number>."""
+        return self._side(number, STEM_AUX_METERS)
+
+    def _side(self, number, names):
         meters = self._data.get("vu_meters", [])
         if not 1 <= number <= len(meters):
             return None
-        return AUX_METERS.index(meters[number - 1]) if meters[number - 1] in AUX_METERS else None
+        name = meters[number - 1]
+        return names.index(name) if name in names else None
 
     def vu_slot(self, number):
         """The firmware slot /vu/<number> lights, or None if the desk does

@@ -170,6 +170,21 @@ class StemMetersByName(unittest.TestCase):
         self.assertIsNone(osc.aux_side(1))
         self.assertIsNone(osc.aux_side(9))
 
+    def test_the_stemdecks_aux_bus_is_the_returns_sa(self):
+        """2026-10-04: SA meters StemDeck's AUX bus, stem_aux_L and
+        stem_aux_R (/vu/49, /vu/50 in Core's truth), found by name."""
+        osc = made_up(vu_meters=["aux_L", "aux_R", "stem_aux_L", "stem_aux_R"])
+        self.assertEqual((osc.stem_aux_side(3), osc.stem_aux_side(4)), (0, 1))
+        self.assertIsNone(osc.stem_aux_side(1))
+        self.assertIsNone(osc.stem_aux_side(5))
+        self.assertIsNone(osc.stem_aux_side(0))
+
+    def test_a_truth_without_the_bus_meters_has_none(self):
+        """The truth installed before them: SA falls back on the desk."""
+        osc = made_up()
+        self.assertTrue(all(osc.stem_aux_side(n) is None
+                            for n in range(len(osc._data["vu_meters"]) + 2)))
+
     def test_a_truth_without_stems_has_no_stem_meters(self):
         osc = made_up(vu_meters=["in1_pre", "in2_pre"])
         self.assertIsNone(osc.stem_pair(1))

@@ -206,6 +206,12 @@ def vu_handler(address: str,
     if side is not None:
         displays.note_aux(side, osc_arguments[0])
         return
+    # StemDeck's aux bus: the return display's SA, no LED. Only a truth that
+    # names stem_aux_L/R sends it; without, the displays fall back.
+    side = osc.stem_aux_side(number)
+    if side is not None:
+        displays.note_stem_aux(side, osc_arguments[0])
+        return
     slot = osc.vu_slot(number)
     if slot is None:
         return

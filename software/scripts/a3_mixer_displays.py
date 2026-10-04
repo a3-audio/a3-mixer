@@ -6,7 +6,10 @@
 
 Each channel's display is an input selector (2026-10-04): nine meters under
 D1 | D2 | A, the input that plays solid, the cursor under one meter. The
-return's display shows SA and A the same way.
+return's display is a stereo meter: SA and A, each a pair of segmented bars
+L|R, the mode that plays filled. Every meter has VU-like ballistics and a
+peak mark (display_panel.Ballistics), and a panel is redrawn only when its
+pixels move.
 
 The displays are a3-mixer-set-display's -- the same multiplexer and ssd1306
 -- and the table of which display sits where is display_panel.PANELS,
@@ -40,8 +43,8 @@ import functools  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
-                           ANALOG_INPUT, STEM_MODE, METER_STEPS_PER_SECOND, PAIRS, PANELS,
-                           Picture)
+                           pixel_key, segment_rows, Ballistics, Bar, ANALOG_INPUT,
+                           STEM_MODE, METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
 #: stopped, and the last peak must not stand on the display for ever.
@@ -90,32 +93,80 @@ def headings_image(headings, width, height):
     return image
 
 
-#: Rows of a meter always lit: solid as a block for what plays, so it shows
-#: in silence too; one row as the floor of the others.
-SOLID_BASE = 2
-
-
 def _meter(draw, meter):
-    """What plays is a filled bar; the others are outlined at their level."""
+    """What plays is a filled bar; the others are outlined at their level.
+    Both get a one-row peak mark above the bar. The rows are the meter's own
+    pixels(), so what is painted is what the redraw rule compares."""
     x0, y0, x1, y1 = meter.box
-    reach = round(meter.level * (y1 - y0 + 1))
+    bar, peak = meter.pixels()
     if meter.solid:
-        top = y1 - max(reach, SOLID_BASE) + 1
-        draw.rectangle((x0, top, x1, y1), fill="white")
-        return
-    draw.line((x0, y1, x1, y1), fill="white")
-    if reach >= 2:
-        draw.rectangle((x0, y1 - reach + 1, x1, y1), outline="white")
+        draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
+    else:
+        draw.line((x0, y1, x1, y1), fill="white")
+        if bar:
+            draw.rectangle((x0, y1 - bar + 1, x1, y1), outline="white")
+    if peak:
+        draw.line((x0, y1 - peak + 1, x1, y1 - peak + 1), fill="white")
+
+
+def _segment(draw, bar, index):
+    top, bottom = segment_rows(bar, index)
+    box = (bar.box[0], top, bar.box[2], bottom)
+    if bar.solid:
+        draw.rectangle(box, fill="white")
+    else:
+        draw.rectangle(box, outline="white")
+
+
+def _bar(draw, bar):
+    """A return bar: its lit segments from the bottom, and the peak's
+    segment on its own above them, filled for the pair that plays."""
+    lit, peak = bar.pixels()
+    for index in range(lit):
+        _segment(draw, bar, index)
+    if peak:
+        _segment(draw, bar, peak - 1)
+
+
+#: The scale's digits as 3x5 glyphs: a TrueType font this small turns to
+#: mush on a 1-bit display, a hand-set glyph stays crisp.
+GLYPHS = {
+    "0": ("###", "#.#", "#.#", "#.#", "###"),
+    "1": (".#.", "##.", ".#.", ".#.", "###"),
+    "8": ("###", "#.#", "###", "#.#", "###"),
+    "-": ("...", "...", "###", "...", "..."),
+}
+GLYPH_WIDTH, GLYPH_SPACE = 3, 1
+#: The mark's length at each side of the scale column.
+TICK_LENGTH = 2
+
+
+def _tick(draw, tick):
+    """A scale mark: short lines at both sides of the label, on its row."""
+    x0, y0, x1, y1 = tick.box
+    draw.line((x0, tick.row, x0 + TICK_LENGTH - 1, tick.row), fill="white")
+    draw.line((x1 - TICK_LENGTH + 1, tick.row, x1, tick.row), fill="white")
+    width = len(tick.text) * (GLYPH_WIDTH + GLYPH_SPACE) - GLYPH_SPACE
+    x = x0 + (x1 - x0 + 1 - width) // 2
+    for char in tick.text:
+        for dy, row in enumerate(GLYPHS[char]):
+            for dx, pixel in enumerate(row):
+                if pixel == "#":
+                    draw.point((x + dx, y0 + dy), fill="white")
+        x += GLYPH_WIDTH + GLYPH_SPACE
 
 
 def paint(image, picture):
-    """Draw `picture` onto a 1-bit PIL image: headings (cached), meters, cursor."""
+    """Draw `picture` onto a 1-bit PIL image: headings (cached), meters,
+    scale marks, cursor."""
     from PIL import ImageDraw
 
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
     draw = ImageDraw.Draw(image)
     for meter in picture.meters:
-        _meter(draw, meter)
+        (_bar if isinstance(meter, Bar) else _meter)(draw, meter)
+    for tick in picture.ticks:
+        _tick(draw, tick)
     draw.rectangle(picture.cursor, fill="white")
 
 
@@ -232,6 +283,10 @@ class Displays:
         self._silent = set()  # panels already reported as not answering
         self._posted = set()  # panels to draw; each is drawn from its state
         self._meters_due = set()  # panels whose meters moved: drawn when nothing is posted
+        # The meters of each panel as last drawn, in pixels (pixel_key): a
+        # step that moves no pixel draws nothing -- the bus carries ~17
+        # draws a second (2026-10-04), and ten steps on five panels is 50.
+        self._drawn = {}
         # What the displays show: what plays on each channel, each channel's
         # cursor, the return's cursor and what plays there, and its mode.
         self._channel_masks = [0] * (len(PANELS) - 1)
@@ -239,14 +294,18 @@ class Displays:
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
         # The meters: (loudest peak since the last step, when last heard)
-        # per stem pair, per channel's analog input and per side of the
-        # analog return; and the levels each panel shows, stepped on the
+        # per stem pair, per channel's analog input, per side of the analog
+        # return and per side of StemDeck's aux bus; each source's
+        # ballistics; and (levels, peaks) each panel shows, stepped on the
         # displays' clock.
         self._stem_peaks = {}
         self._analog_peaks = {}
         self._aux_peaks = {}
+        self._stem_aux_peaks = {}
+        self._ballistics = {}
         self._levels = {panel: None for panel in PANELS}
         self._next_step = None
+        self._last_step = None
         self._later = later
         self._wake = threading.Condition()
 
@@ -267,6 +326,12 @@ class Displays:
         with self._wake:
             self._hold(self._aux_peaks, side, peak)
 
+    def note_stem_aux(self, side, peak):
+        """StemDeck's aux bus peak, L (0) or R (1), from the OSC thread.
+        Only a truth with stem_aux_L/R sends it; once heard, it is SA."""
+        with self._wake:
+            self._hold(self._stem_aux_peaks, side, peak)
+
     def _hold(self, peaks, key, peak):
         if not isinstance(peak, (int, float)) or isinstance(peak, bool):
             return
@@ -282,29 +347,68 @@ class Displays:
         self.step_meters()
 
     def step_meters(self):
-        """Every panel takes the loudest peaks since the last step; a panel
-        whose levels changed waits to be drawn behind anything posted."""
+        """Every meter takes the loudest peak since the last step through
+        its ballistics; a panel whose pixels moved waits to be drawn behind
+        anything posted."""
         with self._wake:
-            stems = [meter_level(self._fresh(self._stem_peaks, pair))
+            dt = self._step_seconds()
+            stems = [self._move(("stem", pair), self._fresh_level(self._stem_peaks, pair), dt)
                      for pair in range(1, PAIRS + 1)]
-            plays = self._return[1]
-            on_return = [level for level, playing in zip(stems, plays) if playing]
-            analog_return = max(meter_level(self._fresh(self._aux_peaks, side))
-                                for side in (0, 1))
+            aux = [self._move(("aux", side), self._fresh_level(self._aux_peaks, side), dt)
+                   for side in (0, 1)]
+            sa = [self._move(("sa", side), level, dt)
+                  for side, level in enumerate(self._sa_levels())]
             for panel in PANELS:
                 if panel == return_panel():
-                    levels = (max(on_return, default=0.0), analog_return)
+                    meters = sa + aux
                 else:
                     index = PANELS.index(panel)
-                    levels = tuple(stems) + (meter_level(self._fresh(self._analog_peaks, index)),)
-                if levels != self._levels[panel]:
-                    if self._levels[panel] is not None or any(levels):
-                        self._meters_due.add(panel)
-                    self._levels[panel] = levels
-            for peaks in (self._stem_peaks, self._analog_peaks, self._aux_peaks):
+                    meters = stems + [self._move(
+                        ("analog", index), self._fresh_level(self._analog_peaks, index), dt)]
+                self._levels[panel] = (tuple(shown for shown, _ in meters),
+                                       tuple(peak for _, peak in meters))
+                if self._pixels_now(panel) != self._drawn.get(panel):
+                    self._meters_due.add(panel)
+            for peaks in (self._stem_peaks, self._analog_peaks, self._aux_peaks,
+                          self._stem_aux_peaks):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
+
+    def _step_seconds(self):
+        """Seconds since the last step: the ballistics run on the clock, so
+        a late step (a slow draw) falls as far as the time that passed."""
+        now = self._clock()
+        last, self._last_step = self._last_step, now
+        if last is None:
+            return 1.0 / METER_STEPS_PER_SECOND
+        return min(max(0.0, now - last), 1.0)
+
+    def _move(self, source, level, dt):
+        ballistics = self._ballistics.setdefault(source, Ballistics())
+        return ballistics.feed(level, dt)
+
+    def _sa_levels(self):
+        """SA's raw level, L and R: StemDeck's aux bus once the desk has
+        heard it. A truth without stem_aux_L/R never sends it, and then SA
+        is what it was before 2026-10-04 -- the loudest stem playing on the
+        return, on both sides -- so the desk works with either truth."""
+        if self._stem_aux_peaks:
+            return [self._fresh_level(self._stem_aux_peaks, side) for side in (0, 1)]
+        plays = self._return[1]
+        loudest = max((self._fresh_level(self._stem_peaks, pair)
+                       for pair, playing in zip(range(1, PAIRS + 1), plays) if playing),
+                      default=0.0)
+        return [loudest, loudest]
+
+    def _fresh_level(self, peaks, key):
+        return meter_level(self._fresh(peaks, key))
+
+    def _pixels_now(self, panel):
+        """The panel's meters in pixels, laid out for its display's size."""
+        device = self._devices.get(panel)
+        width, height = (device.width, device.height) if device else (128, 64)
+        return pixel_key(self._picture_for(panel)(width, height))
 
     def _fresh(self, peaks, key):
         peak, heard = peaks.get(key, (0.0, None))
@@ -362,15 +466,16 @@ class Displays:
         """The picture of `panel` from its state, laid out for whatever size
         the display turns out to be."""
         with self._wake:
-            levels = self._levels[panel]
             if panel == return_panel():
                 cursor, mode = self._return[0], self._return_mode
-                sa, a = levels or (0.0, 0.0)
-                return lambda width, height: return_picture(cursor, mode, sa, a, width, height)
+                levels, peaks = self._levels[panel] or ((0.0,) * 4,) * 2
+                return lambda width, height: return_picture(cursor, mode, levels, width,
+                                                            height, peaks=peaks)
             index = PANELS.index(panel)
             cursor, mask = self._cursors[index], self._channel_masks[index]
-            levels = levels or (0.0,) * (PAIRS + 1)
-        return lambda width, height: channel_picture(cursor, mask, levels, width, height)
+            levels, peaks = self._levels[panel] or ((0.0,) * (PAIRS + 1),) * 2
+        return lambda width, height: channel_picture(cursor, mask, levels, width, height,
+                                                     peaks=peaks)
 
     def _post(self, panel):
         with self._wake:
@@ -421,7 +526,12 @@ class Displays:
             # a3-mixer-set-display.py for the measurement.
             device.persist = True
             self._devices[panel] = device
-        self._draw_fields(device, picture_for(device.width, device.height))
+        picture = picture_for(device.width, device.height)
+        # Noted before the write: a failed draw is retried whole through
+        # _retry, and meter steps must not hammer a display that is not there.
+        with self._wake:
+            self._drawn[panel] = pixel_key(picture)
+        self._draw_fields(device, picture)
 
     def _complain(self, panel, error):
         # Once per outage: a dead display would otherwise fill the journal
@@ -454,6 +564,9 @@ class NoDisplays:
         pass
 
     def note_aux(self, side, peak):
+        pass
+
+    def note_stem_aux(self, side, peak):
         pass
 
     def note_peak(self, pair, peak):

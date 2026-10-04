@@ -141,19 +141,112 @@ ANALOG_INPUT = PAIRS
 #: Headings over the channel's meters: the name, the first and the last input.
 CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", 8, 8))
 
-#: The aux return's modes -- a3_core_stems' numbers -- and its two meters,
-#: left to right: SA, the stems on the return, then A, the analog return.
+#: The aux return's modes -- a3_core_stems' numbers. Its display is a stereo
+#: meter (2026-10-04): SA, StemDeck's aux bus, then A, the analog return,
+#: each a pair of bars L|R.
 ANALOG_MODE, STEM_MODE = 0, 1
 RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
-RETURN_GROUPS = (("SA", 0, 0), ("A", 1, 1))
+RETURN_GROUPS = (("SA", 0, 1), ("A", 2, 3))
 
-METER_STEPS_PER_SECOND = 5   # measured on the desk first (smoke-test/scripts/desk-wave-bench.py)
+#: Ten steps a second, decided 2026-10-04 after the desk carried five; what
+#: keeps the bus from drowning is that only a panel whose pixels moved is
+#: redrawn (pixel_key), not the rate.
+METER_STEPS_PER_SECOND = 10
 METER_FLOOR_DB = -48.0
+#: A VU-like release: a meter falls 20 dB a second, so a level drop of
+#: 20/48 of its height per second over the 48 dB range.
+METER_FALL_DB_PER_SECOND = 20.0
+#: The peak mark holds the highest level this long, then falls alike.
+PEAK_HOLD_SECONDS = 1.0
 
-#: What a panel shows: headings over meters, and the cursor under one meter.
+
+class Ballistics:
+    """How one meter moves: an instant rise, a fall of
+    METER_FALL_DB_PER_SECOND, and a peak that holds PEAK_HOLD_SECONDS
+    before it falls the same way. Levels are 0.0-1.0 as meter_level gives
+    them; `dt` is the time since the last feed, in seconds."""
+
+    def __init__(self):
+        self._shown = 0.0
+        self._peak = 0.0
+        self._held = 0.0
+
+    def feed(self, level, dt):
+        """(shown, peak) after `dt` seconds that ended at `level`."""
+        fall = METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB
+        self._shown = max(level, self._shown - fall * dt, 0.0)
+        if level >= self._peak:
+            self._peak, self._held = level, 0.0
+        else:
+            self._held += dt
+            # Only the part of `dt` past the hold falls, so the mark leaves
+            # exactly a second after the hit and not a step early or late.
+            falling = min(dt, max(0.0, self._held - PEAK_HOLD_SECONDS))
+            self._peak = max(0.0, self._peak - fall * falling)
+        self._peak = max(self._peak, self._shown)
+        return self._shown, self._peak
+
+
+def lit_rows(level, count):
+    """How many of `count` rows (or segments) `level` lights, half up --
+    Python's round() would light a segment at 6.5 but not at 7.5."""
+    return int(math.floor(level * count + 0.5))
+
+
+#: Rows of a channel meter always lit: solid as a block for what plays, so
+#: it shows in silence too; one row as the floor of the others.
+SOLID_BASE = 2
+
+
+class Meter(namedtuple("Meter", "box level solid peak")):
+    """A channel's meter: a bar, solid or outlined, and a one-row peak mark."""
+
+    def pixels(self):
+        """(rows of the bar, row count of the peak mark or 0): what the
+        painter draws, in pixels, so two levels in one row are one picture."""
+        rows = self.box[3] - self.box[1] + 1
+        reach = lit_rows(self.level, rows)
+        if self.solid:
+            bar = max(reach, SOLID_BASE)
+        else:
+            bar = reach if reach >= 2 else 0
+        peak = lit_rows(self.peak, rows)
+        return bar, peak if peak > max(bar, 1) else 0
+
+
+#: A return bar's segments: rows each, and the dark rows between two.
+SEGMENT_ROWS = 3
+SEGMENT_GAP = 1
+
+
+class Bar(namedtuple("Bar", "box level solid peak segments")):
+    """A return meter's bar: `segments` stacked from the bottom of `box`."""
+
+    def pixels(self):
+        """(lit segments, the peak's segment count or 0); the playing pair
+        always shows its lowest segment, the other its outline."""
+        lit = max(lit_rows(self.level, self.segments), 1)
+        peak = lit_rows(self.peak, self.segments)
+        return lit, peak if peak > lit else 0
+
+
+def segment_rows(bar, index):
+    """(top, bottom) rows of segment `index` of `bar`, 0 at the bottom."""
+    bottom = bar.box[3] - index * (SEGMENT_ROWS + SEGMENT_GAP)
+    return bottom - SEGMENT_ROWS + 1, bottom
+
+
+def pixel_key(picture):
+    """Every meter of `picture` in pixels: equal keys paint equal meters."""
+    return tuple(meter.pixels() for meter in picture.meters)
+
+
+#: What a panel shows: headings over meters, the cursor under one meter, and
+#: the return's scale marks (a channel has none).
 Heading = namedtuple("Heading", "box text")
-Meter = namedtuple("Meter", "box level solid")
-Picture = namedtuple("Picture", "headings meters cursor")
+Picture = namedtuple("Picture", "headings meters cursor ticks", defaults=((),))
+#: A scale mark: its label's box and text, and the row the mark sits on.
+Tick = namedtuple("Tick", "box text row")
 
 #: Gaps between meters, in pixels: inside a group, and between two groups.
 INNER_GAP = 2
@@ -201,29 +294,87 @@ def _bands(height):
             (height - cursor, height - 1))
 
 
-def selector_picture(groups, levels, active, cursor, width, height):
-    """Meters under their groups' headings: `active` solid, the cursor under
-    its meter. Pure layout; the painter draws it."""
-    columns = _columns(groups, width)
+def _silence(peaks, count):
+    return (0.0,) * count if peaks is None else peaks
+
+
+def channel_picture(cursor, mask, levels, width, height, peaks=None):
+    """A channel: the eight stems and its analog input, what plays solid,
+    the cursor under its meter. Pure layout; the painter draws it."""
+    columns = _columns(CHANNEL_GROUPS, width)
     (h0, h1), (m0, m1), (c0, c1) = _bands(height)
     headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
-                for name, first, last in groups]
-    meters = [Meter((x0, m0, x1, m1), level, index == active)
-              for index, ((x0, x1), level) in enumerate(zip(columns, levels))]
+                for name, first, last in CHANNEL_GROUPS]
+    active = active_input(mask)
+    meters = [Meter((x0, m0, x1, m1), level, index == active, peak)
+              for index, ((x0, x1), level, peak)
+              in enumerate(zip(columns, levels, _silence(peaks, INPUTS)))]
     x0, x1 = columns[cursor]
     return Picture(headings, meters, (x0, c0, x1, c1))
 
 
-def channel_picture(cursor, mask, levels, width, height):
-    """A channel: the eight stems and its analog input, what plays solid."""
-    return selector_picture(CHANNEL_GROUPS, levels, active_input(mask), cursor, width, height)
+#: The return's layout, in pixels: between L and R of a pair, and the scale
+#: column between the two pairs (the marks and their labels).
+STEREO_GAP = 3
+SCALE_WIDTH = 25
+#: The dB values the scale marks, as their labels read.
+SCALE_MARKS = ((0, "0"), (-18, "-18"))
+#: Tiny-font label rows: a 3x5 glyph.
+LABEL_ROWS = 5
 
 
-def return_picture(cursor, mode, stems_level, analog_level, width, height):
-    """The aux return: SA and A, the mode that plays solid."""
-    return selector_picture(RETURN_GROUPS, (stems_level, analog_level),
-                            RETURN_OPTIONS.index(mode), RETURN_OPTIONS.index(cursor),
-                            width, height)
+def _return_bands(height):
+    """(heading, meters, cursor) rows of the return: the heading a little
+    lower than a channel's, so the meters fit whole segments."""
+    heading = max(6, round(height * 0.16))
+    cursor = max(2, round(height * 0.07))
+    return ((0, heading - 1), (heading + 1, height - cursor - 3),
+            (height - cursor, height - 1))
+
+
+def _stereo_columns(width):
+    """(x0, x1) of the four bars: SA L, SA R, the scale, A L, A R."""
+    bar = (width - SCALE_WIDTH - 2 * STEREO_GAP - 4) // 4
+    used = 4 * bar + 2 * STEREO_GAP + SCALE_WIDTH
+    x = (width - used) // 2
+    columns = []
+    for index in range(4):
+        columns.append((x, x + bar - 1))
+        x += bar + (SCALE_WIDTH if index == 1 else STEREO_GAP)
+    return columns
+
+
+def _ticks(columns, bar):
+    """The scale marks between the pairs, each on the segment that lights
+    at its value, the label kept inside the meters' rows."""
+    x0, x1 = columns[1][1] + 2, columns[2][0] - 2
+    ticks = []
+    for db, text in SCALE_MARKS:
+        level = (db - METER_FLOOR_DB) / -METER_FLOOR_DB
+        top, bottom = segment_rows(bar, lit_rows(level, bar.segments) - 1)
+        middle = (top + bottom) // 2
+        y0 = min(max(middle - LABEL_ROWS // 2, bar.box[1]), bar.box[3] - LABEL_ROWS + 1)
+        ticks.append(Tick((x0, y0, x1, y0 + LABEL_ROWS - 1), text, middle))
+    return ticks
+
+
+def return_picture(cursor, mode, levels, width, height, peaks=None):
+    """The aux return: SA L|R and A L|R as segmented bars, the mode that
+    plays filled, the scale between the pairs, the cursor under its pair.
+    `levels` and `peaks` are SA L, SA R, A L, A R."""
+    columns = _stereo_columns(width)
+    (h0, h1), (m0, m1), (c0, c1) = _return_bands(height)
+    segments = (m1 - m0 + 1 + SEGMENT_GAP) // (SEGMENT_ROWS + SEGMENT_GAP)
+    top = m1 - segments * (SEGMENT_ROWS + SEGMENT_GAP) + SEGMENT_GAP + 1
+    headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
+                for name, first, last in RETURN_GROUPS]
+    playing = RETURN_OPTIONS.index(mode)
+    bars = [Bar((x0, top, x1, m1), level, index // 2 == playing, peak, segments)
+            for index, ((x0, x1), level, peak)
+            in enumerate(zip(columns, levels, _silence(peaks, 4)))]
+    _, first, last = RETURN_GROUPS[RETURN_OPTIONS.index(cursor)]
+    return Picture(headings, bars, (columns[first][0], c0, columns[last][1], c1),
+                   _ticks(columns, bars[0]))
 
 
 def cursor_announcement(args):
