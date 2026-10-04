@@ -269,5 +269,24 @@ class TheRealTruth(unittest.TestCase):
         self.assertNotEqual(self.osc.core()[1], self.osc.beatclock()[1])
 
 
+class OneAddressOneHandler(unittest.TestCase):
+    """python-osc 1.9.3, the desk's, hands /channel/1/stem/cursor to the
+    handler mapped on /channel/*/stem as well: a wildcard map matches as a
+    prefix. Every turn then arrived as a stem mask, and the active bracket
+    followed the cursor (2026-10-04). A handler asks for its own key."""
+
+    def setUp(self):
+        self.osc = a3_mixer_osc.load(real_truth_path())
+
+    def test_the_mask_address_is_the_mask(self):
+        self.assertEqual(self.osc.channel_of("channel.stem", "/channel/2/stem"), 2)
+
+    def test_the_cursor_address_is_not_the_mask(self):
+        self.assertIsNone(self.osc.channel_of("channel.stem", "/channel/2/stem/cursor"))
+
+    def test_the_cursor_address_is_the_cursor(self):
+        self.assertEqual(self.osc.channel_of("channel.stem.cursor", "/channel/2/stem/cursor"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
