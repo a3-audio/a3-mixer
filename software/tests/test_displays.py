@@ -149,8 +149,8 @@ class WhatIsDrawn(unittest.TestCase):
         displays.drain()
         _, picture = rig.drawn[-1]
         self.assertEqual([h.text for h in picture.headings], ["SA", "A"])
-        self.assertEqual([m.solid for m in picture.meters], [True, False])
-        self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog = A
+        self.assertEqual([m.solid for m in picture.meters], [True, True, False, False])
+        self.assertEqual(cursor_of(picture), 2)         # cursor 0 = analog = A's pair
 
 
 class AfterAFailure(unittest.TestCase):
@@ -218,8 +218,9 @@ class TryingAgain(unittest.TestCase):
 
 class Meters(unittest.TestCase):
     """Meters are noted on the OSC thread; a step on the displays' own clock
-    takes the loudest peak since the last step and redraws every panel whose
-    meters moved. What a turn posts is drawn with the latest levels."""
+    takes the loudest peak since the last step, runs it through the meter's
+    ballistics and redraws every panel whose pixels moved. What a turn posts
+    is drawn with the latest levels."""
 
     def setUp(self):
         self.now = 0.0
@@ -235,9 +236,21 @@ class Meters(unittest.TestCase):
         panel = next(p for p in PANELS if p.label == label)
         return [m.level for m in self.displays._picture_for(panel)(128, 64).meters]
 
+    def peaks(self, label):
+        from display_panel import PANELS
+        panel = next(p for p in PANELS if p.label == label)
+        return [m.peak for m in self.displays._picture_for(panel)(128, 64).meters]
+
     def step(self):
+        """One step a tenth of a second after the last, as on the desk."""
+        from display_panel import METER_STEPS_PER_SECOND
+        self.now += 1.0 / METER_STEPS_PER_SECOND
         self.displays.step_meters()
         self.displays.drain()
+
+    def fall(self, seconds):
+        from display_panel import METER_FALL_DB_PER_SECOND, METER_FLOOR_DB
+        return METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB * seconds
 
     def test_a_channel_meters_every_stem_and_its_own_analog_input(self):
         self.displays.note_peak(3, 1.0)
@@ -246,15 +259,43 @@ class Meters(unittest.TestCase):
         self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0, 1.0])
         self.assertEqual(self.levels("Deck 1"), [0, 0, 1.0, 0, 0, 0, 0, 0, 0])
 
-    def test_sa_is_the_loudest_stem_on_the_return_and_a_the_louder_side(self):
+    def test_a_is_the_analog_return_left_and_right(self):
+        self.displays.note_aux(0, 10 ** (-24 / 20))
+        self.displays.note_aux(1, 10 ** (-12 / 20))
+        self.step()
+        _, _, left, right = self.levels("Aux Return")
+        self.assertAlmostEqual(left, 0.5)
+        self.assertAlmostEqual(right, 0.75)
+
+    def test_without_the_bus_meters_sa_is_the_loudest_stem_on_the_return(self):
+        """The truth before stem_aux_L/R: SA falls back to what it showed
+        until 2026-10-04, the loudest stem playing on the return, both sides."""
         self.displays.show_return(1, (False, True, False, True) + (False,) * 4)
         self.displays.note_peak(1, 1.0)                 # not on the return
         self.displays.note_peak(2, 10 ** (-24 / 20))
-        self.displays.note_aux(1, 10 ** (-12 / 20))
         self.step()
-        sa, a = self.levels("Aux Return")
-        self.assertAlmostEqual(sa, 0.5)
-        self.assertAlmostEqual(a, 0.75)
+        sa_left, sa_right, _, _ = self.levels("Aux Return")
+        self.assertAlmostEqual(sa_left, 0.5)
+        self.assertAlmostEqual(sa_right, 0.5)
+
+    def test_with_the_bus_meters_sa_is_the_stemdecks_aux_bus(self):
+        self.displays.show_return(1, (True,) * 8)
+        self.displays.note_peak(1, 1.0)                 # on the return, but the bus rules
+        self.displays.note_stem_aux(0, 10 ** (-24 / 20))
+        self.displays.note_stem_aux(1, 10 ** (-12 / 20))
+        self.step()
+        sa_left, sa_right, _, _ = self.levels("Aux Return")
+        self.assertAlmostEqual(sa_left, 0.5)
+        self.assertAlmostEqual(sa_right, 0.75)
+
+    def test_a_bus_that_was_heard_stays_the_source_in_silence(self):
+        """Once the truth has the bus meters, a quiet bus is a quiet SA --
+        not the stems again."""
+        self.displays.show_return(1, (True,) * 8)
+        self.displays.note_stem_aux(0, 0.0)
+        self.displays.note_peak(1, 1.0)
+        self.step()
+        self.assertEqual(self.levels("Aux Return")[:2], [0.0, 0.0])
 
     def test_a_step_redraws_every_panel_whose_meters_moved(self):
         self.displays.note_peak(1, 1.0)                 # on every channel's meters
@@ -266,15 +307,52 @@ class Meters(unittest.TestCase):
         self.assertEqual([], self.rig.drawn)
 
     def test_the_meter_holds_the_peak_between_steps(self):
-        """StemDeck sends a 40 ms peak 25 times a second; a step every 200 ms
+        """StemDeck sends a 40 ms peak 25 times a second; a step every 100 ms
         must show the loudest of them, not the last."""
         self.displays.note_peak(1, 1.0)
         self.displays.note_peak(1, 0.001)
         self.step()
         self.assertEqual(self.levels("Deck 1")[0], 1.0)
+
+    def test_the_meter_falls_smoothly(self):
+        self.displays.note_peak(1, 1.0)
+        self.step()
         self.displays.note_peak(1, 0.001)
         self.step()
-        self.assertEqual(self.levels("Deck 1")[0], 0.0)
+        self.assertAlmostEqual(self.levels("Deck 1")[0], 1.0 - self.fall(0.1))
+
+    def test_the_peak_mark_holds_a_second(self):
+        self.displays.note_analog(0, 1.0)
+        self.step()
+        for _ in range(10):
+            self.displays.note_analog(0, 0.001)
+            self.step()
+        self.assertAlmostEqual(self.peaks("Deck 1")[8], 1.0)
+        self.displays.note_analog(0, 0.001)
+        self.step()
+        self.assertAlmostEqual(self.peaks("Deck 1")[8], 1.0 - self.fall(0.1))
+
+    def test_a_move_of_less_than_a_pixel_posts_nothing(self):
+        """The bus carries ~17 draws a second (measured 2026-10-04): a panel
+        whose floats moved but whose pixels did not is not redrawn."""
+        self.displays.note_peak(1, 1.0)
+        self.step()
+        self.rig.drawn.clear()
+        self.displays.note_peak(1, 10 ** (-0.3 / 20))  # 0.3 dB down: under one row
+        self.step()
+        self.assertNotEqual(self.levels("Deck 1")[0], 1.0)
+        self.assertEqual([], self.rig.drawn)
+
+    def test_a_fall_redraws_until_it_rests(self):
+        self.displays.note_peak(1, 1.0)
+        self.step()
+        draws = 0
+        for _ in range(60):                             # six seconds of silence
+            self.rig.drawn.clear()
+            self.step()
+            draws += len(self.rig.drawn)
+        self.assertGreater(draws, 0)
+        self.assertEqual([], self.rig.drawn)            # at rest: nothing more
 
     def test_a_meter_that_stopped_is_silence(self):
         self.displays.note_analog(0, 1.0)
@@ -300,9 +378,10 @@ class Meters(unittest.TestCase):
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
         self.now = 1.0 / METER_STEPS_PER_SECOND
+        self.displays.note_peak(1, 0.001)
         self.displays.tick()
         self.displays.drain()
-        self.assertEqual(4, len(self.rig.drawn))
+        self.assertEqual(4, len(self.rig.drawn))        # the fall moved a row
 
     def test_a_turn_during_a_step_goes_first(self):
         """A step redraws every moved panel (~85 ms on the desk); a turn
@@ -375,7 +454,7 @@ class Painting(unittest.TestCase):
         paint(image, picture)
         folder = __import__("os").environ.get("A3_SNAPSHOTS")
         if folder:
-            image.resize((512, 256)).save(Path(folder) / f"desk-input-selector-{name}.png")
+            image.resize((512, 256)).save(Path(folder) / f"desk-meters-{name}.png")
         return image
 
     def lit(self, image, box):
@@ -385,12 +464,16 @@ class Painting(unittest.TestCase):
     def states(self):
         from display_panel import channel_picture, return_picture
         levels = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6, 0.7)
+        peaks = (0.4, 0.95, 0.1, 0.5, 1.0, 0.55, 0.0, 0.8, 0.85)
         return {
-            "channel-analog": channel_picture(8, 0, levels, 128, 64),
-            "channel-stem": channel_picture(2, stem(5), levels, 128, 64),
+            "channel-analog": channel_picture(8, 0, levels, 128, 64, peaks=peaks),
+            "channel-stem": channel_picture(2, stem(5), levels, 128, 64, peaks=peaks),
             "channel-silent": channel_picture(0, stem(1), (0.0,) * 9, 128, 64),
-            "return-stem": return_picture(1, 1, 0.8, 0.3, 128, 64),
-            "return-analog": return_picture(1, 0, 0.0, 0.9, 128, 64),
+            "return-stem": return_picture(1, 1, (0.8, 0.7, 0.3, 0.25), 128, 64,
+                                          peaks=(1.0, 0.85, 0.5, 0.25)),
+            "return-analog": return_picture(0, 0, (0.4, 0.45, 0.9, 0.75), 128, 64,
+                                            peaks=(0.6, 0.45, 1.0, 0.9)),
+            "return-silent": return_picture(1, 1, (0.0,) * 4, 128, 64),
         }
 
     def test_each_state_paints_its_headings_and_cursor(self):
@@ -408,6 +491,7 @@ class Painting(unittest.TestCase):
             with self.subTest(name):
                 image = self.paint_state(f"fit-{name}", picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
+                boxes += [t.box for t in picture.ticks]
                 boxes.append(picture.cursor)
                 inside = {(x, y) for x0, y0, x1, y1 in boxes
                           for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
@@ -430,6 +514,58 @@ class Painting(unittest.TestCase):
         self.assertFalse(image.getpixel((middle, (y0 + y1) // 2)))
         x0, y0, x1, y1 = picture.meters[8].box          # A: plays, level 0.7
         self.assertTrue(image.getpixel(((x0 + x1) // 2, y1 - 2)))
+
+    def test_the_peak_is_a_thin_mark_above_the_bar(self):
+        picture = self.states()["channel-analog"]
+        image = self.paint_state("peak", picture)
+        meter = picture.meters[0]                       # level 0.2, peak 0.4, outlined
+        x0, y0, x1, y1 = meter.box
+        bar, peak = meter.pixels()
+        middle = (x0 + x1) // 2
+        self.assertTrue(image.getpixel((middle, y1 - peak + 1)))
+        self.assertFalse(image.getpixel((middle, y1 - peak + 2)))
+        self.assertFalse(image.getpixel((middle, y1 - peak)))
+
+    def middle_of(self, bar, index):
+        from display_panel import segment_rows
+        top, bottom = segment_rows(bar, index)
+        return (bar.box[0] + bar.box[2]) // 2, (top + bottom) // 2
+
+    def test_the_playing_pair_is_filled_the_other_outlined(self):
+        picture = self.states()["return-stem"]
+        image = self.paint_state("return-fill", picture)
+        sa, a = picture.meters[0], picture.meters[2]
+        self.assertTrue(image.getpixel(self.middle_of(sa, 0)))
+        x, y = self.middle_of(a, 0)
+        self.assertFalse(image.getpixel((x, y)))
+        self.assertTrue(image.getpixel((a.box[0], y)) and image.getpixel((a.box[2], y)))
+
+    def test_segments_are_apart_and_the_peak_stands_alone(self):
+        from display_panel import segment_rows
+        picture = self.states()["return-stem"]
+        image = self.paint_state("return-segments", picture)
+        bar = picture.meters[0]                         # level 0.8, peak 1.0
+        lit, peak = bar.pixels()
+        x = (bar.box[0] + bar.box[2]) // 2
+        top, _ = segment_rows(bar, 0)
+        self.assertFalse(image.getpixel((x, top - 1)))  # the row between two segments
+        self.assertTrue(image.getpixel(self.middle_of(bar, peak - 1)))
+        self.assertFalse(image.getpixel(self.middle_of(bar, lit)))
+
+    def test_in_silence_both_pairs_still_show_which_plays(self):
+        picture = self.states()["return-silent"]
+        image = self.paint_state("return-quiet", picture)
+        for bar in picture.meters:
+            x, y = self.middle_of(bar, 0)
+            self.assertEqual(bool(image.getpixel((x, y))), bar.solid)
+            self.assertTrue(image.getpixel((bar.box[0], y)))
+            self.assertFalse(image.getpixel(self.middle_of(bar, 1)))
+
+    def test_the_scale_marks_are_painted(self):
+        picture = self.states()["return-silent"]
+        image = self.paint_state("return-scale", picture)
+        for tick in picture.ticks:
+            self.assertTrue(self.lit(image, tick.box), tick.text)
 
 
 class HowLongADrawTakes(unittest.TestCase):
