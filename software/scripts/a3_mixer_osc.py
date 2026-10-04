@@ -84,7 +84,8 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
        "device.hello", "channel.stem.turn", "aux-return.stem.turn",
        "aux-return.stem.push", "channel.stem", "aux-return.stem",
-       "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode", "core.here")
+       "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode", "core.here",
+       "aux-return.cue.led")
 
 
 def _pattern_regex(pattern):
@@ -171,6 +172,12 @@ class MixerOsc:
         regex = self._matchers.get(key)
         fields = regex and self._fields(key, regex, address)
         return fields.get("ch") if fields else None
+
+    def is_address(self, key, address):
+        """Whether `address` is exactly `key`'s: channel_of() for an address
+        without a channel."""
+        regex = self._matchers.get(key)
+        return bool(regex) and self._fields(key, regex, address) is not None
 
     def vu_number(self, address):
         """The n of /vu/<n>, or None: the meter path's own match, without
