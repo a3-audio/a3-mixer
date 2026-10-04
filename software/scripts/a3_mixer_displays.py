@@ -4,12 +4,13 @@
 
 """The five OLED displays, drawn by the main process: what Core announces.
 
-Each channel's display is an input selector (2026-10-04): nine meters under
-D1 | D2 | A, the input that plays solid, the cursor under one meter. The
+Each channel's display is an input selector (2026-10-04): nine plain bars
+under D1 | D2 | A, a divider between the sections, and the cursor under one
+meter as the only mark -- it does not show which input is assigned. The
 return's display is a stereo meter: SA and A, each a pair of segmented bars
-L|R, the mode that plays filled. Every meter has VU-like ballistics and a
-peak mark (display_panel.Ballistics), and a panel is redrawn only when its
-pixels move.
+L|R, the mode that plays filled, a peak segment per bar. Every meter has
+VU-like ballistics (display_panel.Ballistics), and a panel is redrawn only
+when its pixels move.
 
 The displays are a3-mixer-set-display's -- the same multiplexer and ssd1306
 -- and the table of which display sits where is display_panel.PANELS,
