@@ -20,3 +20,7 @@ Files: README.md
 Copyright: 2023 A3 Audio <contact@a3-audio.com>
 License: CC-BY-SA-4.0
 
+Files: hardware/mainboard/pcb/library/MCP3208T_CI_SL/*
+Copyright: SnapMagic Search, Inc.
+License: LicenseRef-SnapMagic
+Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Search (SnapEDA); the terms are in License.txt next to the files.
