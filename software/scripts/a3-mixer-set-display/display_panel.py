@@ -124,228 +124,113 @@ def channel_announcement(args):
 
 
 def return_announcement(args):
-    """(cursor, plays) out of `/aux-return/stem`'s arguments -- the pair the
-    encoder is on, then for pairs 1-8 whether it plays on the return -- or
-    None if damaged."""
-    if len(args) != 1 + PAIRS or not _is_count(args[0], PAIRS):
+    """(cursor, plays) out of `/aux-return/stem`'s arguments -- the option
+    the encoder is on (0 = analog, 1 = stem), then for pairs 1-8 whether it
+    plays on the return -- or None if damaged."""
+    if len(args) != 1 + PAIRS or not _is_count(args[0], 1):
         return None
     if not all(_is_count(flag, 1) for flag in args[1:]):
         return None
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: Where a stem plays (specs desk-stem-grid, desk-stem-grid-2): a channel
-#: index 0-3, or the aux return. Pairs 1-4 are StemDeck deck 1, 5-8 deck 2.
-RETURN_PLACE = 4
-STEMS_PER_DECK = 4
+#: A channel's selector (2026-10-04): inputs 0-7 the stem pairs 1-8, then
+#: the channel's analog input -- a3_core_stems' numbers.
+INPUTS = PAIRS + 1
+ANALOG_INPUT = PAIRS
+#: Headings over the channel's meters: the name, the first and the last input.
+CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", 8, 8))
+
+#: The aux return's modes -- a3_core_stems' numbers -- and its two meters,
+#: left to right: SA, the stems on the return, then A, the analog return.
+ANALOG_MODE, STEM_MODE = 0, 1
+RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
+RETURN_GROUPS = (("SA", 0, 0), ("A", 1, 1))
+
+METER_STEPS_PER_SECOND = 5   # measured on the desk first (smoke-test/scripts/desk-wave-bench.py)
+METER_FLOOR_DB = -48.0
+
+#: What a panel shows: headings over meters, and the cursor under one meter.
+Heading = namedtuple("Heading", "box text")
+Meter = namedtuple("Meter", "box level solid")
+Picture = namedtuple("Picture", "headings meters cursor")
+
+#: Gaps between meters, in pixels: inside a group, and between two groups.
+INNER_GAP = 2
+GROUP_GAP = 6
 
 
-def places_of(masks, plays):
-    """Where each pair plays: the first channel index whose mask has it, else
-    RETURN_PLACE if it plays on the return, else None."""
-    places = []
-    for pair in range(1, PAIRS + 1):
-        on = [c for c, mask in enumerate(masks) if mask >> (pair - 1) & 1]
-        places.append(on[0] if on else (RETURN_PLACE if plays[pair - 1] else None))
-    return places
-
-
-def wave_box(width, height):
-    """The lower half, for the waveform."""
-    return (0, height // 2, width - 1, height - 1)
-
-
-WAVE_STEPS_PER_SECOND = 5   # measured on the desk first (smoke-test/scripts/desk-wave-bench.py)
-WAVE_COLUMNS_PER_STEP = 2
-WAVE_FLOOR_DB = -48.0
-
-
-def wave_level(peak):
-    """0.0-1.0 for a linear peak, in dB down to WAVE_FLOOR_DB; anything odd
-    is silence."""
-    if not isinstance(peak, (int, float)) or isinstance(peak, bool) or peak <= 0:
+def meter_level(peak):
+    """0.0-1.0 for a linear peak, in dB down to METER_FLOOR_DB; anything
+    odd is silence."""
+    if not isinstance(peak, (int, float)) or isinstance(peak, bool) or not peak > 0:
         return 0.0
     db = 20 * math.log10(peak)
-    return max(0.0, min(1.0, (db - WAVE_FLOOR_DB) / -WAVE_FLOOR_DB))
+    return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
 
 
-class Wave:
-    """One display's envelope history, a level per column, newest last.
-    Always `width` columns: it starts silent and drops what scrolls out."""
-
-    def __init__(self, width):
-        self._levels = [0.0] * width
-
-    def step(self, level):
-        """Moves the wave on; False when it looks the same as before (a
-        silent wave stays silent), so nothing needs drawing."""
-        moved = self._levels[WAVE_COLUMNS_PER_STEP:] + [level] * WAVE_COLUMNS_PER_STEP
-        changed = moved != self._levels
-        self._levels = moved
-        return changed
-
-    def columns(self, box):
-        """(x, top, bottom) per column inside `box`, mirrored about its
-        middle; silence is the middle line."""
-        x0, y0, x1, y1 = box
-        half = (y1 - y0) / 2
-        out = []
-        for offset, level in enumerate(self._levels[-(x1 - x0 + 1):]):
-            gap = int(half * (1.0 - level))
-            out.append((x0 + offset, y0 + gap, y1 - gap))
-        return out
+def active_input(mask):
+    """The input a channel plays: its lowest stem pair, or ANALOG_INPUT."""
+    for index in range(PAIRS):
+        if mask >> index & 1:
+            return index
+    return ANALOG_INPUT
 
 
-class WaveStrip:
-    """A wave and its picture, `width` x `height`: a step moves the picture
-    WAVE_COLUMNS_PER_STEP columns left and draws only the new columns --
-    repainting all 128 lines cost most of a 53 ms draw on the desk
-    (desk-stem-grid-2). Draws exactly what Wave.columns says."""
-
-    def __init__(self, width, height):
-        from PIL import Image, ImageDraw
-        self._wave = Wave(width)
-        self._box = (0, 0, width - 1, height - 1)
-        self.image = Image.new("1", (width, height))
-        draw = ImageDraw.Draw(self.image)
-        for x, top, bottom in self._wave.columns(self._box):
-            draw.line((x, top, x, bottom), fill="white")
-
-    def columns(self, box):
-        """The wave as (x, top, bottom) columns in any `box`."""
-        return self._wave.columns(box)
-
-    def shift(self, level):
-        """Moves the wave on; False when its picture did not change."""
-        from PIL import Image, ImageDraw
-        if not self._wave.step(level):
-            return False
-        width, height = self.image.size
-        n = WAVE_COLUMNS_PER_STEP
-        moved = Image.new("1", (width, height))
-        moved.paste(self.image.crop((n, 0, width, height)), (0, 0))
-        draw = ImageDraw.Draw(moved)
-        for x, top, bottom in self._wave.columns(self._box)[-n:]:
-            draw.line((x, top, x, bottom), fill="white")
-        self.image = moved
-        return True
+def _columns(groups, width):
+    """(x0, x1) of every input, the groups apart, centred on the panel."""
+    count = groups[-1][2] + 1
+    gaps = (count - 1) * INNER_GAP + (len(groups) - 1) * (GROUP_GAP - INNER_GAP)
+    meter = (width - gaps) // count
+    x = (width - (count * meter + gaps)) // 2
+    group_starts = {first for _, first, _ in groups[1:]}
+    columns = []
+    for index in range(count):
+        if index:
+            x += GROUP_GAP if index in group_starts else INNER_GAP
+        columns.append((x, x + meter - 1))
+        x += meter
+    return columns
 
 
-#: One entry of a menu in the upper half (spec desk-stem-grid-2): `inverted`
-#: is the cursor, `marked` what plays. `cursor_from` is the cursor inside the
-#: text -- the index where its inverted part starts (2026-10-03: behind the
-#: dot of D1.3 while a deck is edited) -- or None.
-MenuItem = namedtuple("MenuItem", "box text inverted marked cursor_from", defaults=(None,))
-
-#: A channel menu's levels and entries -- a3_core_stems' numbers.
-TOP_LEVEL = 0
-TOP_ENTRIES = ("D1", "D2", "A")
-BACK_ENTRY = "<"   # the default font has no arrow: "\u2190" drew an empty box
+def _bands(height):
+    """(heading, meters, cursor) as (top, bottom) rows of the panel."""
+    heading = max(6, round(height * 0.19))
+    cursor = max(2, round(height * 0.07))
+    return ((0, heading - 1), (heading + 1, height - cursor - 3),
+            (height - cursor, height - 1))
 
 
-def _slots(count, width, height):
-    """`count` boxes side by side across the upper half."""
-    half = height // 2
-    slot = width // count
-    top, bottom = round(half * 0.15), round(half * 0.85)
-    return [(i * slot + 1, top, (i + 1) * slot - 2, bottom) for i in range(count)]
+def selector_picture(groups, levels, active, cursor, width, height):
+    """Meters under their groups' headings: `active` solid, the cursor under
+    its meter. Pure layout; the painter draws it."""
+    columns = _columns(groups, width)
+    (h0, h1), (m0, m1), (c0, c1) = _bands(height)
+    headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
+                for name, first, last in groups]
+    meters = [Meter((x0, m0, x1, m1), level, index == active)
+              for index, ((x0, x1), level) in enumerate(zip(columns, levels))]
+    x0, x1 = columns[cursor]
+    return Picture(headings, meters, (x0, c0, x1, c1))
 
 
-def _sources(index, places):
-    """What channel `index` plays from: {0} D1, {1} D2, both -- one stem of
-    each deck may play (2026-10-02) -- or {2} A."""
-    decks = {pair // STEMS_PER_DECK for pair, place in enumerate(places) if place == index}
-    return decks or {2}
+def channel_picture(cursor, mask, levels, width, height):
+    """A channel: the eight stems and its analog input, what plays solid."""
+    return selector_picture(CHANNEL_GROUPS, levels, active_input(mask), cursor, width, height)
 
 
-def _stem_here(deck, places, index):
-    """The stem (0-3) of `deck` channel `index` plays, or None."""
-    stems = [stem for stem in range(STEMS_PER_DECK)
-             if places[deck * STEMS_PER_DECK + stem] == index]
-    return stems[0] if stems else None
+def return_picture(cursor, mode, stems_level, analog_level, width, height):
+    """The aux return: SA and A, the mode that plays solid."""
+    return selector_picture(RETURN_GROUPS, (stems_level, analog_level),
+                            RETURN_OPTIONS.index(mode), RETURN_OPTIONS.index(cursor),
+                            width, height)
 
 
-def _deck_label(deck, places, index):
-    """'D1.3' -- the deck and the stem of it this channel plays -- or 'D1.-'."""
-    stem = _stem_here(deck, places, index)
-    return "D%d.%s" % (deck + 1, "-" if stem is None else stem + 1)
-
-
-def _top_items(index, cursor, places, boxes):
-    sources = _sources(index, places)
-    texts = [_deck_label(0, places, index), _deck_label(1, places, index), "A"]
-    return [MenuItem(box, text, cursor == i, i in sources)
-            for i, (box, text) in enumerate(zip(boxes, texts))]
-
-
-def _edit_item(index, deck, cursor, places, box):
-    """The edited deck's field: the candidate behind the dot -- 'D1.2', or
-    'D1.<' for back -- marked when it plays here. Always exactly one
-    character changes, whatever channel the stem plays on: a longer label
-    ('D1.2>4') shrank the font (maintainer, 2026-10-03)."""
-    prefix = "D%d." % (deck + 1)
-    if cursor == STEMS_PER_DECK:
-        playing = _stem_here(deck, places, index) is not None
-        return MenuItem(box, prefix + BACK_ENTRY, False, playing, len(prefix))
-    place = places[deck * STEMS_PER_DECK + cursor]
-    return MenuItem(box, prefix + str(cursor + 1), False, place == index, len(prefix))
-
-
-def menu_items(index, menu, places, width, height):
-    """Channel `index`'s menu. At the top: D1.3  D2.-  A -- which stem of
-    each deck plays (2026-10-03), what plays marked, the cursor inverted.
-    In a deck the same row, the deck's own field edited in place
-    (2026-10-03: no sub-level screen): the candidate stem or '<' behind the
-    dot, and only that part is the cursor."""
-    level, cursor = menu
-    boxes = _slots(3, width, height)
-    if level == TOP_LEVEL:
-        return _top_items(index, cursor, places, boxes)
-    deck = level - 1
-    items = _top_items(index, None, places, boxes)
-    items[deck] = _edit_item(index, deck, cursor, places, boxes[deck])
-    return items
-
-
-#: The aux return's modes -- a3_core_stems' numbers.
-ANALOG_MODE, STEM_MODE = 0, 1
-
-
-def return_items(mode, cursor, width, height):
-    """The return's two modes: the active one marked, the cursor inverted."""
-    boxes = _slots(2, width, height)
-    return [MenuItem(boxes[0], "STEM", cursor == STEM_MODE, mode == STEM_MODE),
-            MenuItem(boxes[1], "ANALOG", cursor == ANALOG_MODE, mode == ANALOG_MODE)]
-
-
-def return_bars(stem_levels, aux_levels, width, height):
-    """Nine meters in the lower half: the eight stems, then the analog
-    return as two thin halves (L, R). A box per bar, None where silent."""
-    half = height // 2
-    slot = width // 9
-    bottom = height - 1
-
-    def bar(x0, x1, level):
-        reach = round(level * (half - 2))
-        return (x0, bottom - reach, x1, bottom) if reach > 0 else None
-
-    bars = [bar(i * slot + 1, (i + 1) * slot - 2, level) for i, level in enumerate(stem_levels)]
-    left = 8 * slot + 1
-    middle = left + (slot - 3) // 2
-    bars.append(bar(left, middle - 1, aux_levels[0]))
-    bars.append(bar(middle + 1, (9 * slot) - 2, aux_levels[1]))
-    return bars
-
-
-def menu_announcement(args):
-    """(level, cursor) out of `/channel/{ch}/stem/menu`'s arguments, or None
-    if damaged: level 0-2, cursor 0-2 at the top, 0-4 in a deck."""
-    if len(args) != 2 or not all(_is_count(v, 4) for v in args):
+def cursor_announcement(args):
+    """The cursor out of `/channel/{ch}/stem/cursor` (0-8), or None."""
+    if len(args) != 1 or not _is_count(args[0], ANALOG_INPUT):
         return None
-    level, cursor = args
-    if level > 2 or cursor >= (len(TOP_ENTRIES) if level == TOP_LEVEL else STEMS_PER_DECK + 1):
-        return None
-    return level, cursor
+    return args[0]
 
 
 def mode_announcement(args):

@@ -84,7 +84,7 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
        "device.hello", "channel.stem.turn", "aux-return.stem.turn",
        "aux-return.stem.push", "channel.stem", "aux-return.stem",
-       "channel.stem.push", "channel.stem.menu", "aux-return.stem.mode", "core.here")
+       "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode", "core.here")
 
 
 def _pattern_regex(pattern):

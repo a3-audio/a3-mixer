@@ -52,5 +52,40 @@ class TheInputMetersHaveEightLeds(unittest.TestCase):
         self.assertEqual({counts[str(slot)] for slot in range(INPUTS)}, {str(LEDS_PER_INPUT)})
 
 
+class TheMainMeterHasAllFourModules(unittest.TestCase):
+    """The stems left the main VU's top module on 2026-10-04 (the channel
+    displays meter them now): the desk scales the main meter to all 32 rows,
+    the firmware draws 32. Read from both sources, so they cannot drift."""
+
+    SOFTWARE = Path(__file__).resolve().parents[1]
+    FIRMWARE = SOFTWARE.parent / "hardware/mainboard/firmware/src/main.cpp"
+
+    def test_the_desk_scales_the_outputs_to_32(self):
+        import re
+        script = (self.SOFTWARE / "scripts/a3-mixer.py").read_text()
+        table = script[script.index("vu_channel_to_led_count"):]
+        table = table[:table.index("}")]
+        counts = dict(re.findall(r"(\d+)\s*:\s*(\d+)", table))
+        self.assertEqual({counts[str(slot)] for slot in range(4, 12)}, {"32"})
+
+    def test_the_firmware_draws_32_rows_and_no_stems(self):
+        source = self.FIRMWARE.read_text()
+        output = source[source.index("// output VU meters"):]
+        self.assertIn("j < 32", output[:output.index("}")])
+        self.assertNotIn("SVU", source)
+
+    def test_the_desk_sends_no_stem_leds(self):
+        script = (self.SOFTWARE / "scripts/a3-mixer.py").read_text()
+        self.assertNotIn("stem_leds", script)
+        self.assertFalse((self.SOFTWARE / "scripts/a3_mixer_stem_leds.py").exists())
+
+    def test_only_neopixel_changes_show_the_neopixels(self):
+        """pixels.show() keeps interrupts off ~1.4 ms on 48 pixels; on every
+        output-VU line it starved the encoders."""
+        leds = self.FIRMWARE.read_text()
+        leds = leds[leds.index("void leds()"):leds.index("void readEncoder()")]
+        self.assertEqual(leds.count("pixels.show()"), 1)   # the input VU: the only NeoPixels
+
+
 if __name__ == "__main__":
     unittest.main()
