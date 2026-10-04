@@ -94,19 +94,13 @@ def headings_image(headings, width, height):
 
 
 def _meter(draw, meter):
-    """What plays is a filled bar; the others are outlined at their level.
-    Both get a one-row peak mark above the bar. The rows are the meter's own
-    pixels(), so what is painted is what the redraw rule compares."""
+    """A channel meter: a plain filled bar, nothing when silent. Its rows are
+    the meter's own pixels(), so what is painted is what the redraw rule
+    compares."""
     x0, y0, x1, y1 = meter.box
-    bar, peak = meter.pixels()
-    if meter.solid:
+    bar = meter.pixels()
+    if bar:
         draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
-    else:
-        draw.line((x0, y1, x1, y1), fill="white")
-        if bar:
-            draw.rectangle((x0, y1 - bar + 1, x1, y1), outline="white")
-    if peak:
-        draw.line((x0, y1 - peak + 1, x1, y1 - peak + 1), fill="white")
 
 
 def _segment(draw, bar, index):
@@ -167,6 +161,8 @@ def paint(image, picture):
         (_bar if isinstance(meter, Bar) else _meter)(draw, meter)
     for tick in picture.ticks:
         _tick(draw, tick)
+    for divider in picture.dividers:
+        draw.line(divider, fill="white")
     draw.rectangle(picture.cursor, fill="white")
 
 
@@ -420,10 +416,10 @@ class Displays:
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, mask):
-        """What plays on a channel: its own display."""
+        """What plays on a channel. Kept, not drawn: the channel display shows
+        its cursor, not which input is assigned (2026-10-04)."""
         with self._wake:
             self._channel_masks[index] = mask
-        self._post(panel_for_channel(index))
 
     def show_cursor(self, index, cursor):
         """A channel's cursor: its own display."""
@@ -446,6 +442,7 @@ class Displays:
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
         self.show_return(STEM_MODE, (False,) * PAIRS)
+        self._post_all()
 
     def drain(self):
         """Draw everything posted and every panel whose meters moved, each
@@ -472,10 +469,9 @@ class Displays:
                 return lambda width, height: return_picture(cursor, mode, levels, width,
                                                             height, peaks=peaks)
             index = PANELS.index(panel)
-            cursor, mask = self._cursors[index], self._channel_masks[index]
-            levels, peaks = self._levels[panel] or ((0.0,) * (PAIRS + 1),) * 2
-        return lambda width, height: channel_picture(cursor, mask, levels, width, height,
-                                                     peaks=peaks)
+            cursor = self._cursors[index]
+            levels, _ = self._levels[panel] or ((0.0,) * (PAIRS + 1),) * 2
+        return lambda width, height: channel_picture(cursor, levels, width, height)
 
     def _post(self, panel):
         with self._wake:

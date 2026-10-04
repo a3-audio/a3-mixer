@@ -132,11 +132,14 @@ def stem(pair):
 
 class ChannelSelector(unittest.TestCase):
     """A channel's display is an input selector (2026-10-04): nine meters
-    under D1 | D2 | A, the playing input solid, the cursor under its meter."""
+    under D1 | D2 | A and the cursor under one of them. It shows what is
+    selected on this channel -- the cursor -- and nothing else: no mark of
+    which input is assigned, no peak lines, no floor lines (maintainer,
+    2026-10-04: turning, you want to see the selector only)."""
 
-    def picture(self, cursor=8, mask=0, levels=(0.5,) * 9, width=W, height=H):
+    def picture(self, cursor=8, levels=(0.5,) * 9, width=W, height=H):
         from display_panel import channel_picture
-        return channel_picture(cursor, mask, levels, width, height)
+        return channel_picture(cursor, levels, width, height)
 
     def test_three_headings_over_their_meters(self):
         p = self.picture()
@@ -161,12 +164,29 @@ class ChannelSelector(unittest.TestCase):
         self.assertGreater(boxes[4][0] - boxes[3][2], inner)
         self.assertGreater(boxes[8][0] - boxes[7][2], inner)
 
-    def test_analog_plays_when_no_stem_does(self):
-        self.assertEqual([m.solid for m in self.picture(mask=0).meters], [False] * 8 + [True])
+    def test_the_groups_are_divided_by_lines(self):
+        """D1 | D2 | A stand apart (maintainer, 2026-10-04): a vertical line
+        in each gap between two groups, below the headings and above the
+        cursor row, so it is never taken for the cursor."""
+        p = self.picture()
+        meters, headings = p.meters, p.headings
+        self.assertEqual(len(p.dividers), 2)
+        for (x0, y0, x1, y1), (left, right) in zip(p.dividers, ((3, 4), (7, 8))):
+            self.assertEqual(x0, x1)
+            self.assertGreaterEqual(x0 - meters[left].box[2], 3)
+            self.assertGreaterEqual(meters[right].box[0] - x0, 3)
+            self.assertGreater(y0, headings[0].box[3])
+            self.assertEqual(y1, meters[0].box[3])
+            self.assertLess(y1, p.cursor[1])
 
-    def test_the_stem_on_the_channel_is_solid(self):
-        solid = [m.solid for m in self.picture(mask=stem(6)).meters]
-        self.assertEqual(solid, [False] * 5 + [True] + [False] * 3)
+    def test_the_meters_keep_their_width(self):
+        boxes = [m.box for m in self.picture().meters]
+        self.assertTrue(all(x1 - x0 + 1 >= 11 for x0, _, x1, _ in boxes))
+
+    def test_a_meter_is_only_its_level(self):
+        """No assignment and no peak travel with a channel meter."""
+        from display_panel import Meter
+        self.assertEqual(Meter._fields, ("box", "level"))
 
     def test_the_levels_are_the_meters(self):
         levels = tuple(i / 8 for i in range(9))
@@ -337,36 +357,29 @@ class InPixels(unittest.TestCase):
     """A panel is redrawn when its pixels change, not its floats: the bus
     carries ~17 draws a second, and a fall of less than a row is no draw."""
 
-    def test_a_channel_meter_is_its_bar_and_its_peak_row(self):
+    def test_a_channel_meter_is_its_bar(self):
         from display_panel import channel_picture
-        p = channel_picture(8, 0, (0.6,) * 9, W, H, peaks=(0.8,) * 9)
-        bar, peak = p.meters[0].pixels()
+        p = channel_picture(8, (0.6,) * 9, W, H)
         rows = p.meters[0].box[3] - p.meters[0].box[1] + 1
-        self.assertEqual((bar, peak), (round(0.6 * rows), round(0.8 * rows)))
+        self.assertEqual(p.meters[0].pixels(), round(0.6 * rows))
 
     def test_less_than_a_row_is_the_same_picture(self):
         from display_panel import channel_picture, pixel_key
-        one = channel_picture(8, 0, (0.500,) * 9, W, H, peaks=(0.9,) * 9)
-        two = channel_picture(8, 0, (0.505,) * 9, W, H, peaks=(0.9,) * 9)
-        three = channel_picture(8, 0, (0.6,) * 9, W, H, peaks=(0.9,) * 9)
+        one = channel_picture(8, (0.500,) * 9, W, H)
+        two = channel_picture(8, (0.505,) * 9, W, H)
+        three = channel_picture(8, (0.6,) * 9, W, H)
         self.assertEqual(pixel_key(one), pixel_key(two))
         self.assertNotEqual(pixel_key(one), pixel_key(three))
 
-    def test_a_peak_that_moves_a_row_is_a_new_picture(self):
-        from display_panel import channel_picture, pixel_key
-        one = channel_picture(8, 0, (0.2,) * 9, W, H, peaks=(0.9,) * 9)
-        two = channel_picture(8, 0, (0.2,) * 9, W, H, peaks=(0.7,) * 9)
-        self.assertNotEqual(pixel_key(one), pixel_key(two))
-
-    def test_a_peak_inside_the_bar_is_not_drawn(self):
+    def test_a_silent_input_paints_nothing(self):
         from display_panel import channel_picture
-        p = channel_picture(8, 0, (0.5,) * 9, W, H, peaks=(0.5,) * 9)
-        self.assertEqual(p.meters[0].pixels()[1], 0)
+        p = channel_picture(0, (0.0,) * 9, W, H)
+        self.assertEqual([m.pixels() for m in p.meters], [0] * 9)
 
-    def test_what_plays_shows_its_base_in_silence(self):
-        from display_panel import SOLID_BASE, channel_picture
-        p = channel_picture(0, 1, (0.0,) * 9, W, H)
-        self.assertEqual(p.meters[0].pixels(), (SOLID_BASE, 0))
+    def test_the_cursor_is_part_of_the_picture(self):
+        from display_panel import channel_picture, pixel_key
+        self.assertNotEqual(pixel_key(channel_picture(0, (0.0,) * 9, W, H)),
+                            pixel_key(channel_picture(1, (0.0,) * 9, W, H)))
 
     def test_the_return_in_segments(self):
         from display_panel import pixel_key, return_picture
@@ -398,12 +411,6 @@ class SelectorAnnouncements(unittest.TestCase):
         self.assertEqual(mode_announcement((1,)), 1)
         for args in ((2,), (-1,), (True,), ()):
             self.assertIsNone(mode_announcement(args), args)
-
-    def test_the_input_of_a_mask(self):
-        from display_panel import ANALOG_INPUT, active_input
-        self.assertEqual(active_input(0), ANALOG_INPUT)
-        self.assertEqual(active_input(stem(3)), 2)
-        self.assertEqual(active_input(stem(2) | stem(7)), 1)
 
 
 class StemPanels(unittest.TestCase):

@@ -193,25 +193,16 @@ def lit_rows(level, count):
     return int(math.floor(level * count + 0.5))
 
 
-#: Rows of a channel meter always lit: solid as a block for what plays, so
-#: it shows in silence too; one row as the floor of the others.
-SOLID_BASE = 2
-
-
-class Meter(namedtuple("Meter", "box level solid peak")):
-    """A channel's meter: a bar, solid or outlined, and a one-row peak mark."""
+class Meter(namedtuple("Meter", "box level")):
+    """A channel's meter: a plain filled bar at its level and nothing else.
+    The channel display shows what is selected -- the cursor -- and no mark
+    of which input is assigned, no peak and no floor line: turning, the
+    hands want the selector only (maintainer, 2026-10-04)."""
 
     def pixels(self):
-        """(rows of the bar, row count of the peak mark or 0): what the
-        painter draws, in pixels, so two levels in one row are one picture."""
-        rows = self.box[3] - self.box[1] + 1
-        reach = lit_rows(self.level, rows)
-        if self.solid:
-            bar = max(reach, SOLID_BASE)
-        else:
-            bar = reach if reach >= 2 else 0
-        peak = lit_rows(self.peak, rows)
-        return bar, peak if peak > max(bar, 1) else 0
+        """Rows of the bar: what the painter draws, in pixels, so two levels
+        in one row are one picture."""
+        return lit_rows(self.level, self.box[3] - self.box[1] + 1)
 
 
 #: A return bar's segments: rows each, and the dark rows between two.
@@ -238,19 +229,21 @@ def segment_rows(bar, index):
 
 def pixel_key(picture):
     """Every meter of `picture` in pixels: equal keys paint equal meters."""
-    return tuple(meter.pixels() for meter in picture.meters)
+    return tuple(meter.pixels() for meter in picture.meters) + (picture.cursor,)
 
 
 #: What a panel shows: headings over meters, the cursor under one meter, and
 #: the return's scale marks (a channel has none).
 Heading = namedtuple("Heading", "box text")
-Picture = namedtuple("Picture", "headings meters cursor ticks", defaults=((),))
+Picture = namedtuple("Picture", "headings meters cursor ticks dividers", defaults=((), ()))
 #: A scale mark: its label's box and text, and the row the mark sits on.
 Tick = namedtuple("Tick", "box text row")
 
-#: Gaps between meters, in pixels: inside a group, and between two groups.
+#: Gaps between meters, in pixels: inside a group, and between two groups --
+#: wide enough for a divider line in its middle with three dark columns on
+#: each side (D1 | D2 | A stand apart, maintainer 2026-10-04).
 INNER_GAP = 2
-GROUP_GAP = 6
+GROUP_GAP = 7
 
 
 def meter_level(peak):
@@ -260,14 +253,6 @@ def meter_level(peak):
         return 0.0
     db = 20 * math.log10(peak)
     return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
-
-
-def active_input(mask):
-    """The input a channel plays: its lowest stem pair, or ANALOG_INPUT."""
-    for index in range(PAIRS):
-        if mask >> index & 1:
-            return index
-    return ANALOG_INPUT
 
 
 def _columns(groups, width):
@@ -298,19 +283,23 @@ def _silence(peaks, count):
     return (0.0,) * count if peaks is None else peaks
 
 
-def channel_picture(cursor, mask, levels, width, height, peaks=None):
-    """A channel: the eight stems and its analog input, what plays solid,
-    the cursor under its meter. Pure layout; the painter draws it."""
+def channel_picture(cursor, levels, width, height):
+    """A channel: the eight stems and its analog input as plain bars, and the
+    cursor under one of them. Pure layout; the painter draws it."""
     columns = _columns(CHANNEL_GROUPS, width)
     (h0, h1), (m0, m1), (c0, c1) = _bands(height)
     headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
                 for name, first, last in CHANNEL_GROUPS]
-    active = active_input(mask)
-    meters = [Meter((x0, m0, x1, m1), level, index == active, peak)
-              for index, ((x0, x1), level, peak)
-              in enumerate(zip(columns, levels, _silence(peaks, INPUTS)))]
+    meters = [Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels)]
+    # A vertical line in the middle of each gap between two groups, from the
+    # meters' top to their bottom: below the headings and above the cursor
+    # row, so it is never taken for the cursor.
+    dividers = []
+    for _, first, _ in CHANNEL_GROUPS[1:]:
+        x = (columns[first - 1][1] + columns[first][0]) // 2
+        dividers.append((x, m0, x, m1))
     x0, x1 = columns[cursor]
-    return Picture(headings, meters, (x0, c0, x1, c1))
+    return Picture(headings, meters, (x0, c0, x1, c1), dividers=tuple(dividers))
 
 
 #: The return's layout, in pixels: between L and R of a pair, and the scale
