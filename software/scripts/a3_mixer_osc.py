@@ -164,6 +164,14 @@ class MixerOsc:
                 return key, fields
         return None
 
+    def channel_of(self, key, address):
+        """The channel (1-4) if `address` is exactly `key`'s, else None. A
+        handler asks this rather than match(): python-osc 1.9.3 hands it
+        every address its wildcard map is a prefix of."""
+        regex = self._matchers.get(key)
+        fields = regex and self._fields(key, regex, address)
+        return fields.get("ch") if fields else None
+
     def vu_number(self, address):
         """The n of /vu/<n>, or None: the meter path's own match, without
         searching the rest of the truth."""

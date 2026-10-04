@@ -482,10 +482,10 @@ if __name__ == '__main__':
 
     # A damaged announcement is ignored: nothing may raise into the server.
     def stem_handler_channel(address, *args):
-        found = osc.match(address)
+        ch = osc.channel_of("channel.stem", address)
         mask = channel_announcement(args)
-        if found and mask is not None and 1 <= found[1]["ch"] <= num_channel:
-            displays.show_channel(found[1]["ch"] - 1, mask)
+        if ch is not None and mask is not None and 1 <= ch <= num_channel:
+            displays.show_channel(ch - 1, mask)
 
     def stem_handler_return(address, *args):
         announced = return_announcement(args)
@@ -495,10 +495,10 @@ if __name__ == '__main__':
     # Where a channel's selector cursor stands, and the return's mode: each
     # on its own display. A damaged value is ignored.
     def stem_handler_cursor(address, *args):
-        found = osc.match(address)
+        ch = osc.channel_of("channel.stem.cursor", address)
         cursor = cursor_announcement(args)
-        if found and cursor is not None and 1 <= found[1]["ch"] <= num_channel:
-            displays.show_cursor(found[1]["ch"] - 1, cursor)
+        if ch is not None and cursor is not None and 1 <= ch <= num_channel:
+            displays.show_cursor(ch - 1, cursor)
 
     def stem_handler_mode(address, *args):
         mode = mode_announcement(args)
