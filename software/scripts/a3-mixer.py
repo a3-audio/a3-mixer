@@ -29,10 +29,8 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
-from a3_mixer_displays import (channel_announcement, menu_announcement,
+from a3_mixer_displays import (channel_announcement, cursor_announcement,
                                mode_announcement, open_displays, return_announcement)
-# After a3_mixer_displays: that import puts display_panel on the path.
-from a3_mixer_stem_leds import stem_leds_from  # noqa: E402
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -66,7 +64,6 @@ fx_state = np.zeros(10)
 recall = RecallRequest()
 clicks = Clicks()
 pushes = PushHoldOff()
-stem_leds = stem_leds_from(os.environ)
 hello = HelloEvery()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
@@ -141,14 +138,14 @@ vu_channel_to_led_count = {
     1 : 8,
     2 : 8,
     3 : 8,
-    4 : 24,
-    5 : 24,
-    6 : 24,
-    7 : 24,
-    8 : 24,
-    9 : 24,
-    10 : 24,
-    11 : 24,
+    4 : 32,
+    5 : 32,
+    6 : 32,
+    7 : 32,
+    8 : 32,
+    9 : 32,
+    10 : 32,
+    11 : 32,
 }
 
 # The pots' and keys' addresses are a3_mixer_osc's tables (CHANNEL_POTS,
@@ -198,18 +195,13 @@ def vu_handler(address: str,
     number = osc.vu_number(address)
     if number is None:
         return
-    # A stem meter has no LED: its peak feeds the stem displays' waves,
-    # noted here and drawn on the displays' own clock (spec desk-stem-grid).
+    # A stem meter has no LED: its peak feeds the displays' meters, noted
+    # here and drawn on the displays' own clock.
     pair = osc.stem_pair(number)
     if pair is not None:
         displays.note_peak(pair, osc_arguments[0])
-        # And on the main VU's top module, one column per stem -- a line
-        # only when its bar changed (spec desk-stem-grid-2).
-        line = stem_leds.line(pair, osc_arguments[0])
-        if line:
-            sendData(line)
         return
-    # The analog return's meter: the return display's ninth, no LED.
+    # The analog return's meter: the return display's A, no LED.
     side = osc.aux_side(number)
     if side is not None:
         displays.note_aux(side, osc_arguments[0])
@@ -220,7 +212,7 @@ def vu_handler(address: str,
     vu = str(slot)
 
     peak = osc_arguments[0]
-    # The four inputs are the analog channels' waves too.
+    # The four inputs are the channels' A meters too.
     if slot < num_channel:
         displays.note_analog(slot, peak)
     rms = osc_arguments[1]
@@ -497,14 +489,13 @@ if __name__ == '__main__':
         if announced:
             displays.show_return(*announced)
 
-    # Where a channel's menu stands, and the return's mode (spec
-    # desk-stem-grid-2): a menu on its own display only. A damaged value is
-    # ignored.
-    def stem_handler_menu(address, *args):
+    # Where a channel's selector cursor stands, and the return's mode: each
+    # on its own display. A damaged value is ignored.
+    def stem_handler_cursor(address, *args):
         found = osc.match(address)
-        menu = menu_announcement(args)
-        if found and menu is not None and 1 <= found[1]["ch"] <= num_channel:
-            displays.show_menu(found[1]["ch"] - 1, *menu)
+        cursor = cursor_announcement(args)
+        if found and cursor is not None and 1 <= found[1]["ch"] <= num_channel:
+            displays.show_cursor(found[1]["ch"] - 1, cursor)
 
     def stem_handler_mode(address, *args):
         mode = mode_announcement(args)
@@ -513,7 +504,7 @@ if __name__ == '__main__':
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
-    dispatcher.map(osc.subscription("channel.stem.menu"), stem_handler_menu)
+    dispatcher.map(osc.subscription("channel.stem.cursor"), stem_handler_cursor)
     dispatcher.map(osc.subscription("aux-return.stem.mode"), stem_handler_mode)
 
 

@@ -21,6 +21,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import a3_mixer_osc     # noqa: E402
 import a3_mixer_truth   # noqa: E402
+from test_osc_truth import real_truth_path  # noqa: E402
 
 
 class WhereTheTruthComesFrom(unittest.TestCase):
@@ -75,7 +76,7 @@ class TheBootstrapIsTheTruths(unittest.TestCase):
     allows them by name) are the truth's own."""
 
     def test_port_and_word(self):
-        data = json.loads(Path(os.environ["A3_OSC_TRUTH"]).read_text())
+        data = json.loads(real_truth_path().read_text())
         port = next(l["port"] for l in data["listeners"]
                     if l["program"] == "devices" and l["role"] == "announce")
         self.assertEqual(port, a3_mixer_truth.ANNOUNCE_PORT)

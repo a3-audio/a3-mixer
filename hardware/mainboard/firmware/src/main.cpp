@@ -246,28 +246,14 @@ void leds()
       }
       // output VU meters
       else if(vu_index >= 4 && vu_index < 12) {
-        // rms-meter plus peak over the lower three modules (rows 1-24);
-        // the top module is the stems' (SVU, spec desk-stem-grid-2)
+        // rms-meter plus peak over all four modules (rows 1-32)
         int output_vu_index = vu_index - 4;
-        for(int j = 0 ; j < 24 ; j++){
+        for(int j = 0 ; j < 32 ; j++){
           int module_index = j / 8;
           int x = 8 - 1 - output_vu_index;
           int y = 8 - 1 - j % 8;
           bool led_on = j <= rms_index || j == peak_index;
           lc.setLed(module_index, x, y, led_on);
-        }
-      }
-    }
-
-    // stem meters on the top module: one column per stem (A1-A4, B1-B4),
-    // a bar of 0-8 LEDs from the bottom up (spec desk-stem-grid-2)
-    if(command.equals("SVU")) {
-      int stem = Serial.readStringUntil(':').toInt();
-      int level = Serial.readStringUntil('\n').toInt();
-      if(stem >= 0 && stem < 8) {
-        int x = 8 - 1 - stem;
-        for(int k = 0 ; k < 8 ; k++) {
-          lc.setLed(3, x, 8 - 1 - k, k < level);
         }
       }
     }

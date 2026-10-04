@@ -6,7 +6,6 @@ After=network.target
 #User=aaa
 Environment="PATH=/home/aaa/.local/bin:$PATH"
 ExecStart=/home/aaa/.venv/bin/python3 /home/aaa/a3-mixer/software/scripts/a3-mixer.py
-Environment=A3_STEM_LEDS=1
 # Ein Absturz blieb bisher liegen: ohne Restart kommt der Dienst nicht
 # wieder, und weil der Eltern-Prozess den Tod seines Kindes jetzt mit
 # Status 1 quittiert, braucht genau das hier eine Antwort.
