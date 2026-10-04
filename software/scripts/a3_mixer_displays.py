@@ -161,6 +161,8 @@ def paint(image, picture):
         (_bar if isinstance(meter, Bar) else _meter)(draw, meter)
     for tick in picture.ticks:
         _tick(draw, tick)
+    for divider in picture.dividers:
+        draw.line(divider, fill="white")
     draw.rectangle(picture.cursor, fill="white")
 
 

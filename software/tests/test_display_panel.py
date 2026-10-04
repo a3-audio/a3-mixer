@@ -164,6 +164,25 @@ class ChannelSelector(unittest.TestCase):
         self.assertGreater(boxes[4][0] - boxes[3][2], inner)
         self.assertGreater(boxes[8][0] - boxes[7][2], inner)
 
+    def test_the_groups_are_divided_by_lines(self):
+        """D1 | D2 | A stand apart (maintainer, 2026-10-04): a vertical line
+        in each gap between two groups, below the headings and above the
+        cursor row, so it is never taken for the cursor."""
+        p = self.picture()
+        meters, headings = p.meters, p.headings
+        self.assertEqual(len(p.dividers), 2)
+        for (x0, y0, x1, y1), (left, right) in zip(p.dividers, ((3, 4), (7, 8))):
+            self.assertEqual(x0, x1)
+            self.assertGreaterEqual(x0 - meters[left].box[2], 3)
+            self.assertGreaterEqual(meters[right].box[0] - x0, 3)
+            self.assertGreater(y0, headings[0].box[3])
+            self.assertEqual(y1, meters[0].box[3])
+            self.assertLess(y1, p.cursor[1])
+
+    def test_the_meters_keep_their_width(self):
+        boxes = [m.box for m in self.picture().meters]
+        self.assertTrue(all(x1 - x0 + 1 >= 11 for x0, _, x1, _ in boxes))
+
     def test_a_meter_is_only_its_level(self):
         """No assignment and no peak travel with a channel meter."""
         from display_panel import Meter

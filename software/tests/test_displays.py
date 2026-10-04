@@ -495,12 +495,19 @@ class Painting(unittest.TestCase):
                 image = self.paint_state(f"fit-{name}", picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
                 boxes += [t.box for t in picture.ticks]
+                boxes += list(picture.dividers)
                 boxes.append(picture.cursor)
                 inside = {(x, y) for x0, y0, x1, y1 in boxes
                           for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
                 spilled = [(x, y) for x in range(128) for y in range(64)
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
+
+    def test_the_dividers_are_painted_full_length(self):
+        picture = self.states()["channel-silent"]
+        image = self.paint_state("dividers", picture)
+        for x0, y0, x1, y1 in picture.dividers:
+            self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
 
     def test_a_silent_channel_shows_only_its_headings_and_cursor(self):
         picture = self.states()["channel-silent"]
