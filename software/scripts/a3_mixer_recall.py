@@ -31,7 +31,7 @@ class RecallRequest:
     DEFAULT_GIVE_UP_AFTER = 120.0
 
     def __init__(self, every=DEFAULT_EVERY,
-                 give_up_after=DEFAULT_GIVE_UP_AFTER, now=0.0):
+                 give_up_after=DEFAULT_GIVE_UP_AFTER, now=None):
         self._every = every
         self._give_up_after = give_up_after
         self._started = now
@@ -47,7 +47,11 @@ class RecallRequest:
         self._last_asked = now
 
     def due(self, now):
-        """Ob jetzt (wieder) gefragt werden soll."""
+        """Ob jetzt (wieder) gefragt werden soll. Without a start given, the
+        patience starts at the first look: the desk's clock counts from boot,
+        not from the service's start."""
+        if self._started is None:
+            self._started = now
         if self._answered:
             return False
         if now - self._started > self._give_up_after:

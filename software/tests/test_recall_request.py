@@ -51,6 +51,22 @@ class WhenTheDeskAsks(unittest.TestCase):
         self.assertFalse(request.due(65.0), "nobody is answering; stop asking")
 
 
+class AfterARestart(unittest.TestCase):
+    """The desk reads time.monotonic(), seconds since the Pi booted. Started
+    at 0, a service restarted more than give_up_after into the boot had given
+    up before it asked once (2026-10-04): the return display stayed on its
+    blank state until an encoder turn."""
+
+    def test_without_a_start_it_starts_at_the_first_look(self):
+        request = RecallRequest(every=5.0, give_up_after=120.0)
+        self.assertTrue(request.due(6553.0))
+
+    def test_without_a_start_it_still_gives_up(self):
+        request = RecallRequest(every=5.0, give_up_after=120.0)
+        request.due(6553.0)
+        request.asked(6670.0)
+        self.assertFalse(request.due(6675.0))
+
 
 class TheDeskActuallyAsks(unittest.TestCase):
     def test_a3_mixer_uses_it(self):
