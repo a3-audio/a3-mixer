@@ -28,6 +28,10 @@
 #define enc5_CLK 11
 
 const int numEncoder = 5;
+// Every channel of the encoder-switch multiplexer is read and reported, not
+// only the first five: a switch wired to channel 5-7 was never seen. The desk
+// ignores a channel it has no target for.
+const int numEncoderSwitches = 8;
 bool btnEncoderNew[8];
 bool btnEncoderOld[8];
 long posEnc[numEncoder];
@@ -282,7 +286,7 @@ void sendEncoder()
 
 void encoderButtons()
 {
-  for (int enc=0 ; enc < numEncoder; enc++) {
+  for (int enc=0 ; enc < numEncoderSwitches; enc++) {
     {
       if (btnEncoderNew[enc] != btnEncoderOld[enc])
       {
@@ -299,7 +303,7 @@ void encoderButtons()
 
 void initEncoderButtons()
 {
-  for (byte i = 0; i < numEncoder; i++)
+  for (byte i = 0; i < numEncoderSwitches; i++)
   {
     btnEncoderNew[i] = 0;
     btnEncoderOld[i] = 0;
