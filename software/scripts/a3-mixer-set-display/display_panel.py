@@ -125,9 +125,9 @@ def channel_announcement(args):
 
 def return_announcement(args):
     """(cursor, plays) out of `/aux-return/stem`'s arguments -- the option
-    the encoder is on (0 = analog, 1 = stem), then for pairs 1-8 whether it
-    plays on the return -- or None if damaged."""
-    if len(args) != 1 + PAIRS or not _is_count(args[0], 1):
+    the encoder is on (0 = analog, 1 = stem, 2 = cue), then for pairs 1-8
+    whether it plays on the return -- or None if damaged."""
+    if len(args) != 1 + PAIRS or not _is_count(args[0], CUE_CURSOR):
         return None
     if not all(_is_count(flag, 1) for flag in args[1:]):
         return None
@@ -148,6 +148,10 @@ TOGGLE_TEXT = "STEM"
 ANALOG_MODE, STEM_MODE = 0, 1
 RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
 RETURN_NAMES = {STEM_MODE: "STEM", ANALOG_MODE: "ANALOG"}
+#: The return's third cursor position (2026-10-04): its CUE field, right
+#: of the two modes. A cursor, never a mode.
+CUE_CURSOR = 2
+CUE_TEXT = "CUE"
 
 #: Ten steps a second, decided 2026-10-04 after the desk carried five; what
 #: keeps the bus from drowning is that only a panel whose pixels moved is
@@ -230,7 +234,8 @@ class Meter(namedtuple("Meter", "box level clip", defaults=(False,))):
 class Toggle(namedtuple("Toggle", "box on text")):
     """The channel's STEM switch: on while a stem plays on the channel. It
     says that one plays; which one is the active bracket's (maintainer,
-    2026-10-04)."""
+    2026-10-04). The return's CUE field is the same switch: on while the
+    return is cued."""
 
     def pixels(self):
         return self.on
@@ -381,14 +386,21 @@ RETURN_HEADING_OF_WIDTH = 0.34
 RETURN_METER_OF_HEADING = 0.5
 
 
-def return_picture(cursor, mode, levels, width, height, clips=()):
+def return_picture(cursor, mode, cue, levels, width, height, clips=()):
     """The aux return: STEM and ANALOG as mono meters under their names, the
-    active bracket over the playing mode's meter, the cursor as the arrow
-    over one. `levels` and `clips` are STEM, ANALOG."""
+    active bracket over the playing mode's meter, the CUE toggle behind a
+    divider at the right edge -- on while the return is cued --, and the
+    cursor as the arrow over one of the three. `levels` and `clips` are
+    STEM, ANALOG."""
     (h0, h1), arrow, (m0, m1) = _bands(height)
+    # The CUE field takes the slot of a channel's STEM toggle, so the two
+    # displays side by side carry their toggle in the same place.
+    channel = _channel_columns(width)
+    last_meter, toggle_slot = channel[PAIRS - 1], channel[STEM_TOGGLE]
+    room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
-    spans = ((0, heading - 1), (width - heading, width - 1))
+    spans = ((0, heading - 1), (room - heading, room - 1))
     names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option])
                   for option, (x0, x1) in zip(RETURN_OPTIONS, spans))
     boxes = []
@@ -396,9 +408,15 @@ def return_picture(cursor, mode, levels, width, height, clips=()):
         left = x0 + (x1 - x0 + 1 - meter) // 2
         boxes.append((left, m0, left + meter - 1, m1))
     meters = _meters(boxes, levels, clips)
-    selected = boxes[RETURN_OPTIONS.index(cursor)]
+    toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
+    divider = _divider(last_meter, toggle_slot, (m0, m1))
+    if cursor == CUE_CURSOR:
+        selected = toggle_slot
+    else:
+        box = boxes[RETURN_OPTIONS.index(cursor)]
+        selected = (box[0], box[2])
     active = _bracket(boxes[RETURN_OPTIONS.index(mode)])
-    return Picture(names, meters, _arrow((selected[0], selected[2]), arrow), active=active)
+    return Picture(names, meters, _arrow(selected, arrow), (divider,), toggle, active)
 
 
 def cursor_announcement(args):
@@ -406,6 +424,19 @@ def cursor_announcement(args):
     if len(args) != 1 or not _is_count(args[0], STEM_TOGGLE):
         return None
     return args[0]
+
+
+def cue_announcement(args):
+    """The return's cue out of `/aux-return/cue/led` -- True for 1.0, False
+    for 0.0, as Core sends a lamp -- or None if damaged."""
+    if len(args) != 1:
+        return None
+    value = args[0]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if value not in (0, 1):
+        return None
+    return value == 1
 
 
 def mode_announcement(args):

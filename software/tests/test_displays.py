@@ -159,6 +159,56 @@ class WhatIsDrawn(unittest.TestCase):
                          (picture.meters[0].box[0] - 1, picture.meters[0].box[2] + 1))
         self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog, the right meter
 
+    def test_the_return_cue_fills_the_cue_field(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.show_return(2, (True,) * 8)
+        displays.drain()
+        _, picture = rig.drawn[-1]
+        self.assertEqual(picture.toggle.text, "CUE")
+        self.assertFalse(picture.toggle.on)
+        self.assertEqual(cursor_of(picture), 2)         # cursor 2 = the CUE field
+        displays.show_return_cue(True)
+        displays.drain()
+        _, picture = rig.drawn[-1]
+        self.assertTrue(picture.toggle.on)
+
+    def test_a_return_cue_is_drawn_on_the_return_panel_only(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.blank_all()
+        displays.drain()
+        rig.selected.clear()
+        displays.show_return_cue(True)
+        displays.drain()
+        from display_panel import return_panel
+        self.assertEqual(rig.selected, [return_panel().channel])
+
+    def test_until_core_speaks_the_return_is_not_cued(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.show_return_cue(True)
+        displays.blank_all()
+        displays.drain()
+        _, picture = rig.drawn[-1]
+        self.assertFalse(picture.toggle.on)
+
+
+class TheStandIn(unittest.TestCase):
+    """Without display hardware the desk still runs: the stand-in takes
+    every call the OSC handlers make."""
+
+    def test_it_takes_what_displays_take(self):
+        from a3_mixer_displays import NoDisplays
+        public = {name for name in dir(Displays) if name.startswith(("show_", "note_"))}
+        public.add("blank_all")
+        for name in sorted(public):
+            self.assertTrue(callable(getattr(NoDisplays, name, None)), name)
+
+    def test_a_return_cue_is_nothing(self):
+        from a3_mixer_displays import NoDisplays
+        self.assertIsNone(NoDisplays().show_return_cue(True))
+
 
 class AfterAFailure(unittest.TestCase):
     def test_a_failed_draw_drops_the_device_and_the_next_rebuilds(self):
@@ -593,7 +643,8 @@ class Painting(unittest.TestCase):
         return not any(image.getpixel(pixel) for pixel in pixels)
 
     def states(self):
-        from display_panel import ANALOG_MODE, STEM_MODE, channel_picture, return_picture
+        from display_panel import (ANALOG_MODE, CUE_CURSOR, STEM_MODE, channel_picture,
+                                   return_picture)
         music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
         full = (1.0,) * 8
         over = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 1.0, 0.6)
@@ -613,26 +664,33 @@ class Painting(unittest.TestCase):
             "channel-playing-stem-8-beside-the-toggle": channel_picture(2, music, stem(8),
                                                                         128, 64),
             "channel-playing-stem-1-at-the-edge": channel_picture(0, full, stem(1), 128, 64),
-            "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE,
+            "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE, False,
                                                               (0.8, 0.3), 128, 64),
-            "return-stem-mode-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
+            "return-stem-mode-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
                                                                 (0.8, 0.3), 128, 64),
-            "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE,
+            "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE, False,
                                                                 (0.4, 0.9), 128, 64),
-            "return-analog-mode-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE,
+            "return-analog-mode-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE, False,
                                                                   (0.2, 0.7), 128, 64),
-            "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
+            "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
                                                              (0.0, 0.0), 128, 64),
             "channel-clip-on-the-playing-stem": channel_picture(2, over, stem(5), 128, 64,
                                                                 clips=clip_5),
             "channel-cursor-on-a-clipping-stem": channel_picture(6, held, stem(5), 128, 64,
                                                                  clips=clip_7),
-            "return-stem-clipping-in-stem-mode": return_picture(STEM_MODE, STEM_MODE,
+            "return-stem-clipping-in-stem-mode": return_picture(STEM_MODE, STEM_MODE, False,
                                                                 (1.0, 0.4), 128, 64,
                                                                 clips=(True, False)),
-            "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE,
+            "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE, False,
                                                       (0.3, 0.6), 128, 64,
                                                       clips=(False, True)),
+            "return-cue-on-cursor-on-cue": return_picture(CUE_CURSOR, STEM_MODE, True,
+                                                          (0.8, 0.3), 128, 64),
+            "return-cue-off-cursor-on-cue": return_picture(CUE_CURSOR, ANALOG_MODE, False,
+                                                           (0.4, 0.9), 128, 64),
+            "return-cue-on-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE, True,
+                                                             (0.2, 1.0), 128, 64,
+                                                             clips=(False, True)),
         }
 
     def test_each_state_paints_its_headings(self):
@@ -752,6 +810,32 @@ class Painting(unittest.TestCase):
         self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
         self.assertTrue(self.lit(image, self.inside(toggle)))
 
+    def test_the_cue_field_on_is_a_filled_box_with_dark_letters(self):
+        """The return's CUE field is painted as the channel's STEM toggle."""
+        picture = self.states()["return-cue-on-cursor-on-cue"]
+        image = self.paint_state("return-cue-on-cursor-on-cue", picture)
+        toggle = picture.toggle
+        self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
+        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
+        self.assertTrue(self.all_lit(image, self.field_middle(toggle)))
+        inside = self.inside(toggle)
+        self.assertLess(len(self.lit(image, inside)),
+                        (inside[2] - inside[0] + 1) * (inside[3] - inside[1] + 1))
+
+    def test_the_cue_field_off_is_an_outline_with_light_letters(self):
+        picture = self.states()["return-cue-off-cursor-on-cue"]
+        image = self.paint_state("return-cue-off-cursor-on-cue", picture)
+        toggle = picture.toggle
+        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
+        self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
+        self.assertTrue(self.lit(image, self.inside(toggle)))
+
+    def test_the_return_divider_is_painted_full_length(self):
+        picture = self.states()["return-cue-off-cursor-on-cue"]
+        image = self.paint_state("return-cue-off-cursor-on-cue", picture)
+        (x0, y0, _, y1), = picture.dividers
+        self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
+
     def test_the_toggle_looks_the_same_selected_or_not(self):
         from display_panel import channel_picture
         music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
@@ -790,7 +874,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 15)
+        self.assertEqual(len(self.with_brackets()), 18)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -819,7 +903,7 @@ class Painting(unittest.TestCase):
         differs only inside that bar."""
         clipping = {name: picture for name, picture in self.states().items()
                     if any(m.clip for m in picture.meters)}
-        self.assertEqual(len(clipping), 4)
+        self.assertEqual(len(clipping), 5)
         for name, picture in clipping.items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)

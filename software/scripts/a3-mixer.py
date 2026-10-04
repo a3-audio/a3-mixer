@@ -29,8 +29,9 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
-from a3_mixer_displays import (channel_announcement, cursor_announcement,
-                               mode_announcement, open_displays, return_announcement)
+from a3_mixer_displays import (channel_announcement, cue_announcement,
+                               cursor_announcement, mode_announcement, open_displays,
+                               return_announcement)
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -509,6 +510,14 @@ if __name__ == '__main__':
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
     dispatcher.map(osc.subscription("channel.stem.cursor"), stem_handler_cursor)
     dispatcher.map(osc.subscription("aux-return.stem.mode"), stem_handler_mode)
+
+    # Whether the return is cued: its CUE field. A damaged value is ignored.
+    def cue_handler_return(address, *args):
+        on = cue_announcement(args)
+        if osc.is_address("aux-return.cue.led", address) and on is not None:
+            displays.show_return_cue(on)
+
+    dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
 
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen

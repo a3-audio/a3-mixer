@@ -104,6 +104,18 @@ class WhatTheDeskHears(unittest.TestCase):
         self.assertEqual(a3_mixer_osc.LAMPS["channel.cue.led"], "cue")
         self.assertEqual(a3_mixer_osc.LAMPS["channel.filter.led"], "fx")
 
+    def test_the_return_cue_is_the_desks_own_word(self):
+        """Core announces the return's cue (2026-10-04); the desk shows it
+        on the return display."""
+        self.assertIn("aux-return.cue.led", KEYS)
+
+    def test_an_address_is_its_keys_exactly(self):
+        osc = made_up()
+        self.assertTrue(osc.is_address("aux-return.cue.led", "/t/aux-return.cue.led"))
+        self.assertFalse(osc.is_address("aux-return.cue.led", "/t/aux-return.cue.led/x"))
+        self.assertFalse(osc.is_address("aux-return.cue.led", "/t/aux-return.stem"))
+        self.assertFalse(osc.is_address("no.such.key", "/t/aux-return.cue.led"))
+
 
 class WhichMeterIsWhichLed(unittest.TestCase):
     """The firmware's twelve slots stay what they were: 0-3 the inputs, 4-11
@@ -286,6 +298,35 @@ class OneAddressOneHandler(unittest.TestCase):
 
     def test_the_cursor_address_is_the_cursor(self):
         self.assertEqual(self.osc.channel_of("channel.stem.cursor", "/channel/2/stem/cursor"), 2)
+
+    def test_the_return_cue_address_is_the_return_cue(self):
+        self.assertTrue(self.osc.is_address("aux-return.cue.led", "/aux-return/cue/led"))
+        self.assertFalse(self.osc.is_address("aux-return.cue.led", "/aux-return/stem"))
+
+
+class TheDeskShowsTheReturnCue(unittest.TestCase):
+    """a3-mixer.py needs the Pi to import, so its wiring is read: the
+    return's cue announcement reaches the return display, damaged values
+    and other addresses do not."""
+
+    def setUp(self):
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer.py").read_text()
+        self.handler = source.split("def cue_handler_return(", 1)[1].split("\n\n", 1)[0]
+        self.source = source
+
+    def test_it_is_mapped_on_its_own_key(self):
+        self.assertIn('dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)',
+                      self.source)
+
+    def test_it_asks_for_its_own_address(self):
+        self.assertIn('osc.is_address("aux-return.cue.led", address)', self.handler)
+
+    def test_a_damaged_value_is_ignored(self):
+        self.assertIn("cue_announcement(args)", self.handler)
+        self.assertIn("is not None", self.handler)
+
+    def test_it_shows_on_the_return_display(self):
+        self.assertIn("displays.show_return_cue(", self.handler)
 
 
 if __name__ == "__main__":

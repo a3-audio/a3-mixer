@@ -19,7 +19,10 @@ mark one stem; nothing else marks a meter or the toggle.
 The return's display is drawn the same way: two mono meters, STEM (StemDeck's
 aux bus) and ANALOG (the analog return), the louder side of each, under
 plain headings and nothing between them; the mode that plays carries the
-same active bracket, and the cursor is the same arrow, over STEM or ANALOG.
+same active bracket. At its right edge, behind a divider, sits the CUE field
+(2026-10-04): the channel's STEM toggle in the same slot, filled while the
+return is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
+bracket never stands on CUE.
 
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
 draws a peak mark, and a panel is redrawn only when its pixels move.
@@ -65,7 +68,8 @@ sys.path.insert(
 import functools  # noqa: E402
 
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
-                           cursor_announcement, mode_announcement, channel_picture,
+                           cursor_announcement, mode_announcement, cue_announcement,
+                           channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
                            pixel_key, playing_stem, Ballistics, ClipHold, STEM_TOGGLE,
                            STEM_MODE,
@@ -191,8 +195,8 @@ def letters_mask(text, box, width, height):
 
 
 def _toggle(image, draw, toggle):
-    """The STEM toggle: ON a filled box with dark letters, OFF an outline
-    with light letters."""
+    """A toggle -- a channel's STEM, the return's CUE: ON a filled box with
+    dark letters, OFF an outline with light letters."""
     field = _inset(toggle.box, TOGGLE_INSET)
     if toggle.on:
         draw.rectangle(field, fill="white")
@@ -338,11 +342,13 @@ class Displays:
         # draws a second (2026-10-04), and ten steps on five panels is 50.
         self._drawn = {}
         # What the displays show: what plays on each channel, each channel's
-        # cursor, the return's cursor and what plays there, and its mode.
+        # cursor, the return's cursor and what plays there, its mode, and
+        # whether it is cued.
         self._channel_masks = [0] * (len(PANELS) - 1)
         self._cursors = [STEM_TOGGLE] * (len(PANELS) - 1)
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
+        self._return_cue = False
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair, per side of the analog return and per side of
         # StemDeck's aux bus; each meter's ballistics; and the levels each
@@ -488,11 +494,19 @@ class Displays:
             self._return_mode = mode
         self._post(return_panel())
 
+    def show_return_cue(self, on):
+        """Whether the return is cued: its CUE field, filled while on."""
+        with self._wake:
+            self._return_cue = bool(on)
+        self._post(return_panel())
+
     def blank_all(self):
-        """Until Core speaks: no stem on any channel, nothing on the return."""
+        """Until Core speaks: no stem on any channel, nothing on the return
+        and no cue on it."""
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
         self.show_return(STEM_MODE, (False,) * PAIRS)
+        self.show_return_cue(False)
         self._post_all()
 
     def drain(self):
@@ -515,11 +529,11 @@ class Displays:
         the display turns out to be."""
         with self._wake:
             if panel == return_panel():
-                cursor, mode = self._return[0], self._return_mode
+                cursor, mode, cue = self._return[0], self._return_mode, self._return_cue
                 levels = self._levels[panel] or (0.0, 0.0)
                 clips = self._clips[panel]
-                return lambda width, height: return_picture(cursor, mode, levels, width,
-                                                            height, clips)
+                return lambda width, height: return_picture(cursor, mode, cue, levels,
+                                                            width, height, clips)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
@@ -612,6 +626,9 @@ class NoDisplays:
         pass
 
     def show_return_mode(self, mode):
+        pass
+
+    def show_return_cue(self, on):
         pass
 
     def note_aux(self, side, peak):
