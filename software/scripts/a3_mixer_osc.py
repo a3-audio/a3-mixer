@@ -96,10 +96,10 @@ def _pattern_regex(pattern):
 STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
                "stem_b1", "stem_b2", "stem_b3", "stem_b4")
 
-#: The analog return's meter, left and right: the return display's A.
+#: The analog return's meter, left and right: the return display's ANALOG.
 AUX_METERS = ("aux_L", "aux_R")
 
-#: StemDeck's AUX bus, left and right: the return display's SA (2026-10-04).
+#: StemDeck's AUX bus, left and right: the return display's STEM (2026-10-04).
 #: A truth from before has no such names, and the desk falls back.
 STEM_AUX_METERS = ("stem_aux_L", "stem_aux_R")
 

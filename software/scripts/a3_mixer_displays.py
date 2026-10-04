@@ -4,13 +4,20 @@
 
 """The five OLED displays, drawn by the main process: what Core announces.
 
-Each channel's display is an input selector (2026-10-04): nine plain bars
-under D1 | D2 | A, a divider between the sections, and the cursor under one
-meter as the only mark -- it does not show which input is assigned. The
-return's display is a stereo meter: SA and A, each a pair of segmented bars
-L|R, the mode that plays filled, a peak segment per bar. Every meter has
-VU-like ballistics (display_panel.Ballistics), and a panel is redrawn only
-when its pixels move.
+Each channel's display is an input selector (2026-10-04): eight plain bars
+under D1 | D2, one per stem pair, and in the ninth slot the STEM toggle --
+a filled box while a stem plays on the channel, an outline while none does.
+It never shows which stem is assigned. The cursor is an inverted column over
+its slot: light, with the bar drawn dark inside a frame, and on the toggle
+the toggle's colours flipped, so on and off stay readable under it.
+
+The return's display is drawn the same way: two mono meters, STEM (StemDeck's
+aux bus) and ANALOG (the analog return), the louder side of each; AUX as the
+title between them; the mode that plays marked by its heading inverted, and
+the cursor the same inverted column, on STEM or ANALOG.
+
+Every meter has VU-like ballistics (display_panel.Ballistics), no display
+draws a peak mark, and a panel is redrawn only when its pixels move.
 
 The displays are a3-mixer-set-display's -- the same multiplexer and ssd1306
 -- and the table of which display sits where is display_panel.PANELS,
@@ -44,8 +51,8 @@ import functools  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
-                           pixel_key, segment_rows, Ballistics, Bar, ANALOG_INPUT,
-                           STEM_MODE, METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
+                           pixel_key, Ballistics, STEM_TOGGLE, STEM_MODE,
+                           METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
 #: stopped, and the last peak must not stand on the display for ever.
@@ -82,89 +89,110 @@ def _fit(draw, box, text, size):
 
 @functools.lru_cache(maxsize=16)
 def headings_image(headings, width, height):
-    """The headings' picture, painted once per layout: text is the slow part."""
+    """The headings' picture, painted once per layout: text is the slow part.
+    An inverted heading is a light box with dark text."""
     from PIL import Image, ImageDraw
 
     image = Image.new("1", (width, height))
     draw = ImageDraw.Draw(image)
     for heading in headings:
         x0, y0, x1, y1 = heading.box
-        font, at = _fit(draw, heading.box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
-        draw.text(at, heading.text, fill="white", font=font)
+        text_box = heading.box
+        if heading.inverted:
+            draw.rectangle(heading.box, fill="white")
+            # A dark letter on the box's edge merges with the dark around it.
+            text_box = (x0 + 1, y0, x1 - 1, y1)
+        font, at = _fit(draw, text_box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
+        draw.text(at, heading.text, fill="black" if heading.inverted else "white", font=font)
     return image
 
 
-def _meter(draw, meter):
-    """A channel meter: a plain filled bar, nothing when silent. Its rows are
-    the meter's own pixels(), so what is painted is what the redraw rule
-    compares."""
+#: The frame a selected meter keeps around its bar: one pixel, so the
+#: cursor's light column always shows as a frame around a dark bar.
+FRAME = 1
+#: The toggle's field sits this far inside its slot. Under the cursor the
+#: slot is light and this is the light band around the field: wider than
+#: the field's one-pixel outline, so a selected ON toggle never reads as an
+#: unselected OFF one (snapshots, 2026-10-04).
+TOGGLE_INSET = 3
+
+
+def _inset(box, pixels):
+    x0, y0, x1, y1 = box
+    return (x0 + pixels, y0 + pixels, x1 - pixels, y1 - pixels)
+
+
+def _meter(draw, meter, selected):
+    """A meter: a plain filled bar, nothing when silent. Under the cursor
+    it is inverted: a light column with the bar drawn dark inside a dark
+    frame -- without the frame a silent selected meter would look like a
+    full one beside it. Its rows are the meter's own pixels(), so what is
+    painted is what the redraw rule compares."""
     x0, y0, x1, y1 = meter.box
     bar = meter.pixels()
+    if not selected:
+        if bar:
+            draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
+        return
+    draw.rectangle(meter.box, fill="white")
+    inner = _inset(meter.box, FRAME)
+    draw.rectangle(inner, outline="black")
     if bar:
-        draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
+        draw.rectangle((inner[0], max(y1 - bar + 1, inner[1]), inner[2], inner[3]),
+                       fill="black")
 
 
-def _segment(draw, bar, index):
-    top, bottom = segment_rows(bar, index)
-    box = (bar.box[0], top, bar.box[2], bottom)
-    if bar.solid:
-        draw.rectangle(box, fill="white")
+@functools.lru_cache(maxsize=8)
+def letters_mask(text, box, width, height):
+    """`text` letter over letter in `box`, as a mask the size of the panel:
+    STEM does not fit across a slot a meter wide. Painted once per layout,
+    then pasted in whichever colour the toggle has."""
+    from PIL import Image, ImageDraw
+
+    mask = Image.new("1", (width, height))
+    draw = ImageDraw.Draw(mask)
+    x0, y0, x1, y1 = box
+    rows = (y1 - y0 + 1) // len(text)
+    top = y0 + (y1 - y0 + 1 - rows * len(text)) // 2
+    for index, letter in enumerate(text):
+        cell = (x0, top + index * rows, x1, top + (index + 1) * rows - 1)
+        font, at = _fit(draw, cell, letter, rows)
+        draw.text(at, letter, fill="white", font=font)
+    return mask
+
+
+def _toggle(image, draw, toggle, selected):
+    """The STEM toggle: ON a filled box with dark letters, OFF an outline
+    with light letters. Under the cursor the slot is light and every colour
+    flips, so ON is a dark box on light and OFF a dark outline on light."""
+    ink = "black" if selected else "white"
+    if selected:
+        draw.rectangle(toggle.box, fill="white")
+    field = _inset(toggle.box, TOGGLE_INSET)
+    if toggle.on:
+        draw.rectangle(field, fill=ink)
     else:
-        draw.rectangle(box, outline="white")
-
-
-def _bar(draw, bar):
-    """A return bar: its lit segments from the bottom, and the peak's
-    segment on its own above them, filled for the pair that plays."""
-    lit, peak = bar.pixels()
-    for index in range(lit):
-        _segment(draw, bar, index)
-    if peak:
-        _segment(draw, bar, peak - 1)
-
-
-#: The scale's digits as 3x5 glyphs: a TrueType font this small turns to
-#: mush on a 1-bit display, a hand-set glyph stays crisp.
-GLYPHS = {
-    "0": ("###", "#.#", "#.#", "#.#", "###"),
-    "1": (".#.", "##.", ".#.", ".#.", "###"),
-    "8": ("###", "#.#", "###", "#.#", "###"),
-    "-": ("...", "...", "###", "...", "..."),
-}
-GLYPH_WIDTH, GLYPH_SPACE = 3, 1
-#: The mark's length at each side of the scale column.
-TICK_LENGTH = 2
-
-
-def _tick(draw, tick):
-    """A scale mark: short lines at both sides of the label, on its row."""
-    x0, y0, x1, y1 = tick.box
-    draw.line((x0, tick.row, x0 + TICK_LENGTH - 1, tick.row), fill="white")
-    draw.line((x1 - TICK_LENGTH + 1, tick.row, x1, tick.row), fill="white")
-    width = len(tick.text) * (GLYPH_WIDTH + GLYPH_SPACE) - GLYPH_SPACE
-    x = x0 + (x1 - x0 + 1 - width) // 2
-    for char in tick.text:
-        for dy, row in enumerate(GLYPHS[char]):
-            for dx, pixel in enumerate(row):
-                if pixel == "#":
-                    draw.point((x + dx, y0 + dy), fill="white")
-        x += GLYPH_WIDTH + GLYPH_SPACE
+        draw.rectangle(field, outline=ink)
+    # The letters are the field's opposite when it is filled, the ink's
+    # colour when it is an outline: light exactly when on and selected agree.
+    letters_light = toggle.on == selected
+    letters = letters_mask(toggle.text, _inset(field, FRAME), image.width, image.height)
+    image.paste(1 if letters_light else 0, (0, 0), letters)
 
 
 def paint(image, picture):
-    """Draw `picture` onto a 1-bit PIL image: headings (cached), meters,
-    scale marks, cursor."""
+    """Draw `picture` onto a 1-bit PIL image: headings (cached), dividers,
+    meters and the toggle, the one under the cursor inverted."""
     from PIL import ImageDraw
 
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
     draw = ImageDraw.Draw(image)
-    for meter in picture.meters:
-        (_bar if isinstance(meter, Bar) else _meter)(draw, meter)
-    for tick in picture.ticks:
-        _tick(draw, tick)
     for divider in picture.dividers:
         draw.line(divider, fill="white")
-    draw.rectangle(picture.cursor, fill="white")
+    for meter in picture.meters:
+        _meter(draw, meter, meter.box == picture.cursor)
+    if picture.toggle is not None:
+        _toggle(image, draw, picture.toggle, picture.toggle.box == picture.cursor)
 
 
 MULTIPLEXER_ADDRESS = 0x70
@@ -287,16 +315,14 @@ class Displays:
         # What the displays show: what plays on each channel, each channel's
         # cursor, the return's cursor and what plays there, and its mode.
         self._channel_masks = [0] * (len(PANELS) - 1)
-        self._cursors = [ANALOG_INPUT] * (len(PANELS) - 1)
+        self._cursors = [STEM_TOGGLE] * (len(PANELS) - 1)
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
         # The meters: (loudest peak since the last step, when last heard)
-        # per stem pair, per channel's analog input, per side of the analog
-        # return and per side of StemDeck's aux bus; each source's
-        # ballistics; and (levels, peaks) each panel shows, stepped on the
-        # displays' clock.
+        # per stem pair, per side of the analog return and per side of
+        # StemDeck's aux bus; each meter's ballistics; and the levels each
+        # panel shows, stepped on the displays' clock.
         self._stem_peaks = {}
-        self._analog_peaks = {}
         self._aux_peaks = {}
         self._stem_aux_peaks = {}
         self._ballistics = {}
@@ -313,11 +339,6 @@ class Displays:
         with self._wake:
             self._hold(self._stem_peaks, pair, peak)
 
-    def note_analog(self, index, peak):
-        """A channel's analog input peak, from the OSC thread."""
-        with self._wake:
-            self._hold(self._analog_peaks, index, peak)
-
     def note_aux(self, side, peak):
         """The analog return's peak, L (0) or R (1), from the OSC thread."""
         with self._wake:
@@ -325,7 +346,7 @@ class Displays:
 
     def note_stem_aux(self, side, peak):
         """StemDeck's aux bus peak, L (0) or R (1), from the OSC thread.
-        Only a truth with stem_aux_L/R sends it; once heard, it is SA."""
+        Only a truth with stem_aux_L/R sends it; once heard, it is STEM."""
         with self._wake:
             self._hold(self._stem_aux_peaks, side, peak)
 
@@ -349,25 +370,16 @@ class Displays:
         anything posted."""
         with self._wake:
             dt = self._step_seconds()
-            stems = [self._move(("stem", pair), self._fresh_level(self._stem_peaks, pair), dt)
-                     for pair in range(1, PAIRS + 1)]
-            aux = [self._move(("aux", side), self._fresh_level(self._aux_peaks, side), dt)
-                   for side in (0, 1)]
-            sa = [self._move(("sa", side), level, dt)
-                  for side, level in enumerate(self._sa_levels())]
+            stems = tuple(self._move(("stem", pair), self._fresh_level(self._stem_peaks, pair),
+                                     dt)
+                          for pair in range(1, PAIRS + 1))
+            ret = (self._move("stem return", self._stem_return_level(), dt),
+                   self._move("analog return", self._louder_side(self._aux_peaks), dt))
             for panel in PANELS:
-                if panel == return_panel():
-                    meters = sa + aux
-                else:
-                    index = PANELS.index(panel)
-                    meters = stems + [self._move(
-                        ("analog", index), self._fresh_level(self._analog_peaks, index), dt)]
-                self._levels[panel] = (tuple(shown for shown, _ in meters),
-                                       tuple(peak for _, peak in meters))
+                self._levels[panel] = ret if panel == return_panel() else stems
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
-            for peaks in (self._stem_peaks, self._analog_peaks, self._aux_peaks,
-                          self._stem_aux_peaks):
+            for peaks in (self._stem_peaks, self._aux_peaks, self._stem_aux_peaks):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
@@ -385,18 +397,22 @@ class Displays:
         ballistics = self._ballistics.setdefault(source, Ballistics())
         return ballistics.feed(level, dt)
 
-    def _sa_levels(self):
-        """SA's raw level, L and R: StemDeck's aux bus once the desk has
-        heard it. A truth without stem_aux_L/R never sends it, and then SA
-        is what it was before 2026-10-04 -- the loudest stem playing on the
-        return, on both sides -- so the desk works with either truth."""
+    def _louder_side(self, peaks):
+        """A mono meter of a stereo source: the louder of L and R, so a
+        hard-panned signal still shows at its full level."""
+        return max(self._fresh_level(peaks, side) for side in (0, 1))
+
+    def _stem_return_level(self):
+        """STEM's raw level: StemDeck's aux bus once the desk has heard it.
+        A truth without stem_aux_L/R never sends it, and then STEM is the
+        loudest stem playing on the return, so the desk works with either
+        truth."""
         if self._stem_aux_peaks:
-            return [self._fresh_level(self._stem_aux_peaks, side) for side in (0, 1)]
+            return self._louder_side(self._stem_aux_peaks)
         plays = self._return[1]
-        loudest = max((self._fresh_level(self._stem_peaks, pair)
-                       for pair, playing in zip(range(1, PAIRS + 1), plays) if playing),
-                      default=0.0)
-        return [loudest, loudest]
+        return max((self._fresh_level(self._stem_peaks, pair)
+                    for pair, playing in zip(range(1, PAIRS + 1), plays) if playing),
+                   default=0.0)
 
     def _fresh_level(self, peaks, key):
         return meter_level(self._fresh(peaks, key))
@@ -417,10 +433,14 @@ class Displays:
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, mask):
-        """What plays on a channel. Kept, not drawn: the channel display shows
-        its cursor, not which input is assigned (2026-10-04)."""
+        """What plays on a channel. Its display shows whether a stem plays,
+        not which (2026-10-04), so only a change between none and some is
+        drawn: another stem moves no pixel."""
         with self._wake:
+            was_on = self._channel_masks[index] != 0
             self._channel_masks[index] = mask
+        if (mask != 0) != was_on:
+            self._post(panel_for_channel(index))
 
     def show_cursor(self, index, cursor):
         """A channel's cursor: its own display."""
@@ -439,7 +459,7 @@ class Displays:
         self._post(return_panel())
 
     def blank_all(self):
-        """Until Core speaks: every channel on A, nothing on the return."""
+        """Until Core speaks: no stem on any channel, nothing on the return."""
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
         self.show_return(STEM_MODE, (False,) * PAIRS)
@@ -466,13 +486,14 @@ class Displays:
         with self._wake:
             if panel == return_panel():
                 cursor, mode = self._return[0], self._return_mode
-                levels, peaks = self._levels[panel] or ((0.0,) * 4,) * 2
+                levels = self._levels[panel] or (0.0, 0.0)
                 return lambda width, height: return_picture(cursor, mode, levels, width,
-                                                            height, peaks=peaks)
+                                                            height)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
-            levels, _ = self._levels[panel] or ((0.0,) * (PAIRS + 1),) * 2
-        return lambda width, height: channel_picture(cursor, levels, width, height)
+            stem_on = self._channel_masks[index] != 0
+            levels = self._levels[panel] or (0.0,) * PAIRS
+        return lambda width, height: channel_picture(cursor, levels, stem_on, width, height)
 
     def _post(self, panel):
         with self._wake:
@@ -567,9 +588,6 @@ class NoDisplays:
         pass
 
     def note_peak(self, pair, peak):
-        pass
-
-    def note_analog(self, index, peak):
         pass
 
     def blank_all(self):
