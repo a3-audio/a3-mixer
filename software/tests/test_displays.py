@@ -154,7 +154,9 @@ class WhatIsDrawn(unittest.TestCase):
         displays.drain()
         _, picture = rig.drawn[-1]
         self.assertEqual([h.text for h in picture.headings], ["STEM", "ANALOG"])
-        self.assertEqual([h.inverted for h in picture.headings], [True, False])
+        active = picture.active                         # mode 1 = STEM, the left meter
+        self.assertEqual((active[0], active[2]),
+                         (picture.meters[0].box[0] - 1, picture.meters[0].box[2] + 1))
         self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog, the right meter
 
 
@@ -428,17 +430,47 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual(1, len(self.rig.drawn))
         self.assertFalse(self.rig.drawn[0][1].toggle.on)
 
-    def test_another_stem_draws_nothing(self):
-        """The display shows whether a stem plays, not which one: a second
-        stem, or another one, moves no pixel and posts nothing."""
+    def active_of(self, picture):
+        """The meter under the active bracket, or None."""
+        if picture.active is None:
+            return None
+        return next(index for index, meter in enumerate(picture.meters)
+                    if meter.box[0] - 1 == picture.active[0])
+
+    def test_the_playing_stem_carries_the_bracket(self):
+        self.displays.show_channel(2, stem(3))
+        self.displays.drain()
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 2)
+
+    def test_another_stem_moves_the_bracket(self):
+        """Since 2026-10-04 the display shows which stem plays: another
+        one is a redraw with the bracket over it."""
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
         self.rig.drawn.clear()
-        for mask in (stem(5), stem(5) | stem(6)):
-            self.displays.show_channel(2, mask)
-            self.displays.drain()
+        self.displays.show_channel(2, stem(5))
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 4)
+        self.assertTrue(self.rig.drawn[0][1].toggle.on)
+
+    def test_a_second_stem_above_the_playing_one_draws_nothing(self):
+        """The lowest stem is the one that plays: a stem added above it
+        moves no pixel and posts nothing."""
+        self.displays.show_channel(2, stem(5))
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.displays.show_channel(2, stem(5) | stem(6))
+        self.displays.drain()
         self.assertEqual([], self.rig.drawn)
-        self.assertTrue(self.toggle_of(2).on)
+
+    def test_no_stem_takes_the_bracket_away(self):
+        self.displays.show_channel(2, stem(3))
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.displays.show_channel(2, 0)
+        self.displays.drain()
+        self.assertIsNone(self.rig.drawn[0][1].active)
 
     def test_silence_again_draws_nothing(self):
         self.displays.show_channel(2, 0)
@@ -493,14 +525,24 @@ class Painting(unittest.TestCase):
     def states(self):
         from display_panel import ANALOG_MODE, STEM_MODE, channel_picture, return_picture
         music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
+        full = (1.0,) * 8
         return {
-            "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, True, 128, 64),
-            "channel-cursor-on-toggle-on": channel_picture(8, music, True, 128, 64),
-            "channel-cursor-on-toggle-off": channel_picture(8, music, False, 128, 64),
-            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 8, False, 128, 64),
-            "channel-cursor-on-a-full-meter": channel_picture(4, music, False, 128, 64),
+            "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, stem(6),
+                                                                        128, 64),
+            "channel-cursor-on-the-playing-stem": channel_picture(5, music, stem(6), 128, 64),
+            "channel-cursor-on-toggle-on": channel_picture(8, music, stem(1), 128, 64),
+            "channel-cursor-on-toggle-off": channel_picture(8, music, 0, 128, 64),
+            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 8, 0, 128, 64),
+            "channel-cursor-on-a-full-meter": channel_picture(4, music, 0, 128, 64),
+            "channel-playing-stem-4-beside-the-divider": channel_picture(2, music, stem(4),
+                                                                         128, 64),
+            "channel-playing-stem-8-beside-the-toggle": channel_picture(2, music, stem(8),
+                                                                        128, 64),
+            "channel-playing-stem-1-at-the-edge": channel_picture(0, full, stem(1), 128, 64),
             "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE,
                                                               (0.8, 0.3), 128, 64),
+            "return-stem-mode-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
+                                                                (0.8, 0.3), 128, 64),
             "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE,
                                                                 (0.4, 0.9), 128, 64),
             "return-analog-mode-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE,
@@ -523,6 +565,8 @@ class Painting(unittest.TestCase):
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
                 boxes += list(picture.dividers)
                 boxes.append(picture.cursor)
+                if picture.active is not None:
+                    boxes.append(picture.active)
                 if picture.toggle is not None:
                     boxes.append(picture.toggle.box)
                 inside = {(x, y) for x0, y0, x1, y1 in boxes
@@ -629,35 +673,66 @@ class Painting(unittest.TestCase):
         music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
         for on in (True, False):
             with self.subTest(on=on):
-                selected = channel_picture(8, music, on, 128, 64)
-                elsewhere = channel_picture(3, music, on, 128, 64)
+                selected = channel_picture(8, music, stem(1) if on else 0, 128, 64)
+                elsewhere = channel_picture(3, music, stem(1) if on else 0, 128, 64)
                 one = self.paint_state(f"toggle-{on}-selected", selected)
                 two = self.paint_state(f"toggle-{on}-elsewhere", elsewhere)
                 box = selected.toggle.box
                 self.assertEqual(self.lit(one, box), self.lit(two, box))
 
-    def test_the_playing_modes_heading_is_inverted(self):
-        for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-stem"):
+    def test_every_heading_is_plain(self):
+        """Light letters on dark, mostly dark: the bracket marks the
+        playing mode, no heading is inverted any more."""
+        for name, picture in self.states().items():
             with self.subTest(name):
-                picture = self.states()[name]
                 image = self.paint_state(name, picture)
                 for heading in picture.headings:
                     x0, y0, x1, y1 = heading.box
                     lit = len(self.lit(image, heading.box))
-                    area = (x1 - x0 + 1) * (y1 - y0 + 1)
-                    # Inverted: a light box with dark letters, mostly lit;
-                    # plain: light letters on dark, mostly dark.
-                    self.assertEqual(lit > area / 2, heading.inverted, heading.text)
+                    self.assertLess(lit, (x1 - x0 + 1) * (y1 - y0 + 1) / 2, heading.text)
+
+    def bracket_pixels(self, box):
+        """The bracket's own pixels: the top row of `box` and its two
+        side columns."""
+        x0, y0, x1, y1 = box
+        return ({(x, y0) for x in range(x0, x1 + 1)}
+                | {(x, y) for x in (x0, x1) for y in range(y0, y1 + 1)})
+
+    def with_brackets(self):
+        return {name: picture for name, picture in self.states().items()
+                if picture.active is not None}
+
+    def test_the_bracket_is_a_top_line_and_two_legs(self):
+        """Painted with and without it, the picture differs in exactly
+        the bracket's top line and legs: lit across, lit down, its inside
+        left to the meter, and nothing beyond its box."""
+        self.assertEqual(len(self.with_brackets()), 11)
+        for name, picture in self.with_brackets().items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                bare = self.paint_state(name + "-bare", picture._replace(active=None))
+                changed = {(x, y) for x in range(128) for y in range(64)
+                           if image.getpixel((x, y)) != bare.getpixel((x, y))}
+                self.assertEqual(changed, self.bracket_pixels(picture.active))
+
+    def test_the_bracket_leaves_the_meter_whole(self):
+        for name, picture in self.with_brackets().items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                bare = self.paint_state(name + "-bare", picture._replace(active=None))
+                for meter in picture.meters:
+                    self.assertEqual(self.lit(image, meter.box), self.lit(bare, meter.box))
 
     def test_the_return_shows_nothing_between_its_meters(self):
         """No AUX title any more: between STEM's and ANALOG's columns the
-        meters' band stays dark."""
+        meters' band stays dark, but for the bracket's leg a column beside
+        the active meter."""
         for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-analog"):
             with self.subTest(name):
                 picture = self.states()[name]
                 image = self.paint_state(name, picture)
                 left, right = picture.meters
-                between = (left.box[2] + 1, left.box[1], right.box[0] - 1, left.box[3])
+                between = (left.box[2] + 2, left.box[1], right.box[0] - 2, left.box[3])
                 self.assertEqual(self.lit(image, between), [])
 
 

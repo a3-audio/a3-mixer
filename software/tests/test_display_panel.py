@@ -134,12 +134,12 @@ class ChannelSelector(unittest.TestCase):
     """A channel's display is an input selector: eight stem meters under
     D1 | D2 and, in the ninth slot, the STEM toggle (maintainer, 2026-10-04:
     the channel's analog meter is gone, Core makes position 8 a stem on/off
-    switch). It shows what is selected -- the cursor -- and whether a stem
-    plays, never which one."""
+    switch). It shows what is selected -- the cursor -- whether a stem
+    plays -- the toggle -- and which one: the active bracket over it."""
 
-    def picture(self, cursor=8, levels=(0.5,) * 8, stem_on=False, width=W, height=H):
+    def picture(self, cursor=8, levels=(0.5,) * 8, mask=0, width=W, height=H):
         from display_panel import channel_picture
-        return channel_picture(cursor, levels, stem_on, width, height)
+        return channel_picture(cursor, levels, mask, width, height)
 
     def test_two_headings_over_the_stem_meters(self):
         p = self.picture()
@@ -149,7 +149,6 @@ class ChannelSelector(unittest.TestCase):
             self.assertEqual(heading.box[0], meters[first].box[0])
             self.assertEqual(heading.box[2], meters[last].box[2])
             self.assertLess(heading.box[3], meters[first].box[1])
-            self.assertFalse(heading.inverted)
 
     def test_eight_meters_and_no_analog_one(self):
         boxes = [m.box for m in self.picture().meters]
@@ -173,8 +172,8 @@ class ChannelSelector(unittest.TestCase):
         self.assertEqual(self.picture().toggle.text, "STEM")
 
     def test_the_toggle_is_on_while_a_stem_plays(self):
-        self.assertTrue(self.picture(stem_on=True).toggle.on)
-        self.assertFalse(self.picture(stem_on=False).toggle.on)
+        self.assertTrue(self.picture(mask=stem(3)).toggle.on)
+        self.assertFalse(self.picture(mask=0).toggle.on)
 
     def test_the_toggle_is_two_meters_wide(self):
         """STEM does not fit across a meter; it stands letter over letter in
@@ -262,11 +261,86 @@ class ChannelSelector(unittest.TestCase):
             self.assertTrue(box[3] < 32, box)
 
 
+def assert_bracket_over(case, p, meter):
+    """The active bracket -- a "]" turned 90 degrees counter-clockwise, a
+    top line with a short leg down at each end -- frames `meter`'s top: one
+    column wider than the meter on each side, its top line below the
+    cursor's arrow and above the meter, its legs reaching down beside the
+    meter."""
+    x0, y0, x1, y1 = p.active
+    case.assertEqual((x0, x1), (meter[0] - 1, meter[2] + 1))
+    case.assertGreater(y0, p.cursor[3])
+    case.assertEqual(y0, meter[1] - 1)
+    case.assertGreater(y1, meter[1])
+    case.assertLess(y1 - y0 + 1, 8)
+
+
+class ActiveBracket(unittest.TestCase):
+    """Maintainer, 2026-10-04: the stem that plays on the channel -- the
+    lowest bit of its mask -- carries a bracket open at the bottom, the
+    same mark as the return's active mode. No stem playing, no bracket; the
+    toggle never gets one."""
+
+    def picture(self, mask, cursor=2):
+        from display_panel import channel_picture
+        return channel_picture(cursor, (0.5,) * 8, mask, W, H)
+
+    def test_the_playing_stem_carries_the_bracket(self):
+        p = self.picture(stem(6))
+        assert_bracket_over(self, p, p.meters[5].box)
+
+    def test_the_lowest_stem_is_the_one_that_plays(self):
+        p = self.picture(stem(3) | stem(6))
+        assert_bracket_over(self, p, p.meters[2].box)
+
+    def test_no_stem_no_bracket(self):
+        self.assertIsNone(self.picture(0).active)
+
+    def test_the_bracket_and_the_cursor_on_one_stem(self):
+        p = self.picture(stem(3), cursor=2)
+        assert_bracket_over(self, p, p.meters[2].box)
+
+    def every_bracket(self):
+        for pair in range(1, 9):
+            yield pair, self.picture(stem(pair))
+
+    def test_never_on_the_toggle(self):
+        for pair, p in self.every_bracket():
+            self.assertLess(p.active[2], p.toggle.box[0], pair)
+
+    def test_it_stays_on_the_panel(self):
+        for pair, p in self.every_bracket():
+            x0, y0, x1, y1 = p.active
+            self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H, pair)
+
+    def test_its_legs_stand_in_the_gaps(self):
+        """The legs never cover a meter's own columns, its own or a
+        neighbour's: the meters stay whole under the bracket."""
+        for pair, p in self.every_bracket():
+            for leg in (p.active[0], p.active[2]):
+                for meter in p.meters:
+                    self.assertFalse(meter.box[0] <= leg <= meter.box[2], (pair, leg))
+
+    def test_it_never_touches_a_divider(self):
+        """At least one dark column between a leg and a divider line --
+        stem 4 and 5 stand beside D1 | D2, stem 8 beside the toggle's."""
+        for pair, p in self.every_bracket():
+            for divider in p.dividers:
+                self.assertTrue(divider[0] < p.active[0] - 1 or divider[0] > p.active[2] + 1,
+                                (pair, divider))
+
+    def test_the_arrow_stays_above_it(self):
+        for pair, p in self.every_bracket():
+            self.assertGreater(p.active[1], p.cursor[3], pair)
+            self.assertGreater(p.active[1], max(h.box[3] for h in p.headings), pair)
+
+
 class ReturnMeter(unittest.TestCase):
     """The return is drawn like a channel (2026-10-04): two mono meters,
     STEM (StemDeck's aux bus) and ANALOG (the analog return), under their
-    names and nothing else; the mode that plays has its heading inverted,
-    and the cursor is the same down arrow, over STEM or ANALOG only."""
+    names and nothing else; the mode that plays carries the active bracket
+    over its meter, as a channel's playing stem does, and the cursor is the
+    same down arrow, over STEM or ANALOG only."""
 
     def picture(self, cursor=None, mode=None, levels=(0.5, 0.5)):
         from display_panel import STEM_MODE, return_picture
@@ -295,13 +369,18 @@ class ReturnMeter(unittest.TestCase):
             self.assertTrue(heading[0] <= meter.box[0] and meter.box[2] <= heading[2], text)
             self.assertLess(heading[3], meter.box[1])
 
-    def test_the_mode_that_plays_has_its_heading_inverted(self):
+    def test_the_mode_that_plays_has_the_active_bracket(self):
+        """Maintainer, 2026-10-04: the bracket replaces the inverted
+        heading, so "active" looks the same on every display."""
         from display_panel import ANALOG_MODE, STEM_MODE
-        for mode, playing, other in ((STEM_MODE, "STEM", "ANALOG"),
-                                     (ANALOG_MODE, "ANALOG", "STEM")):
-            p = self.picture(mode=mode)
-            self.assertTrue(self.heading(p, playing).inverted, playing)
-            self.assertFalse(self.heading(p, other).inverted, other)
+        for mode, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
+            for cursor in (STEM_MODE, ANALOG_MODE):
+                p = self.picture(cursor=cursor, mode=mode)
+                assert_bracket_over(self, p, p.meters[index].box)
+
+    def test_the_headings_are_plain(self):
+        from display_panel import Heading
+        self.assertEqual(Heading._fields, ("box", "text"))
 
     def test_the_cursor_is_an_arrow_above_stem_or_analog(self):
         from display_panel import ANALOG_MODE, STEM_MODE
@@ -375,9 +454,9 @@ class InPixels(unittest.TestCase):
     """A panel is redrawn when its pixels change, not its floats: the bus
     carries ~17 draws a second, and a fall of less than a row is no draw."""
 
-    def channel(self, cursor=8, level=0.0, stem_on=False):
+    def channel(self, cursor=8, level=0.0, mask=0):
         from display_panel import channel_picture
-        return channel_picture(cursor, (level,) * 8, stem_on, W, H)
+        return channel_picture(cursor, (level,) * 8, mask, W, H)
 
     def test_a_channel_meter_is_its_bar(self):
         p = self.channel(level=0.6)
@@ -400,8 +479,18 @@ class InPixels(unittest.TestCase):
 
     def test_the_toggle_is_part_of_the_picture(self):
         from display_panel import pixel_key
-        self.assertNotEqual(pixel_key(self.channel(stem_on=True)),
-                            pixel_key(self.channel(stem_on=False)))
+        self.assertNotEqual(pixel_key(self.channel(mask=stem(1))),
+                            pixel_key(self.channel(mask=0)))
+
+    def test_the_active_stem_is_part_of_the_picture(self):
+        from display_panel import pixel_key
+        self.assertNotEqual(pixel_key(self.channel(mask=stem(3))),
+                            pixel_key(self.channel(mask=stem(5))))
+
+    def test_a_second_stem_above_the_playing_one_is_the_same_picture(self):
+        from display_panel import pixel_key
+        self.assertEqual(pixel_key(self.channel(mask=stem(5))),
+                         pixel_key(self.channel(mask=stem(5) | stem(6))))
 
     def test_the_playing_mode_is_part_of_the_picture(self):
         from display_panel import ANALOG_MODE, STEM_MODE, pixel_key, return_picture
