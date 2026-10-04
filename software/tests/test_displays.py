@@ -111,11 +111,12 @@ class LatestWins(unittest.TestCase):
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_cursor(0, 1)
         displays.show_return(1, (True,) * 8)
-        displays.show_channel(0, stem(2))
+        displays.show_cursor(0, 2)
         displays.drain()
         self.assertEqual(2, len(rig.drawn))   # each panel once, with its latest
+        self.assertEqual(cursor_of(rig.drawn[0][1]), 2)
 
     def test_the_thread_draws_what_is_posted(self):
         rig = Rig()
@@ -134,11 +135,10 @@ class WhatIsDrawn(unittest.TestCase):
         rig.make_device = lambda panel: type(
             "Device", (), {"persist": False, "width": 128, "height": 32})()
         displays = rig.displays()
-        displays.show_channel(0, stem(1))
+        displays.show_cursor(0, 0)
         displays.drain()
         _, picture = rig.drawn[0]                       # Deck 1, first in the table
         self.assertEqual([h.text for h in picture.headings], ["D1", "D2", "A"])
-        self.assertEqual([m.solid for m in picture.meters], [True] + [False] * 8)
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_sa_and_a(self):
@@ -321,16 +321,18 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertAlmostEqual(self.levels("Deck 1")[0], 1.0 - self.fall(0.1))
 
-    def test_the_peak_mark_holds_a_second(self):
-        self.displays.note_analog(0, 1.0)
+    def test_the_return_peak_holds_a_second(self):
+        """Peak marks are the return's only: a channel shows its cursor and
+        nothing else (2026-10-04)."""
+        self.displays.note_aux(0, 1.0)
         self.step()
         for _ in range(10):
-            self.displays.note_analog(0, 0.001)
+            self.displays.note_aux(0, 0.001)
             self.step()
-        self.assertAlmostEqual(self.peaks("Deck 1")[8], 1.0)
-        self.displays.note_analog(0, 0.001)
+        self.assertAlmostEqual(self.peaks("Aux Return")[2], 1.0)
+        self.displays.note_aux(0, 0.001)
         self.step()
-        self.assertAlmostEqual(self.peaks("Deck 1")[8], 1.0 - self.fall(0.1))
+        self.assertAlmostEqual(self.peaks("Aux Return")[2], 1.0 - self.fall(0.1))
 
     def test_a_move_of_less_than_a_pixel_posts_nothing(self):
         """The bus carries ~17 draws a second (measured 2026-10-04): a panel
@@ -422,11 +424,12 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
 
-    def test_a_stem_change_redraws_its_own_display(self):
+    def test_an_assignment_draws_nothing(self):
+        """The channel display shows its cursor, not which input is assigned
+        (2026-10-04): what plays on a channel changes no picture."""
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
-        self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].meters[2].solid)
+        self.assertEqual([], self.rig.drawn)
 
     def test_a_cursor_redraws_its_own_display(self):
         self.displays.show_cursor(1, 6)
@@ -435,9 +438,9 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual(cursor_of(self.rig.drawn[0][1]), 6)
 
     def test_the_cursor_starts_on_a(self):
-        self.displays.show_channel(0, 0)
-        self.displays.drain()
-        self.assertEqual(cursor_of(self.rig.drawn[0][1]), 8)
+        from display_panel import panel_for_channel
+        picture = self.displays._picture_for(panel_for_channel(0))(128, 64)
+        self.assertEqual(cursor_of(picture), 8)
 
     def test_there_is_no_wave_or_menu_any_more(self):
         for gone in ("show_menu", "step_waves", "show_cue"):
@@ -466,9 +469,9 @@ class Painting(unittest.TestCase):
         levels = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6, 0.7)
         peaks = (0.4, 0.95, 0.1, 0.5, 1.0, 0.55, 0.0, 0.8, 0.85)
         return {
-            "channel-analog": channel_picture(8, 0, levels, 128, 64, peaks=peaks),
-            "channel-stem": channel_picture(2, stem(5), levels, 128, 64, peaks=peaks),
-            "channel-silent": channel_picture(0, stem(1), (0.0,) * 9, 128, 64),
+            "channel-loud": channel_picture(8, levels, 128, 64),
+            "channel-cursor-elsewhere": channel_picture(2, levels, 128, 64),
+            "channel-silent": channel_picture(0, (0.0,) * 9, 128, 64),
             "return-stem": return_picture(1, 1, (0.8, 0.7, 0.3, 0.25), 128, 64,
                                           peaks=(1.0, 0.85, 0.5, 0.25)),
             "return-analog": return_picture(0, 0, (0.4, 0.45, 0.9, 0.75), 128, 64,
@@ -499,32 +502,24 @@ class Painting(unittest.TestCase):
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
 
-    def test_what_plays_is_solid_even_in_silence(self):
+    def test_a_silent_channel_shows_only_its_headings_and_cursor(self):
         picture = self.states()["channel-silent"]
         image = self.paint_state("silent", picture)
-        x0, _, x1, y1 = picture.meters[0].box
-        self.assertTrue(all(image.getpixel((x, y1 - 1)) for x in range(x0, x1 + 1)))
+        for meter in picture.meters:
+            self.assertEqual(self.lit(image, meter.box), [], meter.box)
 
-    def test_the_others_are_outlined_not_filled(self):
-        picture = self.states()["channel-analog"]
-        image = self.paint_state("outlined", picture)
-        x0, y0, x1, y1 = picture.meters[4].box          # level 1.0, not playing
-        middle = (x0 + x1) // 2
-        self.assertTrue(image.getpixel((x0, y1)) and image.getpixel((x1, y1)))
-        self.assertFalse(image.getpixel((middle, (y0 + y1) // 2)))
-        x0, y0, x1, y1 = picture.meters[8].box          # A: plays, level 0.7
-        self.assertTrue(image.getpixel(((x0 + x1) // 2, y1 - 2)))
-
-    def test_the_peak_is_a_thin_mark_above_the_bar(self):
-        picture = self.states()["channel-analog"]
-        image = self.paint_state("peak", picture)
-        meter = picture.meters[0]                       # level 0.2, peak 0.4, outlined
-        x0, y0, x1, y1 = meter.box
-        bar, peak = meter.pixels()
-        middle = (x0 + x1) // 2
-        self.assertTrue(image.getpixel((middle, y1 - peak + 1)))
-        self.assertFalse(image.getpixel((middle, y1 - peak + 2)))
-        self.assertFalse(image.getpixel((middle, y1 - peak)))
+    def test_every_meter_is_a_plain_filled_bar_with_nothing_above(self):
+        picture = self.states()["channel-loud"]
+        image = self.paint_state("plain", picture)
+        for meter in picture.meters:
+            x0, y0, x1, y1 = meter.box
+            bar = meter.pixels()
+            middle = (x0 + x1) // 2
+            filled = [image.getpixel((middle, y)) for y in range(y1 - bar + 1, y1 + 1)]
+            above = [image.getpixel((x, y)) for x in range(x0, x1 + 1)
+                     for y in range(y0, y1 - bar + 1)]
+            self.assertTrue(all(filled), meter)
+            self.assertFalse(any(above), meter)
 
     def middle_of(self, bar, index):
         from display_panel import segment_rows
