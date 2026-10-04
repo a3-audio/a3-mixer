@@ -254,6 +254,76 @@ class Meters(unittest.TestCase):
         from display_panel import METER_FALL_DB_PER_SECOND, METER_FLOOR_DB
         return METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB * seconds
 
+    def clips(self, label):
+        """The meters' clip states as the panel would be drawn now."""
+        from display_panel import PANELS
+        panel = next(p for p in PANELS if p.label == label)
+        return [m.clip for m in self.displays._picture_for(panel)(128, 64).meters]
+
+    def test_an_over_lights_the_stems_clip(self):
+        self.displays.note_peak(3, 0.5)
+        self.displays.note_peak(3, 2.0)                 # held: the loudest of the step
+        self.displays.note_peak(3, 0.5)
+        self.step()
+        self.assertEqual(self.clips("Deck 1"), [False, False, True] + [False] * 5)
+
+    def test_full_scale_lights_no_clip(self):
+        self.displays.note_peak(3, 1.0)
+        self.step()
+        self.assertEqual(self.clips("Deck 1"), [False] * 8)
+
+    def test_the_clip_holds_a_second_then_goes_out(self):
+        self.displays.note_peak(3, 2.0)
+        self.step()
+        lit = []
+        for _ in range(10):
+            self.displays.note_peak(3, 0.5)
+            self.step()
+            lit.append(self.clips("Deck 1")[2])
+        self.assertEqual(lit, [True] * 9 + [False])
+
+    def test_the_clip_going_out_is_one_redraw(self):
+        """The level rests at 0.5; only the clip changes, and every channel
+        panel is drawn once for it."""
+        self.displays.note_peak(3, 2.0)
+        self.step()
+        for _ in range(40):                             # long enough to rest at 0.5
+            self.displays.note_peak(3, 0.5)
+            self.rig.drawn.clear()
+            self.step()
+            if self.clips("Deck 1")[2] is False:
+                break
+        self.assertEqual(4, len(self.rig.drawn))
+        self.rig.drawn.clear()
+        self.displays.note_peak(3, 0.5)
+        self.step()
+        self.assertEqual([], self.rig.drawn)
+
+    def test_an_over_on_the_analog_return_lights_analog(self):
+        self.displays.note_aux(1, 1.4)
+        self.step()
+        self.assertEqual(self.clips("Aux Return"), [False, True])
+
+    def test_an_over_on_the_aux_bus_lights_stem(self):
+        self.displays.note_stem_aux(0, 1.4)
+        self.step()
+        self.assertEqual(self.clips("Aux Return"), [True, False])
+
+    def test_without_the_bus_an_over_on_a_returned_stem_lights_stem(self):
+        self.displays.show_return(1, (False, True) + (False,) * 6)
+        self.displays.note_peak(1, 3.0)                 # not on the return
+        self.step()
+        self.assertEqual(self.clips("Aux Return"), [False, False])
+        self.displays.note_peak(2, 3.0)
+        self.step()
+        self.assertEqual(self.clips("Aux Return"), [True, False])
+
+    def test_a_meter_that_stopped_clips_no_more(self):
+        self.displays.note_peak(3, 2.0)
+        self.now = 5.0
+        self.step()
+        self.assertEqual(self.clips("Deck 1")[2], False)
+
     def test_a_channel_meters_every_stem_and_nothing_else(self):
         """The channel's analog input meter is gone (2026-10-04)."""
         self.displays.note_peak(3, 1.0)
@@ -526,6 +596,10 @@ class Painting(unittest.TestCase):
         from display_panel import ANALOG_MODE, STEM_MODE, channel_picture, return_picture
         music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
         full = (1.0,) * 8
+        over = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 1.0, 0.6)
+        held = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.62, 0.6)
+        clip_5 = (False,) * 4 + (True,) + (False,) * 3
+        clip_7 = (False,) * 6 + (True, False)
         return {
             "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, stem(6),
                                                                         128, 64),
@@ -549,6 +623,16 @@ class Painting(unittest.TestCase):
                                                                   (0.2, 0.7), 128, 64),
             "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
                                                              (0.0, 0.0), 128, 64),
+            "channel-clip-on-the-playing-stem": channel_picture(2, over, stem(5), 128, 64,
+                                                                clips=clip_5),
+            "channel-cursor-on-a-clipping-stem": channel_picture(6, held, stem(5), 128, 64,
+                                                                 clips=clip_7),
+            "return-stem-clipping-in-stem-mode": return_picture(STEM_MODE, STEM_MODE,
+                                                                (1.0, 0.4), 128, 64,
+                                                                clips=(True, False)),
+            "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE,
+                                                      (0.3, 0.6), 128, 64,
+                                                      clips=(False, True)),
         }
 
     def test_each_state_paints_its_headings(self):
@@ -706,7 +790,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 11)
+        self.assertEqual(len(self.with_brackets()), 15)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -722,6 +806,61 @@ class Painting(unittest.TestCase):
                 bare = self.paint_state(name + "-bare", picture._replace(active=None))
                 for meter in picture.meters:
                     self.assertEqual(self.lit(image, meter.box), self.lit(bare, meter.box))
+
+    def bar_pixels(self, meter):
+        x0, y0, x1, y1 = meter.box
+        bar = meter.pixels()
+        return [(x, y) for x in range(x0, x1 + 1) for y in range(y1 - bar + 1, y1 + 1)]
+
+    def test_a_clip_hatches_its_bar_and_nothing_else(self):
+        """Clipping, a meter's bar is drawn hatched -- diagonal dark lines
+        through it --, so it reads as clip at a full bar under the bracket
+        and beneath the arrow alike; painted without the clip, the picture
+        differs only inside that bar."""
+        clipping = {name: picture for name, picture in self.states().items()
+                    if any(m.clip for m in picture.meters)}
+        self.assertEqual(len(clipping), 4)
+        for name, picture in clipping.items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                clean = picture._replace(meters=tuple(m._replace(clip=False)
+                                                      for m in picture.meters))
+                bare = self.paint_state(name + "-clean", clean)
+                changed = {(x, y) for x in range(128) for y in range(64)
+                           if image.getpixel((x, y)) != bare.getpixel((x, y))}
+                hatched = {pixel for m in picture.meters if m.clip
+                           for pixel in self.bar_pixels(m)}
+                self.assertTrue(changed)
+                self.assertLessEqual(changed, hatched)
+                for meter in picture.meters:
+                    if not meter.clip:
+                        continue
+                    bar = self.bar_pixels(meter)
+                    dark = [pixel for pixel in bar if not image.getpixel(pixel)]
+                    # Mostly lit, still a bar; dark in every row and column.
+                    self.assertGreater(len(dark), len(bar) / 5, meter)
+                    self.assertLess(len(dark), len(bar) / 2, meter)
+                    self.assertEqual({y for _, y in dark}, {y for _, y in bar})
+                    self.assertEqual({x for x, _ in dark}, {x for x, _ in bar})
+
+    def test_without_a_clip_every_bar_is_solid(self):
+        for name, picture in self.states().items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                for meter in picture.meters:
+                    if not meter.clip:
+                        self.assertTrue(self.all_lit(image, self.bar_pixels(meter)), meter)
+
+    def test_the_hatch_stands_still_as_the_bar_falls(self):
+        """The lines are fixed to the panel: a falling bar uncovers no
+        crawling pattern, the rows that stay look as they did."""
+        from display_panel import channel_picture
+        clip = (True,) + (False,) * 7
+        high = channel_picture(8, (0.9,) + (0.0,) * 7, 0, 128, 64, clips=clip)
+        low = channel_picture(8, (0.6,) + (0.0,) * 7, 0, 128, 64, clips=clip)
+        one, two = self.paint_state("hatch-high", high), self.paint_state("hatch-low", low)
+        for pixel in self.bar_pixels(low.meters[0]):
+            self.assertEqual(one.getpixel(pixel), two.getpixel(pixel))
 
     def test_the_return_shows_nothing_between_its_meters(self):
         """No AUX title any more: between STEM's and ANALOG's columns the
