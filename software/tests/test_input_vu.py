@@ -52,6 +52,27 @@ class TheInputMetersHaveEightLeds(unittest.TestCase):
         self.assertEqual({counts[str(slot)] for slot in range(INPUTS)}, {str(LEDS_PER_INPUT)})
 
 
+class EveryEncoderSwitchIsReported(unittest.TestCase):
+    """The firmware reads all eight switch channels of the encoder
+    multiplexer but reported only 0-4, so a switch wired to channel 5-7
+    could never be seen (encoder 1's push never reached Core, 2026-10-04).
+    All eight are reported; the desk ignores channels it has no target for."""
+
+    def test_the_switches_are_read_and_reported_on_all_eight_channels(self):
+        source = firmware()
+        report = source[source.index("void encoderButtons()"):source.index("void initEncoderButtons()")]
+        self.assertIn("numEncoderSwitches", report)
+        self.assertRegex(source, r"const int numEncoderSwitches = 8;")
+        init = source[source.index("void initEncoderButtons()"):source.index("void initPotentiometer()")]
+        self.assertIn("numEncoderSwitches", init)
+
+    def test_the_desk_ignores_a_switch_it_has_no_target_for(self):
+        import sys
+        sys.path.insert(0, str(SOFTWARE / "scripts"))
+        from a3_mixer_encoders import push_message
+        self.assertIsNone(push_message(object(), 5, True))
+
+
 class TheMainMeterHasAllFourModules(unittest.TestCase):
     """The stems left the main VU's top module on 2026-10-04 (the channel
     displays meter them now): the desk scales the main meter to all 32 rows,
