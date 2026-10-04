@@ -24,6 +24,17 @@ same active bracket, and the cursor is the same arrow, over STEM or ANALOG.
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
 draws a peak mark, and a panel is redrawn only when its pixels move.
 
+Every meter shows a clip (2026-10-04): a step whose held peak is over full
+scale (above 1.0 linear) lights it, and it stays lit a second after the
+last over (display_panel.ClipHold). While lit, the bar is drawn hatched --
+every third diagonal dark, fixed to the panel. A cap over the bar, or the
+bar drawn hollow, were tried and dropped: a cap fuses with the active
+bracket at a full bar and, once the bar falls during the hold, floats
+under the arrow as if it were part of it; a hollow bar reads as empty. The
+hatch stays inside the bar, so neither the arrow nor the bracket can be
+mistaken for it, and a clean 0 dBFS bar stays solid beside a hatched
+overload. A clip lighting or going out is one redraw: pixel_key carries it.
+
 The displays are a3-mixer-set-display's -- the same multiplexer and ssd1306
 -- and the table of which display sits where is display_panel.PANELS,
 untouched. A wrong port or channel there took the desk down from 2026-09-10
@@ -56,7 +67,8 @@ import functools  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
-                           pixel_key, playing_stem, Ballistics, STEM_TOGGLE, STEM_MODE,
+                           pixel_key, playing_stem, Ballistics, ClipHold, STEM_TOGGLE,
+                           STEM_MODE,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
@@ -119,14 +131,25 @@ def _inset(box, pixels):
     return (x0 + pixels, y0 + pixels, x1 - pixels, y1 - pixels)
 
 
+#: A clipping bar's hatch: every CLIP_HATCH-th diagonal of the panel is
+#: dark, so a third of the bar goes out -- still a bar, plainly not a solid
+#: one. Fixed to the panel, so the lines stand still while the bar falls.
+CLIP_HATCH = 3
+
+
 def _meter(draw, meter):
-    """A meter: a plain filled bar, nothing when silent. Its rows are the
-    meter's own pixels(), so what is painted is what the redraw rule
-    compares."""
+    """A meter: a filled bar, hatched while it clips, nothing when silent.
+    Its rows and hatch are the meter's own pixels() and hatched(), so what
+    is painted is what the redraw rule compares."""
     x0, y0, x1, y1 = meter.box
     bar = meter.pixels()
-    if bar:
-        draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
+    if not bar:
+        return
+    top = y1 - bar + 1
+    draw.rectangle((x0, top, x1, y1), fill="white")
+    if meter.hatched():
+        draw.point([(x, y) for x in range(x0, x1 + 1) for y in range(top, y1 + 1)
+                    if (x + y) % CLIP_HATCH == 0], fill="black")
 
 
 def _arrow(draw, box):
@@ -328,7 +351,9 @@ class Displays:
         self._aux_peaks = {}
         self._stem_aux_peaks = {}
         self._ballistics = {}
+        self._clip_holds = {}
         self._levels = {panel: None for panel in PANELS}
+        self._clips = {panel: () for panel in PANELS}
         self._next_step = None
         self._last_step = None
         self._later = later
@@ -372,13 +397,14 @@ class Displays:
         anything posted."""
         with self._wake:
             dt = self._step_seconds()
-            stems = tuple(self._move(("stem", pair), self._fresh_level(self._stem_peaks, pair),
-                                     dt)
-                          for pair in range(1, PAIRS + 1))
-            ret = (self._move("stem return", self._stem_return_level(), dt),
-                   self._move("analog return", self._louder_side(self._aux_peaks), dt))
+            stems = [self._move(("stem", pair), self._fresh(self._stem_peaks, pair), dt)
+                     for pair in range(1, PAIRS + 1)]
+            ret = [self._move("stem return", self._stem_return_peak(), dt),
+                   self._move("analog return", self._louder_side(self._aux_peaks), dt)]
             for panel in PANELS:
-                self._levels[panel] = ret if panel == return_panel() else stems
+                levels_and_clips = ret if panel == return_panel() else stems
+                self._levels[panel] = tuple(level for level, _ in levels_and_clips)
+                self._clips[panel] = tuple(clip for _, clip in levels_and_clips)
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
             for peaks in (self._stem_peaks, self._aux_peaks, self._stem_aux_peaks):
@@ -395,29 +421,30 @@ class Displays:
             return 1.0 / METER_STEPS_PER_SECOND
         return min(max(0.0, now - last), 1.0)
 
-    def _move(self, source, level, dt):
+    def _move(self, source, peak, dt):
+        """(level, clip) of one meter after a step whose loudest peak was
+        `peak`: the level through its ballistics, the clip through its
+        hold."""
         ballistics = self._ballistics.setdefault(source, Ballistics())
-        return ballistics.feed(level, dt)
+        hold = self._clip_holds.setdefault(source, ClipHold())
+        return ballistics.feed(meter_level(peak), dt), hold.feed(peak, dt)
 
     def _louder_side(self, peaks):
         """A mono meter of a stereo source: the louder of L and R, so a
         hard-panned signal still shows at its full level."""
-        return max(self._fresh_level(peaks, side) for side in (0, 1))
+        return max(self._fresh(peaks, side) for side in (0, 1))
 
-    def _stem_return_level(self):
-        """STEM's raw level: StemDeck's aux bus once the desk has heard it.
+    def _stem_return_peak(self):
+        """STEM's raw peak: StemDeck's aux bus once the desk has heard it.
         A truth without stem_aux_L/R never sends it, and then STEM is the
         loudest stem playing on the return, so the desk works with either
         truth."""
         if self._stem_aux_peaks:
             return self._louder_side(self._stem_aux_peaks)
         plays = self._return[1]
-        return max((self._fresh_level(self._stem_peaks, pair)
+        return max((self._fresh(self._stem_peaks, pair)
                     for pair, playing in zip(range(1, PAIRS + 1), plays) if playing),
                    default=0.0)
-
-    def _fresh_level(self, peaks, key):
-        return meter_level(self._fresh(peaks, key))
 
     def _pixels_now(self, panel):
         """The panel's meters in pixels, laid out for its display's size."""
@@ -490,13 +517,16 @@ class Displays:
             if panel == return_panel():
                 cursor, mode = self._return[0], self._return_mode
                 levels = self._levels[panel] or (0.0, 0.0)
+                clips = self._clips[panel]
                 return lambda width, height: return_picture(cursor, mode, levels, width,
-                                                            height)
+                                                            height, clips)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
             levels = self._levels[panel] or (0.0,) * PAIRS
-        return lambda width, height: channel_picture(cursor, levels, mask, width, height)
+            clips = self._clips[panel]
+        return lambda width, height: channel_picture(cursor, levels, mask, width, height,
+                                                     clips)
 
     def _post(self, panel):
         with self._wake:

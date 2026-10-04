@@ -174,21 +174,57 @@ class Ballistics:
         return self._shown
 
 
+#: Over full scale is a clip (maintainer, 2026-10-04): meter_level stops at
+#: 0 dBFS, so without it a clean 0 dBFS and a +6 dB overload were the same
+#: full bar. A step's held peak above this, linear, lights the clip.
+CLIP_THRESHOLD = 1.0
+#: How long a clip stays lit after the last over: long enough to be seen
+#: from the decks, short enough to say "now", not "this set".
+CLIP_HOLD_SECONDS = 1.0
+# A hold run down in steps of 0.1 s leaves float dust above zero.
+_CLIP_DUST = 1e-9
+
+
+class ClipHold:
+    """Whether one meter shows a clip: lit by a peak over CLIP_THRESHOLD,
+    held CLIP_HOLD_SECONDS after the last one. `dt` is the time since the
+    last feed, in seconds, as for Ballistics."""
+
+    def __init__(self):
+        self._left = 0.0
+
+    def feed(self, peak, dt):
+        """Whether the clip shows after `dt` seconds whose loudest peak was
+        `peak`; anything odd is no over."""
+        is_number = isinstance(peak, (int, float)) and not isinstance(peak, bool)
+        if is_number and peak > CLIP_THRESHOLD:
+            self._left = CLIP_HOLD_SECONDS
+            return True
+        self._left = max(0.0, self._left - dt)
+        return self._left > _CLIP_DUST
+
+
 def lit_rows(level, count):
     """How many of `count` rows `level` lights, half up -- Python's round()
     would light a row at 6.5 but not at 7.5."""
     return int(math.floor(level * count + 0.5))
 
 
-class Meter(namedtuple("Meter", "box level")):
-    """A meter: a plain filled bar at its level and nothing else -- no mark
-    of which input is assigned, no peak and no floor line: turning, the
-    hands want the selector only (maintainer, 2026-10-04)."""
+class Meter(namedtuple("Meter", "box level clip", defaults=(False,))):
+    """A meter: a filled bar at its level and nothing else -- no mark of
+    which input is assigned, no peak and no floor line: turning, the hands
+    want the selector only (maintainer, 2026-10-04). While it clips
+    (ClipHold) the bar is drawn hatched."""
 
     def pixels(self):
         """Rows of the bar: what the painter draws, in pixels, so two levels
         in one row are one picture."""
         return lit_rows(self.level, self.box[3] - self.box[1] + 1)
+
+    def hatched(self):
+        """Whether the painter hatches the bar: a clip with no bar to show
+        it on moves no pixel."""
+        return self.clip and self.pixels() > 0
 
 
 class Toggle(namedtuple("Toggle", "box on text")):
@@ -204,7 +240,8 @@ def pixel_key(picture):
     """Everything `picture` paints, in pixels: equal keys paint equal
     pictures."""
     toggle = picture.toggle.pixels() if picture.toggle is not None else None
-    return (tuple(meter.pixels() for meter in picture.meters), picture.cursor, toggle,
+    return (tuple((meter.pixels(), meter.hatched()) for meter in picture.meters),
+            picture.cursor, toggle,
             picture.active, tuple(picture.headings))
 
 
@@ -311,16 +348,23 @@ def _divider(left, right, rows):
     return (x, rows[0], x, rows[1])
 
 
-def channel_picture(cursor, levels, mask, width, height):
-    """A channel: the eight stems as plain bars under D1 | D2, the STEM
-    toggle in the ninth slot, the cursor as the arrow over one of them, and
-    the active bracket over the stem `mask` plays. Pure layout; the painter
-    draws it."""
+def _meters(boxes, levels, clips):
+    """A meter per box; `clips` empty is no meter clipping."""
+    clips = tuple(clips) or (False,) * len(boxes)
+    return tuple(Meter(box, level, bool(clip))
+                 for box, level, clip in zip(boxes, levels, clips))
+
+
+def channel_picture(cursor, levels, mask, width, height, clips=()):
+    """A channel: the eight stems as bars under D1 | D2 -- hatched where
+    `clips` says one clips --, the STEM toggle in the ninth slot, the cursor
+    as the arrow over one of them, and the active bracket over the stem
+    `mask` plays. Pure layout; the painter draws it."""
     columns = _channel_columns(width)
     (h0, h1), arrow, (m0, m1) = _bands(height)
     headings = tuple(Heading((columns[first][0], h0, columns[last][1], h1), name)
                      for name, first, last in CHANNEL_GROUPS)
-    meters = tuple(Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels))
+    meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns[:PAIRS]], levels, clips)
     playing = playing_stem(mask)
     toggle = Toggle((columns[STEM_TOGGLE][0], m0, columns[STEM_TOGGLE][1], m1),
                     playing is not None, TOGGLE_TEXT)
@@ -337,10 +381,10 @@ RETURN_HEADING_OF_WIDTH = 0.34
 RETURN_METER_OF_HEADING = 0.5
 
 
-def return_picture(cursor, mode, levels, width, height):
+def return_picture(cursor, mode, levels, width, height, clips=()):
     """The aux return: STEM and ANALOG as mono meters under their names, the
     active bracket over the playing mode's meter, the cursor as the arrow
-    over one. `levels` are STEM, ANALOG."""
+    over one. `levels` and `clips` are STEM, ANALOG."""
     (h0, h1), arrow, (m0, m1) = _bands(height)
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
@@ -351,7 +395,7 @@ def return_picture(cursor, mode, levels, width, height):
     for x0, x1 in spans:
         left = x0 + (x1 - x0 + 1 - meter) // 2
         boxes.append((left, m0, left + meter - 1, m1))
-    meters = tuple(Meter(box, level) for box, level in zip(boxes, levels))
+    meters = _meters(boxes, levels, clips)
     selected = boxes[RETURN_OPTIONS.index(cursor)]
     active = _bracket(boxes[RETURN_OPTIONS.index(mode)])
     return Picture(names, meters, _arrow((selected[0], selected[2]), arrow), active=active)

@@ -207,10 +207,11 @@ class ChannelSelector(unittest.TestCase):
         boxes = [m.box for m in self.picture().meters]
         self.assertTrue(all(x1 - x0 + 1 >= 9 for x0, _, x1, _ in boxes))
 
-    def test_a_meter_is_only_its_level(self):
-        """No assignment and no peak travel with a meter."""
+    def test_a_meter_is_only_its_level_and_clip(self):
+        """No assignment and no peak travel with a meter; whether it clips
+        does (2026-10-04)."""
         from display_panel import Meter
-        self.assertEqual(Meter._fields, ("box", "level"))
+        self.assertEqual(Meter._fields, ("box", "level", "clip"))
 
     def test_the_levels_are_the_meters(self):
         levels = tuple(i / 8 for i in range(8))
@@ -502,6 +503,99 @@ class InPixels(unittest.TestCase):
         one = return_picture(1, 1, (0.500, 0.500), W, H)
         two = return_picture(1, 1, (0.505, 0.505), W, H)
         self.assertEqual(pixel_key(one), pixel_key(two))
+
+
+class ClipIndication(unittest.TestCase):
+    """Decided 2026-10-04: a meter shows when its signal went over full
+    scale. meter_level stops at 0 dBFS, so a clean master at 0 dBFS and a
+    +6 dB overload were the same full bar; the clip state tells them apart,
+    lit by a step's held peak over 1.0 and held CLIP_HOLD_SECONDS after the
+    last over."""
+
+    def hold(self):
+        from display_panel import ClipHold
+        return ClipHold()
+
+    def test_the_constants(self):
+        from display_panel import CLIP_HOLD_SECONDS, CLIP_THRESHOLD
+        self.assertEqual(CLIP_THRESHOLD, 1.0)
+        self.assertEqual(CLIP_HOLD_SECONDS, 1.0)
+
+    def test_full_scale_is_not_a_clip(self):
+        self.assertFalse(self.hold().feed(1.0, 0.1))
+        self.assertFalse(self.hold().feed(0.5, 0.1))
+
+    def test_an_over_lights_it(self):
+        self.assertTrue(self.hold().feed(1.0001, 0.1))
+        self.assertTrue(self.hold().feed(2.0, 0.1))
+
+    def test_it_holds_for_a_second_after_the_last_over(self):
+        hold = self.hold()
+        hold.feed(2.0, 0.1)
+        lit = [hold.feed(0.5, 0.1) for _ in range(10)]
+        self.assertEqual(lit, [True] * 9 + [False])
+
+    def test_a_new_over_starts_the_hold_again(self):
+        hold = self.hold()
+        hold.feed(2.0, 0.1)
+        for _ in range(5):
+            hold.feed(0.5, 0.1)
+        hold.feed(1.5, 0.1)
+        lit = [hold.feed(0.5, 0.1) for _ in range(10)]
+        self.assertEqual(lit, [True] * 9 + [False])
+
+    def test_a_long_gap_clears_it_at_once(self):
+        hold = self.hold()
+        hold.feed(2.0, 0.1)
+        self.assertFalse(hold.feed(0.0, 1.0))
+
+    def test_odd_peaks_never_light_it(self):
+        for odd in (None, "x", True, float("nan"), float("-inf")):
+            with self.subTest(odd=odd):
+                self.assertFalse(self.hold().feed(odd, 0.1))
+
+    def test_the_level_is_unchanged_up_to_full_scale(self):
+        from display_panel import meter_level
+        self.assertEqual(meter_level(1.0), 1.0)
+        self.assertEqual(meter_level(2.0), 1.0)
+        self.assertAlmostEqual(meter_level(10 ** (-12 / 20)), 0.75)
+
+    def test_a_meter_does_not_clip_unless_told(self):
+        from display_panel import ANALOG_MODE, Meter, channel_picture, return_picture
+        self.assertFalse(Meter((0, 0, 9, 9), 1.0).clip)
+        pictures = (channel_picture(8, (1.0,) * 8, 0, W, H),
+                    return_picture(ANALOG_MODE, ANALOG_MODE, (1.0, 1.0), W, H))
+        for picture in pictures:
+            self.assertEqual([m.clip for m in picture.meters], [False] * len(picture.meters))
+
+    def test_a_channel_carries_each_stems_clip(self):
+        from display_panel import channel_picture
+        clips = (False, True, False, False, True, False, False, False)
+        p = channel_picture(8, (1.0,) * 8, 0, W, H, clips=clips)
+        self.assertEqual(tuple(m.clip for m in p.meters), clips)
+
+    def test_the_return_carries_stem_and_analogs_clip(self):
+        from display_panel import STEM_MODE, return_picture
+        p = return_picture(STEM_MODE, STEM_MODE, (1.0, 0.2), W, H, clips=(True, False))
+        self.assertEqual([m.clip for m in p.meters], [True, False])
+
+    def test_a_clip_is_shown_on_the_bar(self):
+        from display_panel import Meter
+        self.assertTrue(Meter((0, 0, 9, 44), 0.6, True).hatched())
+        self.assertFalse(Meter((0, 0, 9, 44), 0.6, False).hatched())
+        # No bar, nothing to hatch: no pixel moves.
+        self.assertFalse(Meter((0, 0, 9, 44), 0.0, True).hatched())
+
+    def test_a_clip_is_part_of_the_picture(self):
+        """A clip lighting or going out is one redraw, nothing more."""
+        from display_panel import STEM_MODE, channel_picture, pixel_key, return_picture
+        clean = channel_picture(8, (1.0,) * 8, 0, W, H)
+        over = channel_picture(8, (1.0,) * 8, 0, W, H, clips=(True,) + (False,) * 7)
+        self.assertNotEqual(pixel_key(clean), pixel_key(over))
+        self.assertNotEqual(
+            pixel_key(return_picture(STEM_MODE, STEM_MODE, (1.0, 0.0), W, H)),
+            pixel_key(return_picture(STEM_MODE, STEM_MODE, (1.0, 0.0), W, H,
+                                     clips=(True, False))))
 
 
 class MeterLevels(unittest.TestCase):
