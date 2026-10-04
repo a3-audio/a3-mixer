@@ -7,15 +7,19 @@
 Each channel's display is an input selector (2026-10-04): eight plain bars
 under D1 | D2, one per stem pair, and in the ninth slot the STEM toggle --
 a filled box while a stem plays on the channel, an outline while none does.
-It never shows which stem is assigned. The cursor is a small solid triangle
-pointing down -- a "^" turned over -- between the headings and the meters,
-centred over the selected slot; the meters and the toggle are drawn the
-same whether selected or not.
+The stem that plays -- the lowest bit of the channel's mask -- carries the
+active bracket: a "]" turned 90 degrees counter-clockwise, a top line in
+the dark row over the meter with a short leg down either side, standing in
+the gaps beside the meter so the bar stays whole; no stem playing, no
+bracket, and the toggle never gets one. The cursor is a small solid
+triangle pointing down -- a "^" turned over -- between the headings and the
+meters, centred over the selected slot, right above the bracket when both
+mark one stem; nothing else marks a meter or the toggle.
 
 The return's display is drawn the same way: two mono meters, STEM (StemDeck's
 aux bus) and ANALOG (the analog return), the louder side of each, under
-their names and nothing between them; the mode that plays marked by its
-heading inverted, and the cursor the same arrow, over STEM or ANALOG.
+plain headings and nothing between them; the mode that plays carries the
+same active bracket, and the cursor is the same arrow, over STEM or ANALOG.
 
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
 draws a peak mark, and a panel is redrawn only when its pixels move.
@@ -52,7 +56,7 @@ import functools  # noqa: E402
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
-                           pixel_key, Ballistics, STEM_TOGGLE, STEM_MODE,
+                           pixel_key, playing_stem, Ballistics, STEM_TOGGLE, STEM_MODE,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
@@ -90,21 +94,15 @@ def _fit(draw, box, text, size):
 
 @functools.lru_cache(maxsize=16)
 def headings_image(headings, width, height):
-    """The headings' picture, painted once per layout: text is the slow part.
-    An inverted heading is a light box with dark text."""
+    """The headings' picture, painted once per layout: text is the slow part."""
     from PIL import Image, ImageDraw
 
     image = Image.new("1", (width, height))
     draw = ImageDraw.Draw(image)
     for heading in headings:
         x0, y0, x1, y1 = heading.box
-        text_box = heading.box
-        if heading.inverted:
-            draw.rectangle(heading.box, fill="white")
-            # A dark letter on the box's edge merges with the dark around it.
-            text_box = (x0 + 1, y0, x1 - 1, y1)
-        font, at = _fit(draw, text_box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
-        draw.text(at, heading.text, fill="black" if heading.inverted else "white", font=font)
+        font, at = _fit(draw, heading.box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
+        draw.text(at, heading.text, fill="white", font=font)
     return image
 
 
@@ -141,6 +139,15 @@ def _arrow(draw, box):
         draw.line((x0 + row, y, x1 - row, y), fill="white")
 
 
+def _bracket(draw, box):
+    """The active bracket: the box's top row and its two side columns, open
+    at the bottom."""
+    x0, y0, x1, y1 = box
+    draw.line((x0, y0, x1, y0), fill="white")
+    draw.line((x0, y0, x0, y1), fill="white")
+    draw.line((x1, y0, x1, y1), fill="white")
+
+
 @functools.lru_cache(maxsize=8)
 def letters_mask(text, box, width, height):
     """`text` letter over letter in `box`, as a mask the size of the panel:
@@ -174,7 +181,7 @@ def _toggle(image, draw, toggle):
 
 def paint(image, picture):
     """Draw `picture` onto a 1-bit PIL image: headings (cached), dividers,
-    meters, the toggle and the cursor's arrow."""
+    meters, the toggle, the active bracket and the cursor's arrow."""
     from PIL import ImageDraw
 
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
@@ -185,6 +192,8 @@ def paint(image, picture):
         _meter(draw, meter)
     if picture.toggle is not None:
         _toggle(image, draw, picture.toggle)
+    if picture.active is not None:
+        _bracket(draw, picture.active)
     _arrow(draw, picture.cursor)
 
 
@@ -426,13 +435,14 @@ class Displays:
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, mask):
-        """What plays on a channel. Its display shows whether a stem plays,
-        not which (2026-10-04), so only a change between none and some is
-        drawn: another stem moves no pixel."""
+        """What plays on a channel. Its display shows the stem that plays --
+        the mask's lowest bit, under the active bracket -- so only a change
+        of that stem, or between none and some, is drawn: a stem added
+        above it moves no pixel."""
         with self._wake:
-            was_on = self._channel_masks[index] != 0
+            was = playing_stem(self._channel_masks[index])
             self._channel_masks[index] = mask
-        if (mask != 0) != was_on:
+        if playing_stem(mask) != was:
             self._post(panel_for_channel(index))
 
     def show_cursor(self, index, cursor):
@@ -484,9 +494,9 @@ class Displays:
                                                             height)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
-            stem_on = self._channel_masks[index] != 0
+            mask = self._channel_masks[index]
             levels = self._levels[panel] or (0.0,) * PAIRS
-        return lambda width, height: channel_picture(cursor, levels, stem_on, width, height)
+        return lambda width, height: channel_picture(cursor, levels, mask, width, height)
 
     def _post(self, panel):
         with self._wake:

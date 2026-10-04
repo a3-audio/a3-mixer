@@ -193,7 +193,8 @@ class Meter(namedtuple("Meter", "box level")):
 
 class Toggle(namedtuple("Toggle", "box on text")):
     """The channel's STEM switch: on while a stem plays on the channel. It
-    says that one plays, never which (maintainer, 2026-10-04)."""
+    says that one plays; which one is the active bracket's (maintainer,
+    2026-10-04)."""
 
     def pixels(self):
         return self.on
@@ -201,18 +202,18 @@ class Toggle(namedtuple("Toggle", "box on text")):
 
 def pixel_key(picture):
     """Everything `picture` paints, in pixels: equal keys paint equal
-    pictures. The headings are in it because the return's playing mode is
-    an inverted heading."""
+    pictures."""
     toggle = picture.toggle.pixels() if picture.toggle is not None else None
     return (tuple(meter.pixels() for meter in picture.meters), picture.cursor, toggle,
-            tuple(picture.headings))
+            picture.active, tuple(picture.headings))
 
 
 #: What a panel shows: headings over meters, the cursor -- the box of the
-#: down arrow over the selected slot --, divider lines, and a channel's
-#: toggle.
-Heading = namedtuple("Heading", "box text inverted", defaults=(False,))
-Picture = namedtuple("Picture", "headings meters cursor dividers toggle", defaults=((), None))
+#: down arrow over the selected slot --, divider lines, a channel's toggle,
+#: and the box of the active bracket over the meter that plays, or None.
+Heading = namedtuple("Heading", "box text")
+Picture = namedtuple("Picture", "headings meters cursor dividers toggle active",
+                     defaults=((), None, None))
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
 #: wide enough for a divider line in its middle with three dark columns on
@@ -235,13 +236,18 @@ def meter_level(peak):
 TOGGLE_METERS = 2
 
 
+#: Dark columns left of stem 1: the panel's edge is a gap too, so the
+#: active bracket's left leg has a column there as it has between meters.
+EDGE = 1
+
+
 def _channel_columns(width):
     """(x0, x1) of the eight meters and the toggle: the meters as wide as
     PAIRS + TOGGLE_METERS equal slots make them, the toggle the rest."""
-    gaps = (len(CHANNEL_GROUPS) * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
+    gaps = EDGE + (len(CHANNEL_GROUPS) * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
     meter = (width - gaps) // (PAIRS + TOGGLE_METERS)
     group_starts = {first for _, first, _ in CHANNEL_GROUPS[1:]}
-    columns, x = [], 0
+    columns, x = [], EDGE
     for index in range(PAIRS):
         if index:
             x += GROUP_GAP if index in group_starts else INNER_GAP
@@ -261,9 +267,9 @@ ARROW_WIDTH = 2 * ARROW_ROWS
 
 def _bands(height):
     """(heading, arrow, meters) as (top, bottom) rows of the panel: the
-    arrow between the headings and the meters, a dark row on either side
-    of it so it touches neither an inverted heading nor a full bar; the
-    meters run to the bottom row."""
+    arrow between the headings and the meters, a row on either side of it
+    -- dark above, so it stays clear of the letters, and below it the
+    active bracket's top line --; the meters run to the bottom row."""
     heading = max(6, round(height * 0.19))
     arrow = heading + 1
     meters = arrow + ARROW_ROWS + 1
@@ -276,6 +282,28 @@ def _arrow(slot, rows):
     return (x0, rows[0], x0 + ARROW_WIDTH - 1, rows[1])
 
 
+#: The active bracket's height in rows: its top line in the row above the
+#: meters, and legs reaching that far down beside the meter's top.
+BRACKET_ROWS = 4
+
+
+def _bracket(meter):
+    """The active bracket over `meter`'s box: a "]" turned 90 degrees
+    counter-clockwise (maintainer, 2026-10-04), one column wider than the
+    meter on either side, so its legs stand in the gaps and the meter
+    stays whole beneath it."""
+    x0, y0, x1, _ = meter
+    return (x0 - 1, y0 - 1, x1 + 1, y0 + BRACKET_ROWS - 2)
+
+
+def playing_stem(mask):
+    """The stem (0-7) that plays on a channel with stem `mask` -- its lowest
+    bit, as Core plays it -- or None when none does."""
+    if not mask:
+        return None
+    return (mask & -mask).bit_length() - 1
+
+
 def _divider(left, right, rows):
     """A vertical line in the middle of the gap between two columns, the
     meters' height: below the headings."""
@@ -283,20 +311,23 @@ def _divider(left, right, rows):
     return (x, rows[0], x, rows[1])
 
 
-def channel_picture(cursor, levels, stem_on, width, height):
+def channel_picture(cursor, levels, mask, width, height):
     """A channel: the eight stems as plain bars under D1 | D2, the STEM
-    toggle in the ninth slot, and the cursor as the arrow over one of them.
-    Pure layout; the painter draws it."""
+    toggle in the ninth slot, the cursor as the arrow over one of them, and
+    the active bracket over the stem `mask` plays. Pure layout; the painter
+    draws it."""
     columns = _channel_columns(width)
     (h0, h1), arrow, (m0, m1) = _bands(height)
     headings = tuple(Heading((columns[first][0], h0, columns[last][1], h1), name)
                      for name, first, last in CHANNEL_GROUPS)
     meters = tuple(Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels))
+    playing = playing_stem(mask)
     toggle = Toggle((columns[STEM_TOGGLE][0], m0, columns[STEM_TOGGLE][1], m1),
-                    bool(stem_on), TOGGLE_TEXT)
+                    playing is not None, TOGGLE_TEXT)
     dividers = tuple(_divider(columns[first - 1], columns[first], (m0, m1))
                      for first in [first for _, first, _ in CHANNEL_GROUPS[1:]] + [STEM_TOGGLE])
-    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, toggle)
+    active = _bracket(meters[playing].box) if playing is not None else None
+    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, toggle, active)
 
 
 #: The return's heading over each meter as a share of the panel's width --
@@ -308,13 +339,13 @@ RETURN_METER_OF_HEADING = 0.5
 
 def return_picture(cursor, mode, levels, width, height):
     """The aux return: STEM and ANALOG as mono meters under their names, the
-    playing mode's name inverted, the cursor as the arrow over one. `levels`
-    are STEM, ANALOG."""
+    active bracket over the playing mode's meter, the cursor as the arrow
+    over one. `levels` are STEM, ANALOG."""
     (h0, h1), arrow, (m0, m1) = _bands(height)
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
     spans = ((0, heading - 1), (width - heading, width - 1))
-    names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option], option == mode)
+    names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option])
                   for option, (x0, x1) in zip(RETURN_OPTIONS, spans))
     boxes = []
     for x0, x1 in spans:
@@ -322,7 +353,8 @@ def return_picture(cursor, mode, levels, width, height):
         boxes.append((left, m0, left + meter - 1, m1))
     meters = tuple(Meter(box, level) for box, level in zip(boxes, levels))
     selected = boxes[RETURN_OPTIONS.index(cursor)]
-    return Picture(names, meters, _arrow((selected[0], selected[2]), arrow))
+    active = _bracket(boxes[RETURN_OPTIONS.index(mode)])
+    return Picture(names, meters, _arrow((selected[0], selected[2]), arrow), active=active)
 
 
 def cursor_announcement(args):
