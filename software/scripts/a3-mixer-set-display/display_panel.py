@@ -134,19 +134,20 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: A channel's selector (2026-10-04): inputs 0-7 the stem pairs 1-8, then
-#: the channel's analog input -- a3_core_stems' numbers.
-INPUTS = PAIRS + 1
-ANALOG_INPUT = PAIRS
-#: Headings over the channel's meters: the name, the first and the last input.
-CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", 8, 8))
+#: A channel's selector (2026-10-04): positions 0-7 the stem pairs 1-8, then
+#: the STEM toggle -- a3_core_stems' numbers. Core turns the channel's stem
+#: on and off there; the analog input meter it replaced is gone.
+STEM_TOGGLE = PAIRS
+#: Headings over the channel's meters: the name, the first and the last stem.
+CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7))
+TOGGLE_TEXT = "STEM"
 
-#: The aux return's modes -- a3_core_stems' numbers. Its display is a stereo
-#: meter (2026-10-04): SA, StemDeck's aux bus, then A, the analog return,
-#: each a pair of bars L|R.
+#: The aux return's modes -- a3_core_stems' numbers -- left to right on its
+#: display, each a mono meter under its name, the display's title between.
 ANALOG_MODE, STEM_MODE = 0, 1
 RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
-RETURN_GROUPS = (("SA", 0, 1), ("A", 2, 3))
+RETURN_NAMES = {STEM_MODE: "STEM", ANALOG_MODE: "ANALOG"}
+RETURN_TITLE = "AUX"
 
 #: Ten steps a second, decided 2026-10-04 after the desk carried five; what
 #: keeps the bus from drowning is that only a panel whose pixels moved is
@@ -156,46 +157,31 @@ METER_FLOOR_DB = -48.0
 #: A VU-like release: a meter falls 20 dB a second, so a level drop of
 #: 20/48 of its height per second over the 48 dB range.
 METER_FALL_DB_PER_SECOND = 20.0
-#: The peak mark holds the highest level this long, then falls alike.
-PEAK_HOLD_SECONDS = 1.0
 
 
 class Ballistics:
-    """How one meter moves: an instant rise, a fall of
-    METER_FALL_DB_PER_SECOND, and a peak that holds PEAK_HOLD_SECONDS
-    before it falls the same way. Levels are 0.0-1.0 as meter_level gives
-    them; `dt` is the time since the last feed, in seconds."""
+    """How one meter moves: an instant rise and a fall of
+    METER_FALL_DB_PER_SECOND. Levels are 0.0-1.0 as meter_level gives them;
+    `dt` is the time since the last feed, in seconds."""
 
     def __init__(self):
         self._shown = 0.0
-        self._peak = 0.0
-        self._held = 0.0
 
     def feed(self, level, dt):
-        """(shown, peak) after `dt` seconds that ended at `level`."""
+        """The level shown after `dt` seconds that ended at `level`."""
         fall = METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB
         self._shown = max(level, self._shown - fall * dt, 0.0)
-        if level >= self._peak:
-            self._peak, self._held = level, 0.0
-        else:
-            self._held += dt
-            # Only the part of `dt` past the hold falls, so the mark leaves
-            # exactly a second after the hit and not a step early or late.
-            falling = min(dt, max(0.0, self._held - PEAK_HOLD_SECONDS))
-            self._peak = max(0.0, self._peak - fall * falling)
-        self._peak = max(self._peak, self._shown)
-        return self._shown, self._peak
+        return self._shown
 
 
 def lit_rows(level, count):
-    """How many of `count` rows (or segments) `level` lights, half up --
-    Python's round() would light a segment at 6.5 but not at 7.5."""
+    """How many of `count` rows `level` lights, half up -- Python's round()
+    would light a row at 6.5 but not at 7.5."""
     return int(math.floor(level * count + 0.5))
 
 
 class Meter(namedtuple("Meter", "box level")):
-    """A channel's meter: a plain filled bar at its level and nothing else.
-    The channel display shows what is selected -- the cursor -- and no mark
+    """A meter: a plain filled bar at its level and nothing else -- no mark
     of which input is assigned, no peak and no floor line: turning, the
     hands want the selector only (maintainer, 2026-10-04)."""
 
@@ -205,43 +191,31 @@ class Meter(namedtuple("Meter", "box level")):
         return lit_rows(self.level, self.box[3] - self.box[1] + 1)
 
 
-#: A return bar's segments: rows each, and the dark rows between two.
-SEGMENT_ROWS = 3
-SEGMENT_GAP = 1
-
-
-class Bar(namedtuple("Bar", "box level solid peak segments")):
-    """A return meter's bar: `segments` stacked from the bottom of `box`."""
+class Toggle(namedtuple("Toggle", "box on text")):
+    """The channel's STEM switch: on while a stem plays on the channel. It
+    says that one plays, never which (maintainer, 2026-10-04)."""
 
     def pixels(self):
-        """(lit segments, the peak's segment count or 0); the playing pair
-        always shows its lowest segment, the other its outline."""
-        lit = max(lit_rows(self.level, self.segments), 1)
-        peak = lit_rows(self.peak, self.segments)
-        return lit, peak if peak > lit else 0
-
-
-def segment_rows(bar, index):
-    """(top, bottom) rows of segment `index` of `bar`, 0 at the bottom."""
-    bottom = bar.box[3] - index * (SEGMENT_ROWS + SEGMENT_GAP)
-    return bottom - SEGMENT_ROWS + 1, bottom
+        return self.on
 
 
 def pixel_key(picture):
-    """Every meter of `picture` in pixels: equal keys paint equal meters."""
-    return tuple(meter.pixels() for meter in picture.meters) + (picture.cursor,)
+    """Everything `picture` paints, in pixels: equal keys paint equal
+    pictures. The headings are in it because the return's playing mode is
+    an inverted heading."""
+    toggle = picture.toggle.pixels() if picture.toggle is not None else None
+    return (tuple(meter.pixels() for meter in picture.meters), picture.cursor, toggle,
+            tuple(picture.headings))
 
 
-#: What a panel shows: headings over meters, the cursor under one meter, and
-#: the return's scale marks (a channel has none).
-Heading = namedtuple("Heading", "box text")
-Picture = namedtuple("Picture", "headings meters cursor ticks dividers", defaults=((), ()))
-#: A scale mark: its label's box and text, and the row the mark sits on.
-Tick = namedtuple("Tick", "box text row")
+#: What a panel shows: headings over meters, the cursor -- the box of the
+#: slot it inverts --, divider lines, and a channel's toggle.
+Heading = namedtuple("Heading", "box text inverted", defaults=(False,))
+Picture = namedtuple("Picture", "headings meters cursor dividers toggle", defaults=((), None))
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
 #: wide enough for a divider line in its middle with three dark columns on
-#: each side (D1 | D2 | A stand apart, maintainer 2026-10-04).
+#: each side (D1 | D2 | STEM stand apart, maintainer 2026-10-04).
 INNER_GAP = 2
 GROUP_GAP = 7
 
@@ -255,120 +229,93 @@ def meter_level(peak):
     return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
 
 
-def _columns(groups, width):
-    """(x0, x1) of every input, the groups apart, centred on the panel."""
-    count = groups[-1][2] + 1
-    gaps = (count - 1) * INNER_GAP + (len(groups) - 1) * (GROUP_GAP - INNER_GAP)
-    meter = (width - gaps) // count
-    x = (width - (count * meter + gaps)) // 2
-    group_starts = {first for _, first, _ in groups[1:]}
-    columns = []
-    for index in range(count):
+#: The toggle's share of the row, in meters. With one meter's width a
+#: selected ON toggle could only get a one-pixel light band and looked like
+#: an unselected OFF one (snapshots, 2026-10-04); two leave room for a wide
+#: band and for STEM's letters, and the meters keep 10 of their 11 pixels.
+TOGGLE_METERS = 2
+
+
+def _channel_columns(width):
+    """(x0, x1) of the eight meters and the toggle: the meters as wide as
+    PAIRS + TOGGLE_METERS equal slots make them, the toggle the rest."""
+    gaps = (len(CHANNEL_GROUPS) * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
+    meter = (width - gaps) // (PAIRS + TOGGLE_METERS)
+    group_starts = {first for _, first, _ in CHANNEL_GROUPS[1:]}
+    columns, x = [], 0
+    for index in range(PAIRS):
         if index:
             x += GROUP_GAP if index in group_starts else INNER_GAP
         columns.append((x, x + meter - 1))
         x += meter
+    columns.append((x + GROUP_GAP, width - 1))
     return columns
 
 
 def _bands(height):
-    """(heading, meters, cursor) as (top, bottom) rows of the panel."""
+    """(heading, meters) as (top, bottom) rows of the panel. The meters run
+    to the bottom row: the cursor is a column now, not a row of its own."""
     heading = max(6, round(height * 0.19))
-    cursor = max(2, round(height * 0.07))
-    return ((0, heading - 1), (heading + 1, height - cursor - 3),
-            (height - cursor, height - 1))
+    return (0, heading - 1), (heading + 1, height - 1)
 
 
-def _silence(peaks, count):
-    return (0.0,) * count if peaks is None else peaks
+def _divider(left, right, rows):
+    """A vertical line in the middle of the gap between two columns, the
+    meters' height: below the headings."""
+    x = (left[1] + right[0]) // 2
+    return (x, rows[0], x, rows[1])
 
 
-def channel_picture(cursor, levels, width, height):
-    """A channel: the eight stems and its analog input as plain bars, and the
-    cursor under one of them. Pure layout; the painter draws it."""
-    columns = _columns(CHANNEL_GROUPS, width)
-    (h0, h1), (m0, m1), (c0, c1) = _bands(height)
-    headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
-                for name, first, last in CHANNEL_GROUPS]
-    meters = [Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels)]
-    # A vertical line in the middle of each gap between two groups, from the
-    # meters' top to their bottom: below the headings and above the cursor
-    # row, so it is never taken for the cursor.
-    dividers = []
-    for _, first, _ in CHANNEL_GROUPS[1:]:
-        x = (columns[first - 1][1] + columns[first][0]) // 2
-        dividers.append((x, m0, x, m1))
+def channel_picture(cursor, levels, stem_on, width, height):
+    """A channel: the eight stems as plain bars under D1 | D2, the STEM
+    toggle in the ninth slot, and the cursor as the inverted column of one
+    of them. Pure layout; the painter draws it."""
+    columns = _channel_columns(width)
+    (h0, h1), (m0, m1) = _bands(height)
+    headings = tuple(Heading((columns[first][0], h0, columns[last][1], h1), name)
+                     for name, first, last in CHANNEL_GROUPS)
+    meters = tuple(Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels))
+    toggle = Toggle((columns[STEM_TOGGLE][0], m0, columns[STEM_TOGGLE][1], m1),
+                    bool(stem_on), TOGGLE_TEXT)
+    dividers = tuple(_divider(columns[first - 1], columns[first], (m0, m1))
+                     for first in [first for _, first, _ in CHANNEL_GROUPS[1:]] + [STEM_TOGGLE])
     x0, x1 = columns[cursor]
-    return Picture(headings, meters, (x0, c0, x1, c1), dividers=tuple(dividers))
+    return Picture(headings, meters, (x0, m0, x1, m1), dividers, toggle)
 
 
-#: The return's layout, in pixels: between L and R of a pair, and the scale
-#: column between the two pairs (the marks and their labels).
-STEREO_GAP = 3
-SCALE_WIDTH = 25
-#: The dB values the scale marks, as their labels read.
-SCALE_MARKS = ((0, "0"), (-18, "-18"))
-#: Tiny-font label rows: a 3x5 glyph.
-LABEL_ROWS = 5
+#: The return's heading over each meter as a share of the panel's width --
+#: wide enough for ANALOG --, and its meter as a share of its heading: as
+#: slim as the channels' bars look beside their neighbours.
+RETURN_HEADING_OF_WIDTH = 0.34
+RETURN_METER_OF_HEADING = 0.5
 
 
-def _return_bands(height):
-    """(heading, meters, cursor) rows of the return: the heading a little
-    lower than a channel's, so the meters fit whole segments."""
-    heading = max(6, round(height * 0.16))
-    cursor = max(2, round(height * 0.07))
-    return ((0, heading - 1), (heading + 1, height - cursor - 3),
-            (height - cursor, height - 1))
-
-
-def _stereo_columns(width):
-    """(x0, x1) of the four bars: SA L, SA R, the scale, A L, A R."""
-    bar = (width - SCALE_WIDTH - 2 * STEREO_GAP - 4) // 4
-    used = 4 * bar + 2 * STEREO_GAP + SCALE_WIDTH
-    x = (width - used) // 2
-    columns = []
-    for index in range(4):
-        columns.append((x, x + bar - 1))
-        x += bar + (SCALE_WIDTH if index == 1 else STEREO_GAP)
-    return columns
-
-
-def _ticks(columns, bar):
-    """The scale marks between the pairs, each on the segment that lights
-    at its value, the label kept inside the meters' rows."""
-    x0, x1 = columns[1][1] + 2, columns[2][0] - 2
-    ticks = []
-    for db, text in SCALE_MARKS:
-        level = (db - METER_FLOOR_DB) / -METER_FLOOR_DB
-        top, bottom = segment_rows(bar, lit_rows(level, bar.segments) - 1)
-        middle = (top + bottom) // 2
-        y0 = min(max(middle - LABEL_ROWS // 2, bar.box[1]), bar.box[3] - LABEL_ROWS + 1)
-        ticks.append(Tick((x0, y0, x1, y0 + LABEL_ROWS - 1), text, middle))
-    return ticks
-
-
-def return_picture(cursor, mode, levels, width, height, peaks=None):
-    """The aux return: SA L|R and A L|R as segmented bars, the mode that
-    plays filled, the scale between the pairs, the cursor under its pair.
-    `levels` and `peaks` are SA L, SA R, A L, A R."""
-    columns = _stereo_columns(width)
-    (h0, h1), (m0, m1), (c0, c1) = _return_bands(height)
-    segments = (m1 - m0 + 1 + SEGMENT_GAP) // (SEGMENT_ROWS + SEGMENT_GAP)
-    top = m1 - segments * (SEGMENT_ROWS + SEGMENT_GAP) + SEGMENT_GAP + 1
-    headings = [Heading((columns[first][0], h0, columns[last][1], h1), name)
-                for name, first, last in RETURN_GROUPS]
-    playing = RETURN_OPTIONS.index(mode)
-    bars = [Bar((x0, top, x1, m1), level, index // 2 == playing, peak, segments)
-            for index, ((x0, x1), level, peak)
-            in enumerate(zip(columns, levels, _silence(peaks, 4)))]
-    _, first, last = RETURN_GROUPS[RETURN_OPTIONS.index(cursor)]
-    return Picture(headings, bars, (columns[first][0], c0, columns[last][1], c1),
-                   _ticks(columns, bars[0]))
+def return_picture(cursor, mode, levels, width, height):
+    """The aux return: STEM and ANALOG as mono meters under their names, the
+    playing mode's name inverted, AUX as the title between them, the cursor
+    as the inverted column of one. `levels` are STEM, ANALOG."""
+    (h0, h1), (m0, m1) = _bands(height)
+    heading = round(width * RETURN_HEADING_OF_WIDTH)
+    meter = round(heading * RETURN_METER_OF_HEADING)
+    spans = ((0, heading - 1), (width - heading, width - 1))
+    names = [Heading((x0, h0, x1, h1), RETURN_NAMES[option], option == mode)
+             for option, (x0, x1) in zip(RETURN_OPTIONS, spans)]
+    # The title stands between the two meters, in the middle of their
+    # height: a heading in the row of STEM and ANALOG would read as a third
+    # option to turn to.
+    title = Heading((spans[0][1] + 1, m0, spans[1][0] - 1, m1), RETURN_TITLE)
+    boxes = []
+    for x0, x1 in spans:
+        left = x0 + (x1 - x0 + 1 - meter) // 2
+        boxes.append((left, m0, left + meter - 1, m1))
+    meters = tuple(Meter(box, level) for box, level in zip(boxes, levels))
+    return Picture((names[0], title, names[1]), meters,
+                   boxes[RETURN_OPTIONS.index(cursor)])
 
 
 def cursor_announcement(args):
     """The cursor out of `/channel/{ch}/stem/cursor` (0-8), or None."""
-    if len(args) != 1 or not _is_count(args[0], ANALOG_INPUT):
+    if len(args) != 1 or not _is_count(args[0], STEM_TOGGLE):
         return None
     return args[0]
 

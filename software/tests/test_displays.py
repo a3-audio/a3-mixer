@@ -26,8 +26,12 @@ def stem(pair):
 
 
 def cursor_of(picture):
-    """The input the cursor is under: the meter that starts where it does."""
-    return [m.box[0] for m in picture.meters].index(picture.cursor[0])
+    """The slot the cursor inverts: a meter, or the channel's toggle after
+    the meters."""
+    slots = [m.box for m in picture.meters]
+    if getattr(picture, "toggle", None) is not None:
+        slots.append(picture.toggle.box)
+    return slots.index(picture.cursor)
 
 
 class Rig:
@@ -138,19 +142,19 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_cursor(0, 0)
         displays.drain()
         _, picture = rig.drawn[0]                       # Deck 1, first in the table
-        self.assertEqual([h.text for h in picture.headings], ["D1", "D2", "A"])
+        self.assertEqual([h.text for h in picture.headings], ["D1", "D2"])
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
-    def test_the_return_shows_sa_and_a(self):
+    def test_the_return_shows_stem_and_analog(self):
         rig = Rig()
         displays = rig.displays()
         displays.show_return(0, (True,) * 8)
         displays.show_return_mode(1)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["SA", "A"])
-        self.assertEqual([m.solid for m in picture.meters], [True, True, False, False])
-        self.assertEqual(cursor_of(picture), 2)         # cursor 0 = analog = A's pair
+        self.assertEqual([h.text for h in picture.headings], ["STEM", "AUX", "ANALOG"])
+        self.assertEqual([h.inverted for h in picture.headings], [True, False, False])
+        self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog, the right meter
 
 
 class AfterAFailure(unittest.TestCase):
@@ -236,11 +240,6 @@ class Meters(unittest.TestCase):
         panel = next(p for p in PANELS if p.label == label)
         return [m.level for m in self.displays._picture_for(panel)(128, 64).meters]
 
-    def peaks(self, label):
-        from display_panel import PANELS
-        panel = next(p for p in PANELS if p.label == label)
-        return [m.peak for m in self.displays._picture_for(panel)(128, 64).meters]
-
     def step(self):
         """One step a tenth of a second after the last, as on the desk."""
         from display_panel import METER_STEPS_PER_SECOND
@@ -252,50 +251,47 @@ class Meters(unittest.TestCase):
         from display_panel import METER_FALL_DB_PER_SECOND, METER_FLOOR_DB
         return METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB * seconds
 
-    def test_a_channel_meters_every_stem_and_its_own_analog_input(self):
+    def test_a_channel_meters_every_stem_and_nothing_else(self):
+        """The channel's analog input meter is gone (2026-10-04)."""
         self.displays.note_peak(3, 1.0)
-        self.displays.note_analog(1, 1.0)
         self.step()
-        self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0, 1.0])
-        self.assertEqual(self.levels("Deck 1"), [0, 0, 1.0, 0, 0, 0, 0, 0, 0])
+        self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0])
+        self.assertFalse(hasattr(self.displays, "note_analog"))
 
-    def test_a_is_the_analog_return_left_and_right(self):
+    def test_analog_is_the_louder_side_of_the_analog_return(self):
         self.displays.note_aux(0, 10 ** (-24 / 20))
         self.displays.note_aux(1, 10 ** (-12 / 20))
         self.step()
-        _, _, left, right = self.levels("Aux Return")
-        self.assertAlmostEqual(left, 0.5)
-        self.assertAlmostEqual(right, 0.75)
+        _, analog = self.levels("Aux Return")
+        self.assertAlmostEqual(analog, 0.75)
 
-    def test_without_the_bus_meters_sa_is_the_loudest_stem_on_the_return(self):
-        """The truth before stem_aux_L/R: SA falls back to what it showed
-        until 2026-10-04, the loudest stem playing on the return, both sides."""
+    def test_without_the_bus_meters_stem_is_the_loudest_stem_on_the_return(self):
+        """The truth before stem_aux_L/R: STEM falls back to the loudest
+        stem playing on the return."""
         self.displays.show_return(1, (False, True, False, True) + (False,) * 4)
         self.displays.note_peak(1, 1.0)                 # not on the return
         self.displays.note_peak(2, 10 ** (-24 / 20))
         self.step()
-        sa_left, sa_right, _, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(sa_left, 0.5)
-        self.assertAlmostEqual(sa_right, 0.5)
+        stem, _ = self.levels("Aux Return")
+        self.assertAlmostEqual(stem, 0.5)
 
-    def test_with_the_bus_meters_sa_is_the_stemdecks_aux_bus(self):
+    def test_with_the_bus_meters_stem_is_the_louder_side_of_the_aux_bus(self):
         self.displays.show_return(1, (True,) * 8)
         self.displays.note_peak(1, 1.0)                 # on the return, but the bus rules
         self.displays.note_stem_aux(0, 10 ** (-24 / 20))
         self.displays.note_stem_aux(1, 10 ** (-12 / 20))
         self.step()
-        sa_left, sa_right, _, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(sa_left, 0.5)
-        self.assertAlmostEqual(sa_right, 0.75)
+        stem, _ = self.levels("Aux Return")
+        self.assertAlmostEqual(stem, 0.75)
 
     def test_a_bus_that_was_heard_stays_the_source_in_silence(self):
-        """Once the truth has the bus meters, a quiet bus is a quiet SA --
+        """Once the truth has the bus meters, a quiet bus is a quiet STEM --
         not the stems again."""
         self.displays.show_return(1, (True,) * 8)
         self.displays.note_stem_aux(0, 0.0)
         self.displays.note_peak(1, 1.0)
         self.step()
-        self.assertEqual(self.levels("Aux Return")[:2], [0.0, 0.0])
+        self.assertEqual(self.levels("Aux Return")[0], 0.0)
 
     def test_a_step_redraws_every_panel_whose_meters_moved(self):
         self.displays.note_peak(1, 1.0)                 # on every channel's meters
@@ -321,19 +317,6 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertAlmostEqual(self.levels("Deck 1")[0], 1.0 - self.fall(0.1))
 
-    def test_the_return_peak_holds_a_second(self):
-        """Peak marks are the return's only: a channel shows its cursor and
-        nothing else (2026-10-04)."""
-        self.displays.note_aux(0, 1.0)
-        self.step()
-        for _ in range(10):
-            self.displays.note_aux(0, 0.001)
-            self.step()
-        self.assertAlmostEqual(self.peaks("Aux Return")[2], 1.0)
-        self.displays.note_aux(0, 0.001)
-        self.step()
-        self.assertAlmostEqual(self.peaks("Aux Return")[2], 1.0 - self.fall(0.1))
-
     def test_a_move_of_less_than_a_pixel_posts_nothing(self):
         """The bus carries ~17 draws a second (measured 2026-10-04): a panel
         whose floats moved but whose pixels did not is not redrawn."""
@@ -357,10 +340,10 @@ class Meters(unittest.TestCase):
         self.assertEqual([], self.rig.drawn)            # at rest: nothing more
 
     def test_a_meter_that_stopped_is_silence(self):
-        self.displays.note_analog(0, 1.0)
+        self.displays.note_peak(8, 1.0)
         self.now = 5.0
         self.step()
-        self.assertEqual(self.levels("Deck 1")[8], 0.0)
+        self.assertEqual(self.levels("Deck 1")[7], 0.0)
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -404,14 +387,14 @@ class Meters(unittest.TestCase):
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3"])
 
     def test_a_turn_keeps_the_levels(self):
-        self.displays.note_analog(0, 1.0)
+        self.displays.note_peak(8, 1.0)
         self.step()
         self.rig.drawn.clear()
         self.displays.show_cursor(0, 2)
         self.displays.drain()
         _, picture = self.rig.drawn[0]
         self.assertEqual(cursor_of(picture), 2)
-        self.assertEqual(picture.meters[8].level, 1.0)
+        self.assertEqual(picture.meters[7].level, 1.0)
 
 
 class WhatPlaysWhere(unittest.TestCase):
@@ -424,10 +407,40 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
 
-    def test_an_assignment_draws_nothing(self):
-        """The channel display shows its cursor, not which input is assigned
-        (2026-10-04): what plays on a channel changes no picture."""
+    def toggle_of(self, index):
+        from display_panel import panel_for_channel
+        return self.displays._picture_for(panel_for_channel(index))(128, 64).toggle
+
+    def test_a_stem_on_the_channel_turns_its_toggle_on(self):
         self.displays.show_channel(2, stem(3))
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertTrue(self.rig.drawn[0][1].toggle.on)
+        self.assertFalse(self.toggle_of(1).on)
+
+    def test_no_stem_turns_it_off(self):
+        self.displays.show_channel(2, stem(3))
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.displays.show_channel(2, 0)
+        self.displays.drain()
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertFalse(self.rig.drawn[0][1].toggle.on)
+
+    def test_another_stem_draws_nothing(self):
+        """The display shows whether a stem plays, not which one: a second
+        stem, or another one, moves no pixel and posts nothing."""
+        self.displays.show_channel(2, stem(3))
+        self.displays.drain()
+        self.rig.drawn.clear()
+        for mask in (stem(5), stem(5) | stem(6)):
+            self.displays.show_channel(2, mask)
+            self.displays.drain()
+        self.assertEqual([], self.rig.drawn)
+        self.assertTrue(self.toggle_of(2).on)
+
+    def test_silence_again_draws_nothing(self):
+        self.displays.show_channel(2, 0)
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
 
@@ -437,7 +450,7 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual(1, len(self.rig.drawn))
         self.assertEqual(cursor_of(self.rig.drawn[0][1]), 6)
 
-    def test_the_cursor_starts_on_a(self):
+    def test_the_cursor_starts_on_the_toggle(self):
         from display_panel import panel_for_channel
         picture = self.displays._picture_for(panel_for_channel(0))(128, 64)
         self.assertEqual(cursor_of(picture), 8)
@@ -457,46 +470,58 @@ class Painting(unittest.TestCase):
         paint(image, picture)
         folder = __import__("os").environ.get("A3_SNAPSHOTS")
         if folder:
-            image.resize((512, 256)).save(Path(folder) / f"desk-meters-{name}.png")
+            image.resize((512, 256)).save(Path(folder) / f"desk-{name}.png")
         return image
 
     def lit(self, image, box):
         return [(x, y) for x in range(box[0], box[2] + 1)
                 for y in range(box[1], box[3] + 1) if image.getpixel((x, y))]
 
+    def ring(self, box, inset):
+        """The pixels of the rectangle `inset` pixels inside `box`."""
+        x0, y0, x1, y1 = box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset
+        return ({(x, y) for x in range(x0, x1 + 1) for y in (y0, y1)}
+                | {(x, y) for y in range(y0, y1 + 1) for x in (x0, x1)})
+
+    def all_lit(self, image, pixels):
+        return all(image.getpixel(pixel) for pixel in pixels)
+
+    def none_lit(self, image, pixels):
+        return not any(image.getpixel(pixel) for pixel in pixels)
+
     def states(self):
-        from display_panel import channel_picture, return_picture
-        levels = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6, 0.7)
-        peaks = (0.4, 0.95, 0.1, 0.5, 1.0, 0.55, 0.0, 0.8, 0.85)
+        from display_panel import ANALOG_MODE, STEM_MODE, channel_picture, return_picture
+        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
         return {
-            "channel-loud": channel_picture(8, levels, 128, 64),
-            "channel-cursor-elsewhere": channel_picture(2, levels, 128, 64),
-            "channel-silent": channel_picture(0, (0.0,) * 9, 128, 64),
-            "return-stem": return_picture(1, 1, (0.8, 0.7, 0.3, 0.25), 128, 64,
-                                          peaks=(1.0, 0.85, 0.5, 0.25)),
-            "return-analog": return_picture(0, 0, (0.4, 0.45, 0.9, 0.75), 128, 64,
-                                            peaks=(0.6, 0.45, 1.0, 0.9)),
-            "return-silent": return_picture(1, 1, (0.0,) * 4, 128, 64),
+            "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, True, 128, 64),
+            "channel-cursor-on-toggle-on": channel_picture(8, music, True, 128, 64),
+            "channel-cursor-on-toggle-off": channel_picture(8, music, False, 128, 64),
+            "channel-silent-toggle-off": channel_picture(0, (0.0,) * 8, False, 128, 64),
+            "channel-cursor-on-a-full-meter": channel_picture(4, music, False, 128, 64),
+            "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE,
+                                                              (0.8, 0.3), 128, 64),
+            "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE,
+                                                                (0.4, 0.9), 128, 64),
+            "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
+                                                             (0.0, 0.0), 128, 64),
         }
 
-    def test_each_state_paints_its_headings_and_cursor(self):
+    def test_each_state_paints_its_headings(self):
         for name, picture in self.states().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
                 for heading in picture.headings:
                     self.assertTrue(self.lit(image, heading.box), heading.text)
-                x0, y0, x1, y1 = picture.cursor
-                self.assertEqual(len(self.lit(image, picture.cursor)),
-                                 (x1 - x0 + 1) * (y1 - y0 + 1))
 
     def test_nothing_spills_out_of_its_box(self):
         for name, picture in self.states().items():
             with self.subTest(name):
-                image = self.paint_state(f"fit-{name}", picture)
+                image = self.paint_state(name, picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
-                boxes += [t.box for t in picture.ticks]
                 boxes += list(picture.dividers)
                 boxes.append(picture.cursor)
+                if picture.toggle is not None:
+                    boxes.append(picture.toggle.box)
                 inside = {(x, y) for x0, y0, x1, y1 in boxes
                           for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
                 spilled = [(x, y) for x in range(128) for y in range(64)
@@ -504,70 +529,127 @@ class Painting(unittest.TestCase):
                 self.assertEqual(spilled, [])
 
     def test_the_dividers_are_painted_full_length(self):
-        picture = self.states()["channel-silent"]
-        image = self.paint_state("dividers", picture)
+        picture = self.states()["channel-silent-toggle-off"]
+        image = self.paint_state("channel-silent-toggle-off", picture)
         for x0, y0, x1, y1 in picture.dividers:
             self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
 
-    def test_a_silent_channel_shows_only_its_headings_and_cursor(self):
-        picture = self.states()["channel-silent"]
-        image = self.paint_state("silent", picture)
+    def test_a_meter_off_the_cursor_is_a_plain_filled_bar(self):
+        picture = self.states()["channel-music-cursor-on-a-stem-toggle-on"]
+        image = self.paint_state("channel-music-cursor-on-a-stem-toggle-on", picture)
         for meter in picture.meters:
-            self.assertEqual(self.lit(image, meter.box), [], meter.box)
-
-    def test_every_meter_is_a_plain_filled_bar_with_nothing_above(self):
-        picture = self.states()["channel-loud"]
-        image = self.paint_state("plain", picture)
-        for meter in picture.meters:
+            if meter.box == picture.cursor:
+                continue
             x0, y0, x1, y1 = meter.box
             bar = meter.pixels()
-            middle = (x0 + x1) // 2
-            filled = [image.getpixel((middle, y)) for y in range(y1 - bar + 1, y1 + 1)]
-            above = [image.getpixel((x, y)) for x in range(x0, x1 + 1)
-                     for y in range(y0, y1 - bar + 1)]
-            self.assertTrue(all(filled), meter)
-            self.assertFalse(any(above), meter)
+            filled = [(x, y) for x in range(x0, x1 + 1) for y in range(y1 - bar + 1, y1 + 1)]
+            above = [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 - bar + 1)]
+            self.assertTrue(self.all_lit(image, filled), meter)
+            self.assertTrue(self.none_lit(image, above), meter)
 
-    def middle_of(self, bar, index):
-        from display_panel import segment_rows
-        top, bottom = segment_rows(bar, index)
-        return (bar.box[0] + bar.box[2]) // 2, (top + bottom) // 2
+    def test_the_cursor_inverts_a_silent_meter_to_a_light_column(self):
+        """Light where the meter is dark: a framed light column, so a
+        silent selected stem never reads as an unselected full one."""
+        picture = self.states()["channel-silent-toggle-off"]
+        image = self.paint_state("channel-silent-toggle-off", picture)
+        box = picture.cursor
+        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
+        self.assertTrue(self.none_lit(image, self.ring(box, 1)))
+        self.assertTrue(self.all_lit(image, self.ring(box, 2)))
 
-    def test_the_playing_pair_is_filled_the_other_outlined(self):
-        picture = self.states()["return-stem"]
-        image = self.paint_state("return-fill", picture)
-        sa, a = picture.meters[0], picture.meters[2]
-        self.assertTrue(image.getpixel(self.middle_of(sa, 0)))
-        x, y = self.middle_of(a, 0)
-        self.assertFalse(image.getpixel((x, y)))
-        self.assertTrue(image.getpixel((a.box[0], y)) and image.getpixel((a.box[2], y)))
+    def test_the_cursor_draws_a_full_meter_dark_inside_a_light_frame(self):
+        picture = self.states()["channel-cursor-on-a-full-meter"]
+        image = self.paint_state("channel-cursor-on-a-full-meter", picture)
+        x0, y0, x1, y1 = box = picture.cursor
+        self.assertEqual(picture.meters[4].pixels(), y1 - y0 + 1)
+        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
+        middle = (x0 + x1) // 2
+        self.assertTrue(self.none_lit(image, [(middle, y) for y in range(y0 + 1, y1)]))
 
-    def test_segments_are_apart_and_the_peak_stands_alone(self):
-        from display_panel import segment_rows
-        picture = self.states()["return-stem"]
-        image = self.paint_state("return-segments", picture)
-        bar = picture.meters[0]                         # level 0.8, peak 1.0
-        lit, peak = bar.pixels()
-        x = (bar.box[0] + bar.box[2]) // 2
-        top, _ = segment_rows(bar, 0)
-        self.assertFalse(image.getpixel((x, top - 1)))  # the row between two segments
-        self.assertTrue(image.getpixel(self.middle_of(bar, peak - 1)))
-        self.assertFalse(image.getpixel(self.middle_of(bar, lit)))
+    def field(self, toggle):
+        from a3_mixer_displays import TOGGLE_INSET
+        x0, y0, x1, y1 = toggle.box
+        return (x0 + TOGGLE_INSET, y0 + TOGGLE_INSET, x1 - TOGGLE_INSET, y1 - TOGGLE_INSET)
 
-    def test_in_silence_both_pairs_still_show_which_plays(self):
-        picture = self.states()["return-silent"]
-        image = self.paint_state("return-quiet", picture)
-        for bar in picture.meters:
-            x, y = self.middle_of(bar, 0)
-            self.assertEqual(bool(image.getpixel((x, y))), bar.solid)
-            self.assertTrue(image.getpixel((bar.box[0], y)))
-            self.assertFalse(image.getpixel(self.middle_of(bar, 1)))
+    def field_middle(self, toggle):
+        """A column of the toggle's field beside its letters: the field's
+        own colour."""
+        x0, y0, x1, y1 = self.field(toggle)
+        return [(x0 + 1, y) for y in range(y0 + 1, y1)]
 
-    def test_the_scale_marks_are_painted(self):
-        picture = self.states()["return-silent"]
-        image = self.paint_state("return-scale", picture)
-        for tick in picture.ticks:
-            self.assertTrue(self.lit(image, tick.box), tick.text)
+    def inside(self, toggle):
+        x0, y0, x1, y1 = self.field(toggle)
+        return (x0 + 1, y0 + 1, x1 - 1, y1 - 1)
+
+    def test_the_toggle_on_is_a_filled_box_with_dark_letters(self):
+        picture = self.states()["channel-music-cursor-on-a-stem-toggle-on"]
+        image = self.paint_state("channel-music-cursor-on-a-stem-toggle-on", picture)
+        toggle = picture.toggle
+        self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
+        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
+        self.assertTrue(self.all_lit(image, self.field_middle(toggle)))
+        inside = self.inside(toggle)
+        self.assertLess(len(self.lit(image, inside)),
+                        (inside[2] - inside[0] + 1) * (inside[3] - inside[1] + 1))
+
+    def test_the_toggle_off_is_an_outline_with_light_letters(self):
+        picture = self.states()["channel-silent-toggle-off"]
+        image = self.paint_state("channel-silent-toggle-off", picture)
+        toggle = picture.toggle
+        self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
+        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
+        self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
+        self.assertTrue(self.lit(image, self.inside(toggle)))
+
+    def test_under_the_cursor_the_toggle_flips_its_colours(self):
+        """ON = a dark box on light, OFF = a dark outline on light: on and
+        off stay readable under the cursor."""
+        for name, on in (("channel-cursor-on-toggle-on", True),
+                         ("channel-cursor-on-toggle-off", False)):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                toggle = picture.toggle
+                self.assertEqual(picture.cursor, toggle.box)
+                self.assertTrue(self.none_lit(image, self.ring(self.field(toggle), 0)))
+                field = self.field_middle(toggle)
+                self.assertTrue(self.none_lit(image, field) if on else self.all_lit(image, field))
+
+    def test_the_cursor_surrounds_the_toggle_with_a_wide_light_band(self):
+        """With a one-pixel band a selected ON toggle looked like an
+        unselected OFF one, its outline one pixel further out (snapshots,
+        2026-10-04): the band is wider than any outline."""
+        from a3_mixer_displays import TOGGLE_INSET
+        self.assertGreaterEqual(TOGGLE_INSET, 2)
+        for name in ("channel-cursor-on-toggle-on", "channel-cursor-on-toggle-off"):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                for inset in range(TOGGLE_INSET):
+                    self.assertTrue(self.all_lit(image, self.ring(picture.toggle.box, inset)))
+
+    def test_the_playing_modes_heading_is_inverted(self):
+        for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-stem"):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                for heading in picture.headings:
+                    x0, y0, x1, y1 = heading.box
+                    lit = len(self.lit(image, heading.box))
+                    area = (x1 - x0 + 1) * (y1 - y0 + 1)
+                    # Inverted: a light box with dark letters, mostly lit;
+                    # plain: light letters on dark, mostly dark.
+                    self.assertEqual(lit > area / 2, heading.inverted, heading.text)
+
+    def test_the_return_cursor_is_the_same_column(self):
+        picture = self.states()["return-silent-cursor-on-analog"]
+        image = self.paint_state("return-silent-cursor-on-analog", picture)
+        box = picture.cursor
+        self.assertEqual(box, picture.meters[1].box)
+        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
+        self.assertTrue(self.none_lit(image, self.ring(box, 1)))
+        self.assertTrue(self.all_lit(image, self.ring(box, 2)))
+        self.assertEqual(self.lit(image, picture.meters[0].box), [])
 
 
 class HowLongADrawTakes(unittest.TestCase):

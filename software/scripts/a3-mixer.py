@@ -201,12 +201,12 @@ def vu_handler(address: str,
     if pair is not None:
         displays.note_peak(pair, osc_arguments[0])
         return
-    # The analog return's meter: the return display's A, no LED.
+    # The analog return's meter: the return display's ANALOG, no LED.
     side = osc.aux_side(number)
     if side is not None:
         displays.note_aux(side, osc_arguments[0])
         return
-    # StemDeck's aux bus: the return display's SA, no LED. Only a truth that
+    # StemDeck's aux bus: the return display's STEM, no LED. Only a truth that
     # names stem_aux_L/R sends it; without, the displays fall back.
     side = osc.stem_aux_side(number)
     if side is not None:
@@ -218,9 +218,6 @@ def vu_handler(address: str,
     vu = str(slot)
 
     peak = osc_arguments[0]
-    # The four inputs are the channels' A meters too.
-    if slot < num_channel:
-        displays.note_analog(slot, peak)
     rms = osc_arguments[1]
 
     # clamp to above 0 to avoid numerical error
