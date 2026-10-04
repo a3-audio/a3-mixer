@@ -26,12 +26,13 @@ def stem(pair):
 
 
 def cursor_of(picture):
-    """The slot the cursor inverts: a meter, or the channel's toggle after
-    the meters."""
+    """The slot the cursor's arrow points at: a meter, or the channel's
+    toggle after the meters -- the one under the arrow's middle."""
     slots = [m.box for m in picture.meters]
     if getattr(picture, "toggle", None) is not None:
         slots.append(picture.toggle.box)
-    return slots.index(picture.cursor)
+    middle = (picture.cursor[0] + picture.cursor[2]) // 2
+    return next(index for index, (x0, _, x1, _) in enumerate(slots) if x0 <= middle <= x1)
 
 
 class Rig:
@@ -152,8 +153,8 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_return_mode(1)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["STEM", "AUX", "ANALOG"])
-        self.assertEqual([h.inverted for h in picture.headings], [True, False, False])
+        self.assertEqual([h.text for h in picture.headings], ["STEM", "ANALOG"])
+        self.assertEqual([h.inverted for h in picture.headings], [True, False])
         self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog, the right meter
 
 
@@ -496,12 +497,14 @@ class Painting(unittest.TestCase):
             "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, True, 128, 64),
             "channel-cursor-on-toggle-on": channel_picture(8, music, True, 128, 64),
             "channel-cursor-on-toggle-off": channel_picture(8, music, False, 128, 64),
-            "channel-silent-toggle-off": channel_picture(0, (0.0,) * 8, False, 128, 64),
+            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 8, False, 128, 64),
             "channel-cursor-on-a-full-meter": channel_picture(4, music, False, 128, 64),
             "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE,
                                                               (0.8, 0.3), 128, 64),
             "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE,
                                                                 (0.4, 0.9), 128, 64),
+            "return-analog-mode-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE,
+                                                                  (0.2, 0.7), 128, 64),
             "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE,
                                                              (0.0, 0.0), 128, 64),
         }
@@ -529,42 +532,62 @@ class Painting(unittest.TestCase):
                 self.assertEqual(spilled, [])
 
     def test_the_dividers_are_painted_full_length(self):
-        picture = self.states()["channel-silent-toggle-off"]
-        image = self.paint_state("channel-silent-toggle-off", picture)
+        picture = self.states()["channel-silent-cursor-on-stem-1"]
+        image = self.paint_state("channel-silent-cursor-on-stem-1", picture)
         for x0, y0, x1, y1 in picture.dividers:
             self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
 
-    def test_a_meter_off_the_cursor_is_a_plain_filled_bar(self):
-        picture = self.states()["channel-music-cursor-on-a-stem-toggle-on"]
-        image = self.paint_state("channel-music-cursor-on-a-stem-toggle-on", picture)
-        for meter in picture.meters:
-            if meter.box == picture.cursor:
-                continue
-            x0, y0, x1, y1 = meter.box
-            bar = meter.pixels()
-            filled = [(x, y) for x in range(x0, x1 + 1) for y in range(y1 - bar + 1, y1 + 1)]
-            above = [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 - bar + 1)]
-            self.assertTrue(self.all_lit(image, filled), meter)
-            self.assertTrue(self.none_lit(image, above), meter)
+    def test_every_meter_is_a_plain_filled_bar_selected_or_not(self):
+        """Nothing but the arrow marks the selection (maintainer,
+        2026-10-04): the meter under it is drawn like every other."""
+        for name in ("channel-music-cursor-on-a-stem-toggle-on",
+                     "channel-cursor-on-a-full-meter"):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                for meter in picture.meters:
+                    x0, y0, x1, y1 = meter.box
+                    bar = meter.pixels()
+                    filled = [(x, y) for x in range(x0, x1 + 1)
+                              for y in range(y1 - bar + 1, y1 + 1)]
+                    above = [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 - bar + 1)]
+                    self.assertTrue(self.all_lit(image, filled), meter)
+                    self.assertTrue(self.none_lit(image, above), meter)
 
-    def test_the_cursor_inverts_a_silent_meter_to_a_light_column(self):
-        """Light where the meter is dark: a framed light column, so a
-        silent selected stem never reads as an unselected full one."""
-        picture = self.states()["channel-silent-toggle-off"]
-        image = self.paint_state("channel-silent-toggle-off", picture)
-        box = picture.cursor
-        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
-        self.assertTrue(self.none_lit(image, self.ring(box, 1)))
-        self.assertTrue(self.all_lit(image, self.ring(box, 2)))
+    def test_a_selected_silent_meter_paints_nothing(self):
+        for name, index in (("channel-silent-cursor-on-stem-1", 0),
+                            ("return-silent-cursor-on-analog", 1)):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                self.assertEqual(self.lit(image, picture.meters[index].box), [])
 
-    def test_the_cursor_draws_a_full_meter_dark_inside_a_light_frame(self):
-        picture = self.states()["channel-cursor-on-a-full-meter"]
-        image = self.paint_state("channel-cursor-on-a-full-meter", picture)
-        x0, y0, x1, y1 = box = picture.cursor
-        self.assertEqual(picture.meters[4].pixels(), y1 - y0 + 1)
-        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
-        middle = (x0 + x1) // 2
-        self.assertTrue(self.none_lit(image, [(middle, y) for y in range(y0 + 1, y1)]))
+    def arrow_rows(self, image, box):
+        """How many pixels each row of the arrow's box lights, top down."""
+        x0, y0, x1, y1 = box
+        return [sum(1 for x in range(x0, x1 + 1) if image.getpixel((x, y)))
+                for y in range(y0, y1 + 1)]
+
+    def test_the_arrow_is_a_solid_triangle_pointing_down(self):
+        for name, picture in self.states().items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                rows = self.arrow_rows(image, picture.cursor)
+                self.assertGreater(rows[0], rows[-1])
+                self.assertGreater(rows[-1], 0)
+                self.assertEqual(rows, sorted(rows, reverse=True))
+                # Solid: each row one run of light pixels, centred.
+                x0, y0, x1, y1 = picture.cursor
+                for y, count in zip(range(y0, y1 + 1), rows):
+                    lit = [x for x in range(x0, x1 + 1) if image.getpixel((x, y))]
+                    self.assertEqual(lit, list(range(lit[0], lit[0] + count)))
+                    self.assertLessEqual(abs((lit[0] - x0) - (x1 - lit[-1])), 1)
+
+    def test_the_arrow_spans_its_box(self):
+        picture = self.states()["channel-silent-cursor-on-stem-1"]
+        image = self.paint_state("channel-silent-cursor-on-stem-1", picture)
+        x0, y0, x1, y1 = picture.cursor
+        self.assertEqual(self.arrow_rows(image, picture.cursor)[0], x1 - x0 + 1)
 
     def field(self, toggle):
         from a3_mixer_displays import TOGGLE_INSET
@@ -593,40 +616,25 @@ class Painting(unittest.TestCase):
                         (inside[2] - inside[0] + 1) * (inside[3] - inside[1] + 1))
 
     def test_the_toggle_off_is_an_outline_with_light_letters(self):
-        picture = self.states()["channel-silent-toggle-off"]
-        image = self.paint_state("channel-silent-toggle-off", picture)
+        picture = self.states()["channel-silent-cursor-on-stem-1"]
+        image = self.paint_state("channel-silent-cursor-on-stem-1", picture)
         toggle = picture.toggle
         self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
         self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
         self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
         self.assertTrue(self.lit(image, self.inside(toggle)))
 
-    def test_under_the_cursor_the_toggle_flips_its_colours(self):
-        """ON = a dark box on light, OFF = a dark outline on light: on and
-        off stay readable under the cursor."""
-        for name, on in (("channel-cursor-on-toggle-on", True),
-                         ("channel-cursor-on-toggle-off", False)):
-            with self.subTest(name):
-                picture = self.states()[name]
-                image = self.paint_state(name, picture)
-                toggle = picture.toggle
-                self.assertEqual(picture.cursor, toggle.box)
-                self.assertTrue(self.none_lit(image, self.ring(self.field(toggle), 0)))
-                field = self.field_middle(toggle)
-                self.assertTrue(self.none_lit(image, field) if on else self.all_lit(image, field))
-
-    def test_the_cursor_surrounds_the_toggle_with_a_wide_light_band(self):
-        """With a one-pixel band a selected ON toggle looked like an
-        unselected OFF one, its outline one pixel further out (snapshots,
-        2026-10-04): the band is wider than any outline."""
-        from a3_mixer_displays import TOGGLE_INSET
-        self.assertGreaterEqual(TOGGLE_INSET, 2)
-        for name in ("channel-cursor-on-toggle-on", "channel-cursor-on-toggle-off"):
-            with self.subTest(name):
-                picture = self.states()[name]
-                image = self.paint_state(name, picture)
-                for inset in range(TOGGLE_INSET):
-                    self.assertTrue(self.all_lit(image, self.ring(picture.toggle.box, inset)))
+    def test_the_toggle_looks_the_same_selected_or_not(self):
+        from display_panel import channel_picture
+        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
+        for on in (True, False):
+            with self.subTest(on=on):
+                selected = channel_picture(8, music, on, 128, 64)
+                elsewhere = channel_picture(3, music, on, 128, 64)
+                one = self.paint_state(f"toggle-{on}-selected", selected)
+                two = self.paint_state(f"toggle-{on}-elsewhere", elsewhere)
+                box = selected.toggle.box
+                self.assertEqual(self.lit(one, box), self.lit(two, box))
 
     def test_the_playing_modes_heading_is_inverted(self):
         for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-stem"):
@@ -641,15 +649,16 @@ class Painting(unittest.TestCase):
                     # plain: light letters on dark, mostly dark.
                     self.assertEqual(lit > area / 2, heading.inverted, heading.text)
 
-    def test_the_return_cursor_is_the_same_column(self):
-        picture = self.states()["return-silent-cursor-on-analog"]
-        image = self.paint_state("return-silent-cursor-on-analog", picture)
-        box = picture.cursor
-        self.assertEqual(box, picture.meters[1].box)
-        self.assertTrue(self.all_lit(image, self.ring(box, 0)))
-        self.assertTrue(self.none_lit(image, self.ring(box, 1)))
-        self.assertTrue(self.all_lit(image, self.ring(box, 2)))
-        self.assertEqual(self.lit(image, picture.meters[0].box), [])
+    def test_the_return_shows_nothing_between_its_meters(self):
+        """No AUX title any more: between STEM's and ANALOG's columns the
+        meters' band stays dark."""
+        for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-analog"):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                left, right = picture.meters
+                between = (left.box[2] + 1, left.box[1], right.box[0] - 1, left.box[3])
+                self.assertEqual(self.lit(image, between), [])
 
 
 class HowLongADrawTakes(unittest.TestCase):

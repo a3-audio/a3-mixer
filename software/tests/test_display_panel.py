@@ -178,8 +178,7 @@ class ChannelSelector(unittest.TestCase):
 
     def test_the_toggle_is_two_meters_wide(self):
         """STEM does not fit across a meter; it stands letter over letter in
-        a slot about two meters wide, so that under the cursor a wide light
-        band can surround its field (snapshots, 2026-10-04)."""
+        a slot about two meters wide (snapshots, 2026-10-04)."""
         p = self.picture()
         meter = p.meters[0].box[2] - p.meters[0].box[0] + 1
         toggle = p.toggle.box[2] - p.toggle.box[0] + 1
@@ -218,15 +217,43 @@ class ChannelSelector(unittest.TestCase):
         levels = tuple(i / 8 for i in range(8))
         self.assertEqual([m.level for m in self.picture(levels=levels).meters], list(levels))
 
-    def test_the_cursor_is_its_meters_whole_column(self):
-        """The cursor is an inverted column over its slot, not a bar under
-        it (maintainer, 2026-10-04: the selection must be easy to see)."""
-        p = self.picture(cursor=4)
-        self.assertEqual(p.cursor, p.meters[4].box)
+    def assert_arrow_over(self, p, slot):
+        """The cursor is a small arrow box between the headings and the top
+        of the meters, centred over `slot`."""
+        x0, y0, x1, y1 = p.cursor
+        self.assertGreater(y0, max(h.box[3] for h in p.headings))
+        self.assertLess(y1, slot[1])
+        self.assertLessEqual(abs((x0 + x1) - (slot[0] + slot[2])), 1)
 
-    def test_the_cursor_on_the_toggle_is_the_toggles_column(self):
+    def test_the_cursor_is_an_arrow_above_its_meter(self):
+        """Maintainer, 2026-10-04: a "^" turned over, a small triangle
+        pointing down at the selected meter -- the inverted column went."""
+        p = self.picture(cursor=4)
+        self.assert_arrow_over(p, p.meters[4].box)
+
+    def test_the_arrow_is_as_wide_as_a_meter_and_a_few_rows_tall(self):
+        p = self.picture(cursor=0)
+        x0, y0, x1, y1 = p.cursor
+        meter = p.meters[0].box
+        self.assertEqual(x1 - x0, meter[2] - meter[0])
+        self.assertIn(y1 - y0 + 1, (4, 5))
+
+    def test_the_cursor_on_the_toggle_is_the_same_arrow_above_it(self):
         p = self.picture(cursor=8)
-        self.assertEqual(p.cursor, p.toggle.box)
+        self.assert_arrow_over(p, p.toggle.box)
+        on_a_stem = self.picture(cursor=0).cursor
+        self.assertEqual((p.cursor[2] - p.cursor[0], p.cursor[1], p.cursor[3]),
+                         (on_a_stem[2] - on_a_stem[0], on_a_stem[1], on_a_stem[3]))
+
+    def test_the_meters_stay_readable_under_the_arrow(self):
+        p = self.picture()
+        x0, y0, x1, y1 = p.meters[0].box
+        self.assertGreaterEqual(y1 - y0 + 1, 40)
+        self.assertEqual(y1, H - 1)
+
+    def test_the_headings_keep_their_size(self):
+        h = self.picture().headings[0].box
+        self.assertEqual(h[3] - h[1] + 1, 12)
 
     def test_it_follows_the_panel(self):
         p = self.picture(width=128, height=32)
@@ -237,9 +264,9 @@ class ChannelSelector(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """The return is drawn like a channel (2026-10-04): two mono meters,
-    STEM (StemDeck's aux bus) and ANALOG (the analog return), AUX between
-    them as the title; the mode that plays has its heading inverted, and
-    the cursor is the same inverted column, on STEM or ANALOG only."""
+    STEM (StemDeck's aux bus) and ANALOG (the analog return), under their
+    names and nothing else; the mode that plays has its heading inverted,
+    and the cursor is the same down arrow, over STEM or ANALOG only."""
 
     def picture(self, cursor=None, mode=None, levels=(0.5, 0.5)):
         from display_panel import STEM_MODE, return_picture
@@ -250,9 +277,11 @@ class ReturnMeter(unittest.TestCase):
     def heading(self, picture, text):
         return next(h for h in picture.headings if h.text == text)
 
-    def test_stem_aux_analog_from_left_to_right(self):
+    def test_only_stem_and_analog_from_left_to_right(self):
+        """Maintainer, 2026-10-04: the AUX title irritated and went; the
+        return shows its two options and nothing between them."""
         p = self.picture()
-        self.assertEqual([h.text for h in p.headings], ["STEM", "AUX", "ANALOG"])
+        self.assertEqual([h.text for h in p.headings], ["STEM", "ANALOG"])
         lefts = [h.box[0] for h in p.headings]
         self.assertEqual(lefts, sorted(lefts))
 
@@ -266,13 +295,6 @@ class ReturnMeter(unittest.TestCase):
             self.assertTrue(heading[0] <= meter.box[0] and meter.box[2] <= heading[2], text)
             self.assertLess(heading[3], meter.box[1])
 
-    def test_aux_is_the_title_between_the_meters(self):
-        p = self.picture()
-        aux = self.heading(p, "AUX").box
-        self.assertGreater(aux[0], p.meters[0].box[2])
-        self.assertLess(aux[2], p.meters[1].box[0])
-        self.assertFalse(self.heading(p, "AUX").inverted)
-
     def test_the_mode_that_plays_has_its_heading_inverted(self):
         from display_panel import ANALOG_MODE, STEM_MODE
         for mode, playing, other in ((STEM_MODE, "STEM", "ANALOG"),
@@ -281,10 +303,22 @@ class ReturnMeter(unittest.TestCase):
             self.assertTrue(self.heading(p, playing).inverted, playing)
             self.assertFalse(self.heading(p, other).inverted, other)
 
-    def test_the_cursor_is_the_column_of_stem_or_analog(self):
+    def test_the_cursor_is_an_arrow_above_stem_or_analog(self):
         from display_panel import ANALOG_MODE, STEM_MODE
-        self.assertEqual(self.picture(cursor=STEM_MODE).cursor, self.picture().meters[0].box)
-        self.assertEqual(self.picture(cursor=ANALOG_MODE).cursor, self.picture().meters[1].box)
+        for cursor, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
+            p = self.picture(cursor=cursor)
+            x0, y0, x1, y1 = p.cursor
+            meter = p.meters[index].box
+            self.assertGreater(y0, max(h.box[3] for h in p.headings))
+            self.assertLess(y1, meter[1])
+            self.assertLessEqual(abs((x0 + x1) - (meter[0] + meter[2])), 1)
+
+    def test_the_return_arrow_reads_like_the_channels(self):
+        from display_panel import channel_picture
+        channel = channel_picture(0, (0.0,) * 8, False, W, H).cursor
+        ret = self.picture().cursor
+        self.assertEqual((ret[1], ret[3]), (channel[1], channel[3]))
+        self.assertGreaterEqual(ret[2] - ret[0], channel[2] - channel[0])
 
     def test_the_meters_stand_inside_the_panel(self):
         for x0, y0, x1, y1 in [m.box for m in self.picture().meters]:
