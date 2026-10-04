@@ -143,11 +143,11 @@ CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7))
 TOGGLE_TEXT = "STEM"
 
 #: The aux return's modes -- a3_core_stems' numbers -- left to right on its
-#: display, each a mono meter under its name, the display's title between.
+#: display, each a mono meter under its name and nothing between them: an
+#: AUX title there irritated (maintainer, 2026-10-04).
 ANALOG_MODE, STEM_MODE = 0, 1
 RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
 RETURN_NAMES = {STEM_MODE: "STEM", ANALOG_MODE: "ANALOG"}
-RETURN_TITLE = "AUX"
 
 #: Ten steps a second, decided 2026-10-04 after the desk carried five; what
 #: keeps the bus from drowning is that only a panel whose pixels moved is
@@ -209,7 +209,8 @@ def pixel_key(picture):
 
 
 #: What a panel shows: headings over meters, the cursor -- the box of the
-#: slot it inverts --, divider lines, and a channel's toggle.
+#: down arrow over the selected slot --, divider lines, and a channel's
+#: toggle.
 Heading = namedtuple("Heading", "box text inverted", defaults=(False,))
 Picture = namedtuple("Picture", "headings meters cursor dividers toggle", defaults=((), None))
 
@@ -229,10 +230,8 @@ def meter_level(peak):
     return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
 
 
-#: The toggle's share of the row, in meters. With one meter's width a
-#: selected ON toggle could only get a one-pixel light band and looked like
-#: an unselected OFF one (snapshots, 2026-10-04); two leave room for a wide
-#: band and for STEM's letters, and the meters keep 10 of their 11 pixels.
+#: The toggle's share of the row, in meters: two leave room for STEM's
+#: letters inside its field, and the meters keep 10 of their 11 pixels.
 TOGGLE_METERS = 2
 
 
@@ -252,11 +251,29 @@ def _channel_columns(width):
     return columns
 
 
+#: The cursor's arrow, in rows: a "^" turned over, a solid triangle
+#: pointing down at the selected slot (maintainer, 2026-10-04). Each row is
+#: a pixel narrower on either side than the one above, so it is twice as
+#: wide as tall -- a channel meter's ten pixels at five rows.
+ARROW_ROWS = 5
+ARROW_WIDTH = 2 * ARROW_ROWS
+
+
 def _bands(height):
-    """(heading, meters) as (top, bottom) rows of the panel. The meters run
-    to the bottom row: the cursor is a column now, not a row of its own."""
+    """(heading, arrow, meters) as (top, bottom) rows of the panel: the
+    arrow between the headings and the meters, a dark row on either side
+    of it so it touches neither an inverted heading nor a full bar; the
+    meters run to the bottom row."""
     heading = max(6, round(height * 0.19))
-    return (0, heading - 1), (heading + 1, height - 1)
+    arrow = heading + 1
+    meters = arrow + ARROW_ROWS + 1
+    return (0, heading - 1), (arrow, meters - 2), (meters, height - 1)
+
+
+def _arrow(slot, rows):
+    """The arrow's box: ARROW_WIDTH wide, centred over the slot's (x0, x1)."""
+    x0 = (slot[0] + slot[1] + 1 - ARROW_WIDTH) // 2
+    return (x0, rows[0], x0 + ARROW_WIDTH - 1, rows[1])
 
 
 def _divider(left, right, rows):
@@ -268,10 +285,10 @@ def _divider(left, right, rows):
 
 def channel_picture(cursor, levels, stem_on, width, height):
     """A channel: the eight stems as plain bars under D1 | D2, the STEM
-    toggle in the ninth slot, and the cursor as the inverted column of one
-    of them. Pure layout; the painter draws it."""
+    toggle in the ninth slot, and the cursor as the arrow over one of them.
+    Pure layout; the painter draws it."""
     columns = _channel_columns(width)
-    (h0, h1), (m0, m1) = _bands(height)
+    (h0, h1), arrow, (m0, m1) = _bands(height)
     headings = tuple(Heading((columns[first][0], h0, columns[last][1], h1), name)
                      for name, first, last in CHANNEL_GROUPS)
     meters = tuple(Meter((x0, m0, x1, m1), level) for (x0, x1), level in zip(columns, levels))
@@ -279,8 +296,7 @@ def channel_picture(cursor, levels, stem_on, width, height):
                     bool(stem_on), TOGGLE_TEXT)
     dividers = tuple(_divider(columns[first - 1], columns[first], (m0, m1))
                      for first in [first for _, first, _ in CHANNEL_GROUPS[1:]] + [STEM_TOGGLE])
-    x0, x1 = columns[cursor]
-    return Picture(headings, meters, (x0, m0, x1, m1), dividers, toggle)
+    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, toggle)
 
 
 #: The return's heading over each meter as a share of the panel's width --
@@ -292,25 +308,21 @@ RETURN_METER_OF_HEADING = 0.5
 
 def return_picture(cursor, mode, levels, width, height):
     """The aux return: STEM and ANALOG as mono meters under their names, the
-    playing mode's name inverted, AUX as the title between them, the cursor
-    as the inverted column of one. `levels` are STEM, ANALOG."""
-    (h0, h1), (m0, m1) = _bands(height)
+    playing mode's name inverted, the cursor as the arrow over one. `levels`
+    are STEM, ANALOG."""
+    (h0, h1), arrow, (m0, m1) = _bands(height)
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
     spans = ((0, heading - 1), (width - heading, width - 1))
-    names = [Heading((x0, h0, x1, h1), RETURN_NAMES[option], option == mode)
-             for option, (x0, x1) in zip(RETURN_OPTIONS, spans)]
-    # The title stands between the two meters, in the middle of their
-    # height: a heading in the row of STEM and ANALOG would read as a third
-    # option to turn to.
-    title = Heading((spans[0][1] + 1, m0, spans[1][0] - 1, m1), RETURN_TITLE)
+    names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option], option == mode)
+                  for option, (x0, x1) in zip(RETURN_OPTIONS, spans))
     boxes = []
     for x0, x1 in spans:
         left = x0 + (x1 - x0 + 1 - meter) // 2
         boxes.append((left, m0, left + meter - 1, m1))
     meters = tuple(Meter(box, level) for box, level in zip(boxes, levels))
-    return Picture((names[0], title, names[1]), meters,
-                   boxes[RETURN_OPTIONS.index(cursor)])
+    selected = boxes[RETURN_OPTIONS.index(cursor)]
+    return Picture(names, meters, _arrow((selected[0], selected[2]), arrow))
 
 
 def cursor_announcement(args):

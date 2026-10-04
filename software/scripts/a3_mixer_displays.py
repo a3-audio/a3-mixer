@@ -7,14 +7,15 @@
 Each channel's display is an input selector (2026-10-04): eight plain bars
 under D1 | D2, one per stem pair, and in the ninth slot the STEM toggle --
 a filled box while a stem plays on the channel, an outline while none does.
-It never shows which stem is assigned. The cursor is an inverted column over
-its slot: light, with the bar drawn dark inside a frame, and on the toggle
-the toggle's colours flipped, so on and off stay readable under it.
+It never shows which stem is assigned. The cursor is a small solid triangle
+pointing down -- a "^" turned over -- between the headings and the meters,
+centred over the selected slot; the meters and the toggle are drawn the
+same whether selected or not.
 
 The return's display is drawn the same way: two mono meters, STEM (StemDeck's
-aux bus) and ANALOG (the analog return), the louder side of each; AUX as the
-title between them; the mode that plays marked by its heading inverted, and
-the cursor the same inverted column, on STEM or ANALOG.
+aux bus) and ANALOG (the analog return), the louder side of each, under
+their names and nothing between them; the mode that plays marked by its
+heading inverted, and the cursor the same arrow, over STEM or ANALOG.
 
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
 draws a peak mark, and a panel is redrawn only when its pixels move.
@@ -107,13 +108,11 @@ def headings_image(headings, width, height):
     return image
 
 
-#: The frame a selected meter keeps around its bar: one pixel, so the
-#: cursor's light column always shows as a frame around a dark bar.
+#: The STEM letters sit this far inside the toggle's field, clear of its
+#: one-pixel outline.
 FRAME = 1
-#: The toggle's field sits this far inside its slot. Under the cursor the
-#: slot is light and this is the light band around the field: wider than
-#: the field's one-pixel outline, so a selected ON toggle never reads as an
-#: unselected OFF one (snapshots, 2026-10-04).
+#: The toggle's field sits this far inside its slot, so it stands apart
+#: from the divider beside it.
 TOGGLE_INSET = 3
 
 
@@ -122,24 +121,24 @@ def _inset(box, pixels):
     return (x0 + pixels, y0 + pixels, x1 - pixels, y1 - pixels)
 
 
-def _meter(draw, meter, selected):
-    """A meter: a plain filled bar, nothing when silent. Under the cursor
-    it is inverted: a light column with the bar drawn dark inside a dark
-    frame -- without the frame a silent selected meter would look like a
-    full one beside it. Its rows are the meter's own pixels(), so what is
-    painted is what the redraw rule compares."""
+def _meter(draw, meter):
+    """A meter: a plain filled bar, nothing when silent. Its rows are the
+    meter's own pixels(), so what is painted is what the redraw rule
+    compares."""
     x0, y0, x1, y1 = meter.box
     bar = meter.pixels()
-    if not selected:
-        if bar:
-            draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
-        return
-    draw.rectangle(meter.box, fill="white")
-    inner = _inset(meter.box, FRAME)
-    draw.rectangle(inner, outline="black")
     if bar:
-        draw.rectangle((inner[0], max(y1 - bar + 1, inner[1]), inner[2], inner[3]),
-                       fill="black")
+        draw.rectangle((x0, y1 - bar + 1, x1, y1), fill="white")
+
+
+def _arrow(draw, box):
+    """The cursor: a solid triangle pointing down, its top row the box's
+    width and every row below a pixel narrower on either side."""
+    x0, y0, x1, y1 = box
+    for row, y in enumerate(range(y0, y1 + 1)):
+        if x0 + row > x1 - row:
+            break
+        draw.line((x0 + row, y, x1 - row, y), fill="white")
 
 
 @functools.lru_cache(maxsize=8)
@@ -161,28 +160,21 @@ def letters_mask(text, box, width, height):
     return mask
 
 
-def _toggle(image, draw, toggle, selected):
+def _toggle(image, draw, toggle):
     """The STEM toggle: ON a filled box with dark letters, OFF an outline
-    with light letters. Under the cursor the slot is light and every colour
-    flips, so ON is a dark box on light and OFF a dark outline on light."""
-    ink = "black" if selected else "white"
-    if selected:
-        draw.rectangle(toggle.box, fill="white")
+    with light letters."""
     field = _inset(toggle.box, TOGGLE_INSET)
     if toggle.on:
-        draw.rectangle(field, fill=ink)
+        draw.rectangle(field, fill="white")
     else:
-        draw.rectangle(field, outline=ink)
-    # The letters are the field's opposite when it is filled, the ink's
-    # colour when it is an outline: light exactly when on and selected agree.
-    letters_light = toggle.on == selected
+        draw.rectangle(field, outline="white")
     letters = letters_mask(toggle.text, _inset(field, FRAME), image.width, image.height)
-    image.paste(1 if letters_light else 0, (0, 0), letters)
+    image.paste(0 if toggle.on else 1, (0, 0), letters)
 
 
 def paint(image, picture):
     """Draw `picture` onto a 1-bit PIL image: headings (cached), dividers,
-    meters and the toggle, the one under the cursor inverted."""
+    meters, the toggle and the cursor's arrow."""
     from PIL import ImageDraw
 
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
@@ -190,9 +182,10 @@ def paint(image, picture):
     for divider in picture.dividers:
         draw.line(divider, fill="white")
     for meter in picture.meters:
-        _meter(draw, meter, meter.box == picture.cursor)
+        _meter(draw, meter)
     if picture.toggle is not None:
-        _toggle(image, draw, picture.toggle, picture.toggle.box == picture.cursor)
+        _toggle(image, draw, picture.toggle)
+    _arrow(draw, picture.cursor)
 
 
 MULTIPLEXER_ADDRESS = 0x70
