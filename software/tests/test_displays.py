@@ -26,8 +26,8 @@ def stem(pair):
 
 
 def cursor_of(picture):
-    """The slot the cursor's arrow points at: a meter, or the channel's
-    toggle after the meters -- the one under the arrow's middle."""
+    """The slot the cursor's arrow points at: a meter, or the return's CUE
+    field after its meters -- the one under the arrow's middle."""
     slots = [m.box for m in picture.meters]
     if getattr(picture, "toggle", None) is not None:
         slots.append(picture.toggle.box)
@@ -143,7 +143,7 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_cursor(0, 0)
         displays.drain()
         _, picture = rig.drawn[0]                       # Deck 1, first in the table
-        self.assertEqual([h.text for h in picture.headings], ["D1", "D2"])
+        self.assertEqual([h.text for h in picture.headings], ["D1", "D2", "A"])
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_stem_and_analog(self):
@@ -315,12 +315,12 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(3, 2.0)                 # held: the loudest of the step
         self.displays.note_peak(3, 0.5)
         self.step()
-        self.assertEqual(self.clips("Deck 1"), [False, False, True] + [False] * 5)
+        self.assertEqual(self.clips("Deck 1"), [False, False, True] + [False] * 6)
 
     def test_full_scale_lights_no_clip(self):
         self.displays.note_peak(3, 1.0)
         self.step()
-        self.assertEqual(self.clips("Deck 1"), [False] * 8)
+        self.assertEqual(self.clips("Deck 1"), [False] * 9)
 
     def test_the_clip_holds_a_second_then_goes_out(self):
         self.displays.note_peak(3, 2.0)
@@ -374,12 +374,53 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(self.clips("Deck 1")[2], False)
 
-    def test_a_channel_meters_every_stem_and_nothing_else(self):
-        """The channel's analog input meter is gone (2026-10-04)."""
+    def test_a_channel_meters_every_stem_and_its_analog_input(self):
+        """Since 2026-10-07 the ninth meter is A again, the channel's analog
+        input: eight stems, then A."""
         self.displays.note_peak(3, 1.0)
         self.step()
-        self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0])
-        self.assertFalse(hasattr(self.displays, "note_analog"))
+        self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0, 0])
+
+    def test_a_is_the_louder_side_of_the_channels_input(self):
+        self.displays.note_input(1, 0, 10 ** (-24 / 20))
+        self.displays.note_input(1, 1, 10 ** (-12 / 20))
+        self.step()
+        self.assertAlmostEqual(self.levels("Deck 2")[8], 0.75)
+
+    def test_a_channels_input_is_its_own_a_only(self):
+        self.displays.note_input(1, 0, 1.0)
+        self.step()
+        for label in ("Deck 1", "Deck 3", "Deck 4"):
+            self.assertEqual(self.levels(label)[8], 0.0, label)
+        self.assertEqual(self.levels("Deck 2")[8], 1.0)
+
+    def test_while_a_stem_plays_a_shows_nothing(self):
+        """The channel's input meter carries whatever plays on the channel
+        (in<N>_pre, after TRIM/EQ): with a stem on it, that is the stem,
+        not the analog input. No other meter has the analog input, so A
+        stays silent rather than show the stem under its letter."""
+        self.displays.show_channel(1, stem(2))
+        self.displays.note_input(1, 0, 1.0)
+        self.step()
+        self.assertEqual(self.levels("Deck 2")[8], 0.0)
+
+    def test_an_over_on_the_input_lights_as_clip(self):
+        self.displays.note_input(0, 1, 2.0)
+        self.step()
+        self.assertEqual(self.clips("Deck 1"), [False] * 8 + [True])
+
+    def test_a_stopped_input_is_silence(self):
+        self.displays.note_input(0, 0, 1.0)
+        self.now = 5.0
+        self.step()
+        self.assertEqual(self.levels("Deck 1")[8], 0.0)
+
+    def test_an_input_peak_draws_its_panel_on_the_step(self):
+        self.displays.note_input(3, 0, 1.0)
+        self.displays.drain()
+        self.assertEqual([], self.rig.drawn)
+        self.step()
+        self.assertEqual(1, len(self.rig.drawn))
 
     def test_analog_is_the_louder_side_of_the_analog_return(self):
         self.displays.note_aux(0, 10 ** (-24 / 20))
@@ -530,25 +571,19 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.drain()
         self.rig.drawn.clear()
 
-    def toggle_of(self, index):
+    def picture_of(self, index):
         from display_panel import panel_for_channel
-        return self.displays._picture_for(panel_for_channel(index))(128, 64).toggle
+        return self.displays._picture_for(panel_for_channel(index))(128, 64)
 
-    def test_a_stem_on_the_channel_turns_its_toggle_on(self):
+    def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertTrue(self.rig.drawn[0][1].toggle.on)
-        self.assertFalse(self.toggle_of(1).on)
+        self.assertIsNone(self.rig.drawn[0][1].toggle)
+        self.assertIsNone(self.picture_of(1).toggle)
 
-    def test_no_stem_turns_it_off(self):
-        self.displays.show_channel(2, stem(3))
-        self.displays.drain()
-        self.rig.drawn.clear()
-        self.displays.show_channel(2, 0)
-        self.displays.drain()
-        self.assertEqual(1, len(self.rig.drawn))
-        self.assertFalse(self.rig.drawn[0][1].toggle.on)
+    def test_until_core_speaks_a_plays(self):
+        self.assertEqual(self.active_of(self.picture_of(0)), 8)
 
     def active_of(self, picture):
         """The meter under the active bracket, or None."""
@@ -572,7 +607,6 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
         self.assertEqual(self.active_of(self.rig.drawn[0][1]), 4)
-        self.assertTrue(self.rig.drawn[0][1].toggle.on)
 
     def test_a_second_stem_above_the_playing_one_draws_nothing(self):
         """The lowest stem is the one that plays: a stem added above it
@@ -584,13 +618,14 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
 
-    def test_no_stem_takes_the_bracket_away(self):
+    def test_no_stem_moves_the_bracket_to_a(self):
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
         self.rig.drawn.clear()
         self.displays.show_channel(2, 0)
         self.displays.drain()
-        self.assertIsNone(self.rig.drawn[0][1].active)
+        self.assertEqual(1, len(self.rig.drawn))
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 8)
 
     def test_silence_again_draws_nothing(self):
         self.displays.show_channel(2, 0)
@@ -603,7 +638,7 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual(1, len(self.rig.drawn))
         self.assertEqual(cursor_of(self.rig.drawn[0][1]), 6)
 
-    def test_the_cursor_starts_on_the_toggle(self):
+    def test_the_cursor_starts_on_a(self):
         from display_panel import panel_for_channel
         picture = self.displays._picture_for(panel_for_channel(0))(128, 64)
         self.assertEqual(cursor_of(picture), 8)
@@ -645,23 +680,26 @@ class Painting(unittest.TestCase):
     def states(self):
         from display_panel import (ANALOG_MODE, CUE_CURSOR, STEM_MODE, channel_picture,
                                    return_picture)
-        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
-        full = (1.0,) * 8
-        over = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 1.0, 0.6)
-        held = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.62, 0.6)
-        clip_5 = (False,) * 4 + (True,) + (False,) * 3
-        clip_7 = (False,) * 6 + (True, False)
+        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6, 0.0)
+        analog = (0.0,) * 8 + (0.7,)
+        full = (1.0,) * 9
+        over = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 1.0, 0.6, 0.0)
+        held = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.62, 0.6, 0.0)
+        clip_5 = (False,) * 4 + (True,) + (False,) * 4
+        clip_7 = (False,) * 6 + (True, False, False)
+        clip_a = (False,) * 8 + (True,)
         return {
-            "channel-music-cursor-on-a-stem-toggle-on": channel_picture(2, music, stem(6),
-                                                                        128, 64),
+            "channel-music-cursor-on-a-stem": channel_picture(2, music, stem(6), 128, 64),
             "channel-cursor-on-the-playing-stem": channel_picture(5, music, stem(6), 128, 64),
-            "channel-cursor-on-toggle-on": channel_picture(8, music, stem(1), 128, 64),
-            "channel-cursor-on-toggle-off": channel_picture(8, music, 0, 128, 64),
-            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 8, 0, 128, 64),
+            "channel-cursor-on-a-stem-plays": channel_picture(8, music, stem(1), 128, 64),
+            "channel-cursor-on-a-analog-plays": channel_picture(8, analog, 0, 128, 64),
+            "channel-analog-clips": channel_picture(8, (0.0,) * 8 + (1.0,), 0, 128, 64,
+                                                    clips=clip_a),
+            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 9, 0, 128, 64),
             "channel-cursor-on-a-full-meter": channel_picture(4, music, 0, 128, 64),
             "channel-playing-stem-4-beside-the-divider": channel_picture(2, music, stem(4),
                                                                          128, 64),
-            "channel-playing-stem-8-beside-the-toggle": channel_picture(2, music, stem(8),
+            "channel-playing-stem-8-beside-a": channel_picture(2, music, stem(8),
                                                                         128, 64),
             "channel-playing-stem-1-at-the-edge": channel_picture(0, full, stem(1), 128, 64),
             "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE, False,
@@ -726,8 +764,9 @@ class Painting(unittest.TestCase):
     def test_every_meter_is_a_plain_filled_bar_selected_or_not(self):
         """Nothing but the arrow marks the selection (maintainer,
         2026-10-04): the meter under it is drawn like every other."""
-        for name in ("channel-music-cursor-on-a-stem-toggle-on",
-                     "channel-cursor-on-a-full-meter"):
+        for name in ("channel-music-cursor-on-a-stem",
+                     "channel-cursor-on-a-full-meter",
+                     "channel-cursor-on-a-analog-plays"):
             with self.subTest(name):
                 picture = self.states()[name]
                 image = self.paint_state(name, picture)
@@ -790,28 +829,31 @@ class Painting(unittest.TestCase):
         x0, y0, x1, y1 = self.field(toggle)
         return (x0 + 1, y0 + 1, x1 - 1, y1 - 1)
 
-    def test_the_toggle_on_is_a_filled_box_with_dark_letters(self):
-        picture = self.states()["channel-music-cursor-on-a-stem-toggle-on"]
-        image = self.paint_state("channel-music-cursor-on-a-stem-toggle-on", picture)
-        toggle = picture.toggle
-        self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
-        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
-        self.assertTrue(self.all_lit(image, self.field_middle(toggle)))
-        inside = self.inside(toggle)
-        self.assertLess(len(self.lit(image, inside)),
-                        (inside[2] - inside[0] + 1) * (inside[3] - inside[1] + 1))
+    def test_a_is_a_letter_over_a_bar(self):
+        """Maintainer, 2026-10-07: A for analog, below it the VU meter of
+        the analog input -- lit letters in A's heading, the bar under them
+        filled to its level, and no field around either."""
+        name = "channel-cursor-on-a-analog-plays"
+        picture = self.states()[name]
+        image = self.paint_state(name, picture)
+        heading, meter = picture.headings[2], picture.meters[8]
+        self.assertEqual(heading.text, "A")
+        self.assertTrue(self.lit(image, heading.box))
+        self.assertGreater(meter.pixels(), 0)
+        self.assertTrue(self.all_lit(image, self.bar_pixels(meter)))
+        x0, y0, x1, y1 = meter.box
+        above = [(x, y) for x in range(x0, x1 + 1) for y in range(y0 + 3, y1 - meter.pixels() + 1)]
+        self.assertTrue(self.none_lit(image, above))
 
-    def test_the_toggle_off_is_an_outline_with_light_letters(self):
-        picture = self.states()["channel-silent-cursor-on-stem-1"]
-        image = self.paint_state("channel-silent-cursor-on-stem-1", picture)
-        toggle = picture.toggle
-        self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
-        self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
-        self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
-        self.assertTrue(self.lit(image, self.inside(toggle)))
+    def test_a_silent_a_paints_only_its_letter(self):
+        name = "channel-cursor-on-a-stem-plays"
+        picture = self.states()[name]
+        image = self.paint_state(name, picture)
+        self.assertEqual(self.lit(image, picture.meters[8].box), [])
+        self.assertTrue(self.lit(image, picture.headings[2].box))
 
     def test_the_cue_field_on_is_a_filled_box_with_dark_letters(self):
-        """The return's CUE field is painted as the channel's STEM toggle."""
+        """The return's CUE field: a filled box with dark letters while on."""
         picture = self.states()["return-cue-on-cursor-on-cue"]
         image = self.paint_state("return-cue-on-cursor-on-cue", picture)
         toggle = picture.toggle
@@ -835,18 +877,6 @@ class Painting(unittest.TestCase):
         image = self.paint_state("return-cue-off-cursor-on-cue", picture)
         (x0, y0, _, y1), = picture.dividers
         self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
-
-    def test_the_toggle_looks_the_same_selected_or_not(self):
-        from display_panel import channel_picture
-        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6)
-        for on in (True, False):
-            with self.subTest(on=on):
-                selected = channel_picture(8, music, stem(1) if on else 0, 128, 64)
-                elsewhere = channel_picture(3, music, stem(1) if on else 0, 128, 64)
-                one = self.paint_state(f"toggle-{on}-selected", selected)
-                two = self.paint_state(f"toggle-{on}-elsewhere", elsewhere)
-                box = selected.toggle.box
-                self.assertEqual(self.lit(one, box), self.lit(two, box))
 
     def test_every_heading_is_plain(self):
         """Light letters on dark, mostly dark: the bracket marks the
@@ -874,7 +904,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 18)
+        self.assertEqual(len(self.with_brackets()), 22)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -903,7 +933,7 @@ class Painting(unittest.TestCase):
         differs only inside that bar."""
         clipping = {name: picture for name, picture in self.states().items()
                     if any(m.clip for m in picture.meters)}
-        self.assertEqual(len(clipping), 5)
+        self.assertEqual(len(clipping), 6)
         for name, picture in clipping.items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -939,9 +969,9 @@ class Painting(unittest.TestCase):
         """The lines are fixed to the panel: a falling bar uncovers no
         crawling pattern, the rows that stay look as they did."""
         from display_panel import channel_picture
-        clip = (True,) + (False,) * 7
-        high = channel_picture(8, (0.9,) + (0.0,) * 7, 0, 128, 64, clips=clip)
-        low = channel_picture(8, (0.6,) + (0.0,) * 7, 0, 128, 64, clips=clip)
+        clip = (True,) + (False,) * 8
+        high = channel_picture(8, (0.9,) + (0.0,) * 8, 0, 128, 64, clips=clip)
+        low = channel_picture(8, (0.6,) + (0.0,) * 8, 0, 128, 64, clips=clip)
         one, two = self.paint_state("hatch-high", high), self.paint_state("hatch-low", low)
         for pixel in self.bar_pixels(low.meters[0]):
             self.assertEqual(one.getpixel(pixel), two.getpixel(pixel))
