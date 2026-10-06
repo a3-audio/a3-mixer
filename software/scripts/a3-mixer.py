@@ -32,7 +32,7 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
 from a3_mixer_displays import (channel_announcement, cue_announcement,
                                cursor_announcement, mode_announcement, open_displays,
                                return_announcement)
-from a3_mixer_meters import StereoInputs
+from a3_mixer_meters import StereoInputs, channel_vu_line
 from a3_mixer_latest import serve
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
@@ -186,6 +186,11 @@ def db_value_to_index(value: float, num_leds: int):
     return index
 
 def send_vu_data(vu: str, peak_db: float, rms_db: float):
+    # A channel's bar is its peak on the fixed DJ scale; the main meter keeps
+    # the linear peak-and-RMS drawing.
+    if int(vu) < num_channel:
+        sendData(channel_vu_line(vu, peak_db))
+        return
     num_leds = vu_channel_to_led_count[int(vu)]
     peak_index = db_value_to_index(peak_db, num_leds)
     rms_index = db_value_to_index(rms_db, num_leds)
