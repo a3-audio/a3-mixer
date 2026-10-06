@@ -126,6 +126,10 @@ class MixerOsc:
         self._matchers = {key: _pattern_regex(entry["pattern"])
                           for key, entry in data["addresses"].items()}
         self._has_stereo_inputs = set(INPUT_METERS) <= set(data.get("vu_meters", []))
+        # Asked for every meter that arrives, before python-osc sees it (#6).
+        self._shown_meters = frozenset(
+            n for n in range(1, len(data.get("vu_meters", [])) + 1)
+            if self._lights_something(n))
 
     # -- where ------------------------------------------------------------
 
@@ -251,6 +255,18 @@ class MixerOsc:
         if name in MONO_INPUT_METERS and self._has_stereo_inputs:
             return None
         return VU_SLOTS.index(name) if name in VU_SLOTS else None
+
+    def shows_meter(self, number):
+        """Whether the desk shows /vu/<number> anywhere -- an LED, a display
+        meter -- by the same names vu_handler asks. A meter it does not show
+        is dropped before dispatch (a3-audio/a3-mixer#6)."""
+        return number in self._shown_meters
+
+    def _lights_something(self, number):
+        return any(found is not None for found in (
+            self.stem_pair(number), self.aux_side(number),
+            self.stem_aux_side(number), self.input_side(number),
+            self.vu_slot(number)))
 
     @property
     def digest(self):
