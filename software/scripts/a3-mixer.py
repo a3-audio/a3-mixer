@@ -33,6 +33,7 @@ from a3_mixer_displays import (channel_announcement, cue_announcement,
                                cursor_announcement, mode_announcement, open_displays,
                                return_announcement)
 from a3_mixer_meters import StereoInputs
+from a3_mixer_latest import serve
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -134,6 +135,8 @@ osc_beatclock = SimpleUDPClient(*osc.beatclock())
 
 # OSC-Server
 osc_vu_receive_port = osc.listen_port()
+# Datagrams taken per wake-up: the socket's ~176 KB queue holds fewer.
+OSC_DRAIN_LIMIT = 4096
 
 vu_channel_to_led_count = {
     0 : 8,
@@ -551,7 +554,13 @@ if __name__ == '__main__':
 
     threading.Thread(target=ask_for_the_state, daemon=True).start()
 
+    # Not serve_forever: per shown meter the newest wins, unshown meters are
+    # dropped before python-osc parses them (a3_mixer_latest). ~650 meter
+    # datagrams a second held the thread at 88 % and stem, cursor and lamp
+    # messages waited behind them (a3-audio/a3-mixer#6).
     server = osc_server.BlockingOSCUDPServer((args.ip, args.port), dispatcher)
-#    print("Serving on {}".format(server.server_address))
-    server.serve_forever()
+    serve(server.socket,
+          lambda data, client: dispatcher.call_handlers_for_packet(data, client),
+          osc, OSC_DRAIN_LIMIT, lambda text: print(text, file=sys.stderr, flush=True),
+          lambda: True, on_meter=vu_handler)
 
