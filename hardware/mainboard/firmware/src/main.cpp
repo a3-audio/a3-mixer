@@ -121,6 +121,16 @@ int vupxlstrips[4][8] = {
     {31,30,29,28,27,26,25,24}
 };
 
+// A channel LED's colour is its position's, like a DJ mixer's meter: 1-4
+// green, 5-6 yellow, 7-8 red (red = near clip, the top one 0 dBFS). The dBFS
+// each LED stands for is the desk script's CHANNEL_LED_THRESHOLDS_DB.
+const uint32_t GREEN = Adafruit_NeoPixel::Color(0,255,0);
+const uint32_t YELLOW = Adafruit_NeoPixel::Color(255,160,0);
+const uint32_t RED = Adafruit_NeoPixel::Color(255,0,0);
+const uint32_t channelLedColour[8] = {
+    GREEN, GREEN, GREEN, GREEN, YELLOW, YELLOW, RED, RED
+};
+
 // LED matrix
 LedControl lc = LedControl(18,14,15,4); // led-matrix pins
 int modePxl[4][3] = {
@@ -232,16 +242,13 @@ void leds()
       int rms_index = Serial.readStringUntil('\n').toInt();
 
       // per-channel VU meters
+      // The desk sends the top lit LED's index in both fields (-1 = dark),
+      // the bar follows the peak; the second field is not read.
       if(vu_index >= 0 && vu_index < 4) {
         int i = vu_index;
+        int top_index = peak_index;
         for(int j = 0 ; j < 8 ; j++) {
-          uint32_t color;
-          if(j == peak_index)
-            color = pixels.Color(255,0,0);
-          else if(j <= rms_index)
-            color = pixels.Color(0,255,0);
-          else
-            color = pixels.Color(0,0,0);
+          uint32_t color = j <= top_index ? channelLedColour[j] : 0;
           pixels.setPixelColor(vupxlstrips[i][j], color);
         }
         // Only here, the one place that sets NeoPixels: show() keeps

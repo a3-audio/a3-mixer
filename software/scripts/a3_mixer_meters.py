@@ -25,3 +25,23 @@ class StereoInputs:
         sides = self._levels[channel]
         sides[side] = (peak, rms)
         return louder(*sides)
+
+
+# The channel LEDs' scale, bottom to top, in dBFS peak: LED n lights when the
+# peak reaches its threshold. A DJ mixer's meter, not a linear one -- the top
+# two are red and mean near clip, the top one clip (0 dBFS). Decided by the
+# maintainer 2026-10-07; the colours are the firmware's (channelLedColour).
+CHANNEL_LED_THRESHOLDS_DB = (-36, -24, -18, -12, -9, -6, -3, 0)
+
+
+def channel_leds(peak_db):
+    """How many of a channel's LEDs a peak of `peak_db` dBFS lights."""
+    return sum(1 for threshold in CHANNEL_LED_THRESHOLDS_DB if peak_db >= threshold)
+
+
+def channel_vu_line(slot, peak_db):
+    """The firmware's VU line for a channel: both fields carry the top lit
+    LED's index (count - 1, -1 = dark). The firmware draws 0..index in fixed
+    colours; an older firmware draws the same bar, green with its top red."""
+    top_index = channel_leds(peak_db) - 1
+    return f"VU:{slot}:{top_index}:{top_index}"
