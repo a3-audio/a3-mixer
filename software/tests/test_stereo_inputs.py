@@ -96,6 +96,16 @@ class TheDeskLightsTheLouderSide(unittest.TestCase):
         self.assertIn("osc.input_side(number)", self.handler)
         self.assertIn("stereo_inputs.note(", self.handler)
 
+    def test_each_side_also_feeds_the_channels_a_meter(self):
+        """The display's A (2026-10-07) is the channel's input meter."""
+        stereo = self.handler.split("osc.input_side(number)", 1)[1].split("return", 1)[0]
+        self.assertIn("displays.note_input(slot, side, osc_arguments[0])", stereo)
+
+    def test_a_mono_input_feeds_the_a_meter_too(self):
+        """A truth without the stereo meters: the mono in<N>_pre is A."""
+        mono = self.handler.split("osc.vu_slot(number)", 1)[1]
+        self.assertIn("displays.note_input(slot, 0, osc_arguments[0])", mono)
+
     def test_the_stereo_side_is_asked_before_the_slot(self):
         self.assertLess(self.handler.index("osc.input_side(number)"),
                         self.handler.index("osc.vu_slot(number)"))

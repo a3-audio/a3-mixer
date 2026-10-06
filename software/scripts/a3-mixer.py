@@ -225,14 +225,19 @@ def vu_handler(address: str,
         displays.note_stem_aux(side, osc_arguments[0])
         return
     # An input's stereo meter: its LEDs show the louder side.
+    # It is the channel display's A too (2026-10-07).
     found = osc.input_side(number)
     if found is not None:
         slot, side = found
+        displays.note_input(slot, side, osc_arguments[0])
         send_vu_level(slot, *stereo_inputs.note(slot, side, osc_arguments[0], osc_arguments[1]))
         return
     slot = osc.vu_slot(number)
     if slot is None:
         return
+    # A truth without the stereo meters: the mono input is A.
+    if slot < num_channel:
+        displays.note_input(slot, 0, osc_arguments[0])
     send_vu_level(slot, osc_arguments[0], osc_arguments[1])
 
 def send_vu_level(slot: int, peak: float, rms: float):

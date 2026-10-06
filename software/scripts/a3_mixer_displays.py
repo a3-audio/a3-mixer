@@ -5,23 +5,28 @@
 """The five OLED displays, drawn by the main process: what Core announces.
 
 Each channel's display is an input selector (2026-10-04): eight plain bars
-under D1 | D2, one per stem pair, and in the ninth slot the STEM toggle --
-a filled box while a stem plays on the channel, an outline while none does.
-The stem that plays -- the lowest bit of the channel's mask -- carries the
-active bracket: a "]" turned 90 degrees counter-clockwise, a top line in
+under D1 | D2, one per stem pair, and in the ninth slot A, the channel's
+analog input, with its own bar (2026-10-07; the STEM toggle field that
+stood there from 2026-10-04 is gone). What plays carries the active
+bracket: the stem that plays -- the lowest bit of the channel's mask -- or
+A when none does; a "]" turned 90 degrees counter-clockwise, a top line in
 the dark row over the meter with a short leg down either side, standing in
-the gaps beside the meter so the bar stays whole; no stem playing, no
-bracket, and the toggle never gets one. The cursor is a small solid
-triangle pointing down -- a "^" turned over -- between the headings and the
-meters, centred over the selected slot, right above the bracket when both
-mark one stem; nothing else marks a meter or the toggle.
+the gaps beside the meter so the bar stays whole. The cursor is a small
+solid triangle pointing down -- a "^" turned over -- between the headings
+and the meters, centred over the selected slot, right above the bracket
+when both mark one input; nothing else marks a meter.
+
+A's bar is the channel's input meter (in<N>_pre, the louder side), and
+only while A plays: that meter carries whatever plays on the channel, so
+with a stem on it, it is the stem. No meter has the analog input then, and
+A stays dark rather than show the stem under its letter.
 
 The return's display is drawn the same way: two mono meters, STEM (StemDeck's
 aux bus) and ANALOG (the analog return), the louder side of each, under
 plain headings and nothing between them; the mode that plays carries the
 same active bracket. At its right edge, behind a divider, sits the CUE field
-(2026-10-04): the channel's STEM toggle in the same slot, filled while the
-return is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
+(2026-10-04): in the slot where a channel shows A, filled while the return
+is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
 bracket never stands on CUE.
 
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
@@ -71,7 +76,7 @@ from display_panel import (channel_announcement, return_announcement,  # noqa: E
                            cursor_announcement, mode_announcement, cue_announcement,
                            channel_picture,
                            return_picture, meter_level, panel_for_channel, return_panel,
-                           pixel_key, playing_stem, Ballistics, ClipHold, STEM_TOGGLE,
+                           pixel_key, playing_stem, Ballistics, ClipHold, ANALOG_INPUT,
                            STEM_MODE,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
@@ -122,7 +127,7 @@ def headings_image(headings, width, height):
     return image
 
 
-#: The STEM letters sit this far inside the toggle's field, clear of its
+#: The CUE letters sit this far inside the toggle's field, clear of its
 #: one-pixel outline.
 FRAME = 1
 #: The toggle's field sits this far inside its slot, so it stands apart
@@ -345,7 +350,7 @@ class Displays:
         # cursor, the return's cursor and what plays there, its mode, and
         # whether it is cued.
         self._channel_masks = [0] * (len(PANELS) - 1)
-        self._cursors = [STEM_TOGGLE] * (len(PANELS) - 1)
+        self._cursors = [ANALOG_INPUT] * (len(PANELS) - 1)
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
         self._return_cue = False
@@ -356,6 +361,7 @@ class Displays:
         self._stem_peaks = {}
         self._aux_peaks = {}
         self._stem_aux_peaks = {}
+        self._input_peaks = {}  # per channel, then per side: {index: {side: held}}
         self._ballistics = {}
         self._clip_holds = {}
         self._levels = {panel: None for panel in PANELS}
@@ -376,6 +382,12 @@ class Displays:
         """The analog return's peak, L (0) or R (1), from the OSC thread."""
         with self._wake:
             self._hold(self._aux_peaks, side, peak)
+
+    def note_input(self, index, side, peak):
+        """Channel `index`'s input peak, L (0) or R (1), from the OSC
+        thread: its display's A while no stem plays there."""
+        with self._wake:
+            self._hold(self._input_peaks.setdefault(index, {}), side, peak)
 
     def note_stem_aux(self, side, peak):
         """StemDeck's aux bus peak, L (0) or R (1), from the OSC thread.
@@ -408,12 +420,18 @@ class Displays:
             ret = [self._move("stem return", self._stem_return_peak(), dt),
                    self._move("analog return", self._louder_side(self._aux_peaks), dt)]
             for panel in PANELS:
-                levels_and_clips = ret if panel == return_panel() else stems
+                if panel == return_panel():
+                    levels_and_clips = ret
+                else:
+                    index = PANELS.index(panel)
+                    analog = self._move(("analog", index), self._analog_peak(index), dt)
+                    levels_and_clips = stems + [analog]
                 self._levels[panel] = tuple(level for level, _ in levels_and_clips)
                 self._clips[panel] = tuple(clip for _, clip in levels_and_clips)
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
-            for peaks in (self._stem_peaks, self._aux_peaks, self._stem_aux_peaks):
+            held = [self._stem_peaks, self._aux_peaks, self._stem_aux_peaks]
+            for peaks in held + list(self._input_peaks.values()):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
@@ -439,6 +457,14 @@ class Displays:
         """A mono meter of a stereo source: the louder of L and R, so a
         hard-panned signal still shows at its full level."""
         return max(self._fresh(peaks, side) for side in (0, 1))
+
+    def _analog_peak(self, index):
+        """A's raw peak on channel `index`: its input's louder side while no
+        stem plays there, silence while one does -- the input meter is the
+        stem's then."""
+        if playing_stem(self._channel_masks[index]) is not None:
+            return 0.0
+        return self._louder_side(self._input_peaks.get(index, {}))
 
     def _stem_return_peak(self):
         """STEM's raw peak: StemDeck's aux bus once the desk has heard it.
@@ -469,9 +495,9 @@ class Displays:
 
     def show_channel(self, index, mask):
         """What plays on a channel. Its display shows the stem that plays --
-        the mask's lowest bit, under the active bracket -- so only a change
-        of that stem, or between none and some, is drawn: a stem added
-        above it moves no pixel."""
+        the mask's lowest bit, under the active bracket -- or A, so only a
+        change of that stem, or between A and a stem, is drawn: a stem
+        added above it moves no pixel."""
         with self._wake:
             was = playing_stem(self._channel_masks[index])
             self._channel_masks[index] = mask
@@ -501,8 +527,8 @@ class Displays:
         self._post(return_panel())
 
     def blank_all(self):
-        """Until Core speaks: no stem on any channel, nothing on the return
-        and no cue on it."""
+        """Until Core speaks: no stem on any channel -- A plays --, nothing
+        on the return and no cue on it."""
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
         self.show_return(STEM_MODE, (False,) * PAIRS)
@@ -537,7 +563,7 @@ class Displays:
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
-            levels = self._levels[panel] or (0.0,) * PAIRS
+            levels = self._levels[panel] or (0.0,) * (PAIRS + 1)
             clips = self._clips[panel]
         return lambda width, height: channel_picture(cursor, levels, mask, width, height,
                                                      clips)
@@ -635,6 +661,9 @@ class NoDisplays:
         pass
 
     def note_stem_aux(self, side, peak):
+        pass
+
+    def note_input(self, index, side, peak):
         pass
 
     def note_peak(self, pair, peak):

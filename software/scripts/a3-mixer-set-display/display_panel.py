@@ -134,13 +134,15 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: A channel's selector (2026-10-04): positions 0-7 the stem pairs 1-8, then
-#: the STEM toggle -- a3_core_stems' numbers. Core turns the channel's stem
-#: on and off there; the analog input meter it replaced is gone.
-STEM_TOGGLE = PAIRS
-#: Headings over the channel's meters: the name, the first and the last stem.
-CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7))
-TOGGLE_TEXT = "STEM"
+#: A channel's selector: positions 0-7 the stem pairs 1-8, then A, the
+#: channel's analog input -- a3_core_stems' numbers. Core's position 8 is
+#: its stem on/off switch (2026-10-04); the display shows it as A with the
+#: analog input's meter under it again (maintainer, 2026-10-07), in place
+#: of the STEM toggle field.
+ANALOG_INPUT = PAIRS
+#: Headings over the channel's meters: the name, the first and the last
+#: slot. A heads the ninth slot alone.
+CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", ANALOG_INPUT, ANALOG_INPUT))
 
 #: The aux return's modes -- a3_core_stems' numbers -- left to right on its
 #: display, each a mono meter under its name and nothing between them: an
@@ -232,10 +234,8 @@ class Meter(namedtuple("Meter", "box level clip", defaults=(False,))):
 
 
 class Toggle(namedtuple("Toggle", "box on text")):
-    """The channel's STEM switch: on while a stem plays on the channel. It
-    says that one plays; which one is the active bracket's (maintainer,
-    2026-10-04). The return's CUE field is the same switch: on while the
-    return is cued."""
+    """The return's CUE field: on while the return is cued. (A channel's
+    STEM toggle of 2026-10-04 was one too, until A came back on 2026-10-07.)"""
 
     def pixels(self):
         return self.on
@@ -259,7 +259,7 @@ Picture = namedtuple("Picture", "headings meters cursor dividers toggle active",
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
 #: wide enough for a divider line in its middle with three dark columns on
-#: each side (D1 | D2 | STEM stand apart, maintainer 2026-10-04).
+#: each side (D1 | D2 | A stand apart, maintainer 2026-10-04).
 INNER_GAP = 2
 GROUP_GAP = 7
 
@@ -273,9 +273,10 @@ def meter_level(peak):
     return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
 
 
-#: The toggle's share of the row, in meters: two leave room for STEM's
-#: letters inside its field, and the meters keep 10 of their 11 pixels.
-TOGGLE_METERS = 2
+#: The ninth slot's share of the row, in meters: two, so the return's CUE
+#: field fits its letters there, and the stems keep their 10 pixels. A
+#: channel's A meter stands in its middle, a stem's width.
+LAST_SLOT_METERS = 2
 
 
 #: Dark columns left of stem 1: the panel's edge is a gap too, so the
@@ -284,11 +285,13 @@ EDGE = 1
 
 
 def _channel_columns(width):
-    """(x0, x1) of the eight meters and the toggle: the meters as wide as
-    PAIRS + TOGGLE_METERS equal slots make them, the toggle the rest."""
-    gaps = EDGE + (len(CHANNEL_GROUPS) * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
-    meter = (width - gaps) // (PAIRS + TOGGLE_METERS)
-    group_starts = {first for _, first, _ in CHANNEL_GROUPS[1:]}
+    """(x0, x1) of the eight stem meters and the ninth slot: the meters as
+    wide as PAIRS + LAST_SLOT_METERS equal slots make them, the ninth slot
+    the rest."""
+    groups = len(CHANNEL_GROUPS) - 1
+    gaps = EDGE + (groups * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
+    meter = (width - gaps) // (PAIRS + LAST_SLOT_METERS)
+    group_starts = {first for _, first, _ in CHANNEL_GROUPS[1:-1]}
     columns, x = [], EDGE
     for index in range(PAIRS):
         if index:
@@ -360,23 +363,30 @@ def _meters(boxes, levels, clips):
                  for box, level, clip in zip(boxes, levels, clips))
 
 
+def _centred(slot, width):
+    """(x0, x1) of `width` columns in the middle of `slot`."""
+    x0 = slot[0] + (slot[1] - slot[0] + 1 - width) // 2
+    return (x0, x0 + width - 1)
+
+
 def channel_picture(cursor, levels, mask, width, height, clips=()):
-    """A channel: the eight stems as bars under D1 | D2 -- hatched where
-    `clips` says one clips --, the STEM toggle in the ninth slot, the cursor
-    as the arrow over one of them, and the active bracket over the stem
-    `mask` plays. Pure layout; the painter draws it."""
-    columns = _channel_columns(width)
+    """A channel: the eight stems as bars under D1 | D2 and the analog
+    input's bar under A -- `levels` and `clips` in that order, nine each,
+    hatched where one clips --, the cursor as the arrow over one of them,
+    and the active bracket over what plays: the stem `mask` plays, or A
+    when it plays none. Pure layout; the painter draws it."""
+    slots = _channel_columns(width)
+    stem_width = slots[0][1] - slots[0][0] + 1
+    columns = slots[:PAIRS] + [_centred(slots[ANALOG_INPUT], stem_width)]
     (h0, h1), arrow, (m0, m1) = _bands(height)
-    headings = tuple(Heading((columns[first][0], h0, columns[last][1], h1), name)
+    headings = tuple(Heading((slots[first][0], h0, slots[last][1], h1), name)
                      for name, first, last in CHANNEL_GROUPS)
-    meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns[:PAIRS]], levels, clips)
+    meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns], levels, clips)
     playing = playing_stem(mask)
-    toggle = Toggle((columns[STEM_TOGGLE][0], m0, columns[STEM_TOGGLE][1], m1),
-                    playing is not None, TOGGLE_TEXT)
-    dividers = tuple(_divider(columns[first - 1], columns[first], (m0, m1))
-                     for first in [first for _, first, _ in CHANNEL_GROUPS[1:]] + [STEM_TOGGLE])
-    active = _bracket(meters[playing].box) if playing is not None else None
-    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, toggle, active)
+    dividers = tuple(_divider(slots[first - 1], slots[first], (m0, m1))
+                     for _, first, _ in CHANNEL_GROUPS[1:])
+    active = _bracket(meters[ANALOG_INPUT if playing is None else playing].box)
+    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None, active)
 
 
 #: The return's heading over each meter as a share of the panel's width --
@@ -393,10 +403,10 @@ def return_picture(cursor, mode, cue, levels, width, height, clips=()):
     cursor as the arrow over one of the three. `levels` and `clips` are
     STEM, ANALOG."""
     (h0, h1), arrow, (m0, m1) = _bands(height)
-    # The CUE field takes the slot of a channel's STEM toggle, so the two
-    # displays side by side carry their toggle in the same place.
+    # The CUE field takes the slot of a channel's A, so the two displays
+    # side by side carry their last slot in the same place.
     channel = _channel_columns(width)
-    last_meter, toggle_slot = channel[PAIRS - 1], channel[STEM_TOGGLE]
+    last_meter, toggle_slot = channel[PAIRS - 1], channel[ANALOG_INPUT]
     room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
@@ -421,7 +431,7 @@ def return_picture(cursor, mode, cue, levels, width, height, clips=()):
 
 def cursor_announcement(args):
     """The cursor out of `/channel/{ch}/stem/cursor` (0-8), or None."""
-    if len(args) != 1 or not _is_count(args[0], STEM_TOGGLE):
+    if len(args) != 1 or not _is_count(args[0], ANALOG_INPUT):
         return None
     return args[0]
 
