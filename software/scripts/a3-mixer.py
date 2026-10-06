@@ -32,6 +32,7 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
 from a3_mixer_displays import (channel_announcement, cue_announcement,
                                cursor_announcement, mode_announcement, open_displays,
                                return_announcement)
+from a3_mixer_meters import StereoInputs
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
@@ -173,6 +174,8 @@ button_fx_to_mode_name = {
 
 # time_last_receive = 0
 
+stereo_inputs = StereoInputs()
+
 def db_value_to_index(value: float, num_leds: int):
     index = int(np.interp(value, [-60, 0], [0, num_leds]))
     if index == num_leds:
@@ -213,13 +216,20 @@ def vu_handler(address: str,
     if side is not None:
         displays.note_stem_aux(side, osc_arguments[0])
         return
+    # An input's stereo meter: its LEDs show the louder side.
+    found = osc.input_side(number)
+    if found is not None:
+        slot, side = found
+        send_vu_level(slot, *stereo_inputs.note(slot, side, osc_arguments[0], osc_arguments[1]))
+        return
     slot = osc.vu_slot(number)
     if slot is None:
         return
-    vu = str(slot)
+    send_vu_level(slot, osc_arguments[0], osc_arguments[1])
 
-    peak = osc_arguments[0]
-    rms = osc_arguments[1]
+def send_vu_level(slot: int, peak: float, rms: float):
+    """Linear peak and RMS to the firmware's slot, as LED indices."""
+    vu = str(slot)
 
     # clamp to above 0 to avoid numerical error
     if peak == 0.0:

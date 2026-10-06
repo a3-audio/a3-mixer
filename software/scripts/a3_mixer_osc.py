@@ -93,6 +93,14 @@ def _pattern_regex(pattern):
     return re.compile(re.sub(r"\\\{(\w+)\\\}", r"(?P<\1>\\d+)", re.escape(pattern)))
 
 
+#: The inputs' stereo meters, by slot and side (spec stereo-channel-meters,
+#: 2026-10-06): a channel's LEDs show the louder of its two. While the truth
+#: has them, the mono in<N>_pre light nothing; a truth from before has none,
+#: and the desk falls back to the mono ones.
+INPUT_METERS = ("in1_pre_L", "in1_pre_R", "in2_pre_L", "in2_pre_R",
+                "in3_pre_L", "in3_pre_R", "in4_pre_L", "in4_pre_R")
+MONO_INPUT_METERS = VU_SLOTS[:4]
+
 #: The beat-analyzer's stem meters, pairs 1-8: deck A's stems, then deck B's.
 STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
                "stem_b1", "stem_b2", "stem_b3", "stem_b4")
@@ -117,6 +125,7 @@ class MixerOsc:
         # meters a second among them, on a Pi 3B+.
         self._matchers = {key: _pattern_regex(entry["pattern"])
                           for key, entry in data["addresses"].items()}
+        self._has_stereo_inputs = set(INPUT_METERS) <= set(data.get("vu_meters", []))
 
     # -- where ------------------------------------------------------------
 
@@ -225,13 +234,22 @@ class MixerOsc:
         name = meters[number - 1]
         return names.index(name) if name in names else None
 
+    def input_side(self, number):
+        """(slot 0-3, side 0 left / 1 right) for an input's stereo meter, or
+        None for any other /vu/<number>."""
+        found = self._side(number, INPUT_METERS)
+        return None if found is None else divmod(found, 2)
+
     def vu_slot(self, number):
         """The firmware slot /vu/<number> lights, or None if the desk does
-        not show that meter."""
+        not show that meter. A mono input meter lights nothing while the
+        truth has the stereo ones (input_side)."""
         meters = self._data.get("vu_meters", [])
         if not 1 <= number <= len(meters):
             return None
         name = meters[number - 1]
+        if name in MONO_INPUT_METERS and self._has_stereo_inputs:
+            return None
         return VU_SLOTS.index(name) if name in VU_SLOTS else None
 
     @property
