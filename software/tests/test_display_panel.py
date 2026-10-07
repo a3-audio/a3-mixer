@@ -503,15 +503,17 @@ class ReturnCue(unittest.TestCase):
 
 class MeterBallistics(unittest.TestCase):
     """Decided 2026-10-04: instant rise and a VU-like fall of 20 dB/s. The
-    peak mark went with the return's segments: no display draws one."""
+    peak mark went with the return's segments: no display draws one. The
+    fall is in dB, on the LED scale the bar has since 2026-10-07."""
 
     def ballistics(self):
         from display_panel import Ballistics
         return Ballistics()
 
-    def fall(self, seconds):
-        from display_panel import METER_FALL_DB_PER_SECOND, METER_FLOOR_DB
-        return METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB * seconds
+    def after(self, seconds):
+        """The level a full bar shows after falling `seconds`."""
+        from display_panel import METER_FALL_DB_PER_SECOND, bar_fraction
+        return bar_fraction(-METER_FALL_DB_PER_SECOND * seconds)
 
     def test_the_constants(self):
         from display_panel import METER_FALL_DB_PER_SECOND, METER_STEPS_PER_SECOND
@@ -525,10 +527,18 @@ class MeterBallistics(unittest.TestCase):
         b = self.ballistics()
         b.feed(1.0, 0.1)
         shown = b.feed(0.0, 0.1)
-        self.assertAlmostEqual(shown, 1.0 - self.fall(0.1))
+        self.assertAlmostEqual(shown, self.after(0.1))
         for _ in range(9):
             shown = b.feed(0.0, 0.1)
-        self.assertAlmostEqual(shown, 1.0 - self.fall(1.0))
+        self.assertAlmostEqual(shown, self.after(1.0))
+
+    def test_it_falls_in_db_not_in_bar_height(self):
+        """From 0 dBFS a bar is at −6 dBFS -- the sixth LED's eighth -- after
+        0.3 s, and at −20 dBFS after a second."""
+        b = self.ballistics()
+        b.feed(1.0, 0.1)
+        self.assertAlmostEqual(b.feed(0.0, 0.3), 6 / 8)
+        self.assertAlmostEqual(b.feed(0.0, 0.7), 2 / 8 + (4 / 6) / 8)
 
     def test_it_stops_at_the_level_it_is_fed(self):
         b = self.ballistics()
@@ -658,7 +668,7 @@ class ClipIndication(unittest.TestCase):
         from display_panel import meter_level
         self.assertEqual(meter_level(1.0), 1.0)
         self.assertEqual(meter_level(2.0), 1.0)
-        self.assertAlmostEqual(meter_level(10 ** (-12 / 20)), 0.75)
+        self.assertAlmostEqual(meter_level(10 ** (-12 / 20)), 0.5)
 
     def test_a_meter_does_not_clip_unless_told(self):
         from display_panel import ANALOG_MODE, Meter, channel_picture, return_picture
@@ -699,10 +709,12 @@ class ClipIndication(unittest.TestCase):
 
 
 class MeterLevels(unittest.TestCase):
-    def test_levels_map_in_db(self):
+    def test_levels_map_on_the_channel_leds_scale(self):
+        """Each LED threshold at its eighth (test_display_led_scale has the
+        whole table)."""
         from display_panel import meter_level
         self.assertEqual(meter_level(1.0), 1.0)
-        self.assertAlmostEqual(meter_level(10 ** (-24 / 20)), 0.5)
+        self.assertAlmostEqual(meter_level(10 ** (-24 / 20)), 0.25)
         self.assertEqual(meter_level(10 ** (-60 / 20)), 0.0)
         for odd in (0, -1, None, "x", True, float("nan")):
             self.assertEqual(meter_level(odd), 0.0, odd)

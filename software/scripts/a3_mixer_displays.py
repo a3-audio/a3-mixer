@@ -31,6 +31,13 @@ bracket never stands on CUE.
 Every meter has VU-like ballistics (display_panel.Ballistics), no display
 draws a peak mark, and a panel is redrawn only when its pixels move.
 
+Every bar reads the channel LEDs' scale (2026-10-07; a3_mixer_meters
+bar_fraction): a level that lights n of the 8 LEDs fills n/8 of the bar.
+It used to run linear in dB from -48, and -12 dBFS filled three quarters
+of a bar beside four lit LEDs. The displays are monochrome, so a one-row
+tick left of every bar marks where the LEDs turn yellow (-9 dBFS) and red
+(-3 dBFS): beside the bar, never on it, so it is a scale and not a level.
+
 Every meter shows a clip (2026-10-04): a step whose held peak is over full
 scale (above 1.0 linear) lights it, and it stays lit a second after the
 last over (display_panel.ClipHold). While lit, the bar is drawn hatched --
@@ -212,13 +219,16 @@ def _toggle(image, draw, toggle):
 
 def paint(image, picture):
     """Draw `picture` onto a 1-bit PIL image: headings (cached), dividers,
-    meters, the toggle, the active bracket and the cursor's arrow."""
+    the yellow and red marks, meters, the toggle, the active bracket and the
+    cursor's arrow."""
     from PIL import ImageDraw
 
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
     draw = ImageDraw.Draw(image)
     for divider in picture.dividers:
         draw.line(divider, fill="white")
+    for mark in picture.marks:
+        draw.line(mark, fill="white")
     for meter in picture.meters:
         _meter(draw, meter)
     if picture.toggle is not None:

@@ -300,9 +300,10 @@ class Meters(unittest.TestCase):
         self.displays.step_meters()
         self.displays.drain()
 
-    def fall(self, seconds):
-        from display_panel import METER_FALL_DB_PER_SECOND, METER_FLOOR_DB
-        return METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB * seconds
+    def after(self, seconds):
+        """The level a full bar shows after falling `seconds`."""
+        from display_panel import METER_FALL_DB_PER_SECOND, bar_fraction
+        return bar_fraction(-METER_FALL_DB_PER_SECOND * seconds)
 
     def clips(self, label):
         """The meters' clip states as the panel would be drawn now."""
@@ -385,7 +386,7 @@ class Meters(unittest.TestCase):
         self.displays.note_analog(1, 0, 10 ** (-24 / 20))
         self.displays.note_analog(1, 1, 10 ** (-12 / 20))
         self.step()
-        self.assertAlmostEqual(self.levels("Deck 2")[8], 0.75)
+        self.assertAlmostEqual(self.levels("Deck 2")[8], 0.5)       # −12: 4 of 8 LEDs
 
     def test_a_channels_input_is_its_own_a_only(self):
         self.displays.note_analog(1, 0, 1.0)
@@ -426,7 +427,7 @@ class Meters(unittest.TestCase):
         self.displays.note_aux(1, 10 ** (-12 / 20))
         self.step()
         _, analog = self.levels("Aux Return")
-        self.assertAlmostEqual(analog, 0.75)
+        self.assertAlmostEqual(analog, 0.5)
 
     def test_without_the_bus_meters_stem_is_the_loudest_stem_on_the_return(self):
         """The truth before stem_aux_L/R: STEM falls back to the loudest
@@ -436,7 +437,7 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(2, 10 ** (-24 / 20))
         self.step()
         stem, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(stem, 0.5)
+        self.assertAlmostEqual(stem, 0.25)
 
     def test_with_the_bus_meters_stem_is_the_louder_side_of_the_aux_bus(self):
         self.displays.show_return(1, (True,) * 8)
@@ -445,7 +446,7 @@ class Meters(unittest.TestCase):
         self.displays.note_stem_aux(1, 10 ** (-12 / 20))
         self.step()
         stem, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(stem, 0.75)
+        self.assertAlmostEqual(stem, 0.5)
 
     def test_a_bus_that_was_heard_stays_the_source_in_silence(self):
         """Once the truth has the bus meters, a quiet bus is a quiet STEM --
@@ -478,7 +479,7 @@ class Meters(unittest.TestCase):
         self.step()
         self.displays.note_peak(1, 0.001)
         self.step()
-        self.assertAlmostEqual(self.levels("Deck 1")[0], 1.0 - self.fall(0.1))
+        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(0.1))
 
     def test_a_move_of_less_than_a_pixel_posts_nothing(self):
         """The bus carries ~17 draws a second (measured 2026-10-04): a panel
@@ -486,7 +487,8 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(1, 1.0)
         self.step()
         self.rig.drawn.clear()
-        self.displays.note_peak(1, 10 ** (-0.3 / 20))  # 0.3 dB down: under one row
+        # 0.1 dB down: the top eighth is 3 dB over 5.6 rows, so under a row.
+        self.displays.note_peak(1, 10 ** (-0.1 / 20))
         self.step()
         self.assertNotEqual(self.levels("Deck 1")[0], 1.0)
         self.assertEqual([], self.rig.drawn)
@@ -744,7 +746,7 @@ class Painting(unittest.TestCase):
             with self.subTest(name):
                 image = self.paint_state(name, picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
-                boxes += list(picture.dividers)
+                boxes += list(picture.dividers) + list(picture.marks)
                 boxes.append(picture.cursor)
                 if picture.active is not None:
                     boxes.append(picture.active)
@@ -987,17 +989,46 @@ class Painting(unittest.TestCase):
         for pixel in self.bar_pixels(low.meters[0]):
             self.assertEqual(one.getpixel(pixel), two.getpixel(pixel))
 
+    def test_every_meter_carries_its_yellow_and_red_marks(self):
+        """The displays are monochrome: a tick left of every bar where the
+        channel LEDs turn yellow (−9 dBFS) and red (−3 dBFS), lit whatever
+        the level -- on a silent channel, under a full bar, on the return."""
+        for name in ("channel-silent-cursor-on-stem-1", "channel-cursor-on-a-full-meter",
+                     "channel-analog-clips", "return-silent-cursor-on-analog",
+                     "return-stem-clipping-in-stem-mode"):
+            with self.subTest(name):
+                picture = self.states()[name]
+                image = self.paint_state(name, picture)
+                self.assertEqual(len(picture.marks), 2 * len(picture.meters))
+                for x0, y, x1, _ in picture.marks:
+                    self.assertTrue(self.all_lit(image, [(x, y) for x in range(x0, x1 + 1)]))
+
+    def test_a_mark_leaves_the_bar_as_it_was(self):
+        """Painted without its marks the picture differs only in the marks'
+        own pixels: no bar grows, no hatch moves."""
+        for name, picture in self.states().items():
+            with self.subTest(name):
+                image = self.paint_state(name, picture)
+                bare = self.paint_state(name + "-unmarked", picture._replace(marks=()))
+                changed = {(x, y) for x in range(128) for y in range(64)
+                           if image.getpixel((x, y)) != bare.getpixel((x, y))}
+                marks = {(x, y) for x0, y, x1, _ in picture.marks for x in range(x0, x1 + 1)}
+                self.assertLessEqual(changed, marks)
+
     def test_the_return_shows_nothing_between_its_meters(self):
         """No AUX title any more: between STEM's and ANALOG's columns the
         meters' band stays dark, but for the bracket's leg a column beside
-        the active meter."""
+        the active meter and ANALOG's yellow and red marks."""
+        from display_panel import meter_marks
         for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-analog"):
             with self.subTest(name):
                 picture = self.states()[name]
                 image = self.paint_state(name, picture)
                 left, right = picture.meters
                 between = (left.box[2] + 2, left.box[1], right.box[0] - 2, left.box[3])
-                self.assertEqual(self.lit(image, between), [])
+                marks = {(x, y) for x0, y, x1, _ in meter_marks(right.box)
+                         for x in range(x0, x1 + 1)}
+                self.assertEqual(set(self.lit(image, between)) - marks, set())
 
 
 class HowLongADrawTakes(unittest.TestCase):
