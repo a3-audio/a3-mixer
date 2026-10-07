@@ -204,11 +204,11 @@ class ChannelSelector(unittest.TestCase):
         boxes = [m.box for m in self.picture().meters]
         self.assertTrue(all(x1 - x0 + 1 >= 9 for x0, _, x1, _ in boxes))
 
-    def test_a_meter_is_only_its_level_and_clip(self):
-        """No assignment and no peak travel with a meter; whether it clips
-        does (2026-10-04)."""
+    def test_a_meter_is_its_level_clip_and_hold(self):
+        """No assignment travels with a meter; whether it clips does
+        (2026-10-04), and since 2026-10-07 its held peak (meter-ballistics)."""
         from display_panel import Meter
-        self.assertEqual(Meter._fields, ("box", "level", "clip"))
+        self.assertEqual(Meter._fields, ("box", "level", "clip", "hold"))
 
     def test_the_levels_are_the_meters(self):
         levels = tuple(i / 9 for i in range(9))
@@ -501,56 +501,67 @@ class ReturnCue(unittest.TestCase):
         self.assertTrue(p.toggle.box[3] < 32 and p.cursor[3] < 32)
 
 
-class MeterBallistics(unittest.TestCase):
-    """Decided 2026-10-04: instant rise and a VU-like fall of 20 dB/s. The
-    peak mark went with the return's segments: no display draws one. The
-    fall is in dB, on the LED scale the bar has since 2026-10-07."""
+class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):
+    """Since 2026-10-07 every meter on the desk moves by one ballistics
+    (a3_mixer_meters.MeterBallistics) on Core's timing; the displays' own
+    fall and its constant are gone."""
 
-    def ballistics(self):
-        from display_panel import Ballistics
-        return Ballistics()
+    def test_no_own_fall(self):
+        import display_panel
+        self.assertFalse(hasattr(display_panel, "Ballistics"))
+        self.assertFalse(hasattr(display_panel, "METER_FALL_DB_PER_SECOND"))
 
-    def after(self, seconds):
-        """The level a full bar shows after falling `seconds`."""
-        from display_panel import METER_FALL_DB_PER_SECOND, bar_fraction
-        return bar_fraction(-METER_FALL_DB_PER_SECOND * seconds)
-
-    def test_the_constants(self):
-        from display_panel import METER_FALL_DB_PER_SECOND, METER_STEPS_PER_SECOND
+    def test_ten_steps_a_second(self):
+        """25 does not fit the desk's draw time (~16 ms a panel, measured
+        2026-10-07); see METER_STEPS_PER_SECOND."""
+        from display_panel import METER_STEPS_PER_SECOND
         self.assertEqual(METER_STEPS_PER_SECOND, 10)
-        self.assertEqual(METER_FALL_DB_PER_SECOND, 20.0)
 
-    def test_a_rise_is_instant(self):
-        self.assertEqual(self.ballistics().feed(0.8, 0.1), 0.8)
 
-    def test_it_falls_at_twenty_db_a_second(self):
-        b = self.ballistics()
-        b.feed(1.0, 0.1)
-        shown = b.feed(0.0, 0.1)
-        self.assertAlmostEqual(shown, self.after(0.1))
-        for _ in range(9):
-            shown = b.feed(0.0, 0.1)
-        self.assertAlmostEqual(shown, self.after(1.0))
+class TheHoldLine(unittest.TestCase):
+    """The held peak is a one-row line over the bar (meter-ballistics,
+    2026-10-07), in the meter's own box, at the row a bar at that level
+    has its top."""
 
-    def test_it_falls_in_db_not_in_bar_height(self):
-        """From 0 dBFS a bar is at −6 dBFS -- the sixth LED's eighth -- after
-        0.3 s, and at −20 dBFS after a second."""
-        b = self.ballistics()
-        b.feed(1.0, 0.1)
-        self.assertAlmostEqual(b.feed(0.0, 0.3), 6 / 8)
-        self.assertAlmostEqual(b.feed(0.0, 0.7), 2 / 8 + (4 / 6) / 8)
+    BOX = (10, 20, 19, 59)              # 40 rows
 
-    def test_it_stops_at_the_level_it_is_fed(self):
-        b = self.ballistics()
-        b.feed(1.0, 0.1)
-        for _ in range(30):
-            shown = b.feed(0.5, 0.1)
-        self.assertEqual(shown, 0.5)
+    def meter(self, level, hold):
+        from display_panel import Meter
+        return Meter(self.BOX, level, False, hold)
 
-    def test_it_never_falls_below_silence(self):
-        b = self.ballistics()
-        b.feed(0.1, 0.1)
-        self.assertEqual(b.feed(0.0, 5.0), 0.0)
+    def test_a_hold_above_the_bar_is_a_row(self):
+        self.assertEqual(self.meter(0.25, 0.5).hold_row(), 59 - 20 + 1)
+
+    def test_the_hold_at_full_scale_is_the_top_row(self):
+        self.assertEqual(self.meter(0.0, 1.0).hold_row(), 20)
+
+    def test_a_hold_inside_the_bar_is_no_line(self):
+        self.assertIsNone(self.meter(0.5, 0.5).hold_row())
+        self.assertIsNone(self.meter(0.5, 0.49).hold_row())
+
+    def test_no_hold_is_no_line(self):
+        self.assertIsNone(self.meter(0.0, 0.0).hold_row())
+        from display_panel import Meter
+        self.assertIsNone(Meter(self.BOX, 0.3).hold_row())
+
+    def test_a_channel_carries_a_hold_per_meter(self):
+        from display_panel import channel_picture
+        holds = (0.9,) + (0.0,) * 8
+        p = channel_picture(8, (0.1,) * 9, 0, W, H, holds=holds)
+        self.assertIsNotNone(p.meters[0].hold_row())
+        self.assertEqual([m.hold_row() for m in p.meters[1:]], [None] * 8)
+
+    def test_the_return_carries_a_hold_per_meter(self):
+        from display_panel import return_picture
+        p = return_picture(0, 1, False, (0.1, 0.1), W, H, holds=(0.0, 0.8))
+        self.assertIsNone(p.meters[0].hold_row())
+        self.assertIsNotNone(p.meters[1].hold_row())
+
+    def test_a_moved_hold_is_a_new_picture(self):
+        from display_panel import channel_picture, pixel_key
+        one = channel_picture(8, (0.1,) * 9, 0, W, H, holds=(0.9,) + (0.0,) * 8)
+        two = channel_picture(8, (0.1,) * 9, 0, W, H, holds=(0.6,) + (0.0,) * 8)
+        self.assertNotEqual(pixel_key(one), pixel_key(two))
 
 
 class InPixels(unittest.TestCase):

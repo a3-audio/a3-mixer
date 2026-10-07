@@ -476,7 +476,7 @@ if __name__ == '__main__':
 
     # The displays show what Core announces; until it does, a dash. A failing
     # display is reported inside Displays and never reaches this server.
-    displays = open_displays()
+    displays = open_displays(osc.meters())
     displays.blank_all()
 
     # A damaged announcement is ignored: nothing may raise into the server.
