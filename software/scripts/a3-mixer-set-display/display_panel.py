@@ -31,7 +31,19 @@ einmal da, und ein Test besteht darauf, dass es die des Multiplexers sind.
 """
 
 import math
+import os
+import sys
 from collections import namedtuple
+
+# The meter scale is the channel LEDs' (a3_mixer_meters, one directory up).
+# a3-mixer.py runs from there; the boot script a3-mixer-set-display.py runs
+# from here, so the directory is appended -- never ahead of this one.
+_SCRIPTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SCRIPTS not in sys.path:
+    sys.path.append(_SCRIPTS)
+
+from a3_mixer_meters import (CHANNEL_LED_THRESHOLDS_DB, RED_FROM_DB,  # noqa: E402,F401
+                             YELLOW_FROM_DB, bar_db, bar_fraction)
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
 #: I2C-Bus und unter welcher Adresse es antwortet, wie herum es eingebaut ist
@@ -159,9 +171,9 @@ CUE_TEXT = "CUE"
 #: keeps the bus from drowning is that only a panel whose pixels moved is
 #: redrawn (pixel_key), not the rate.
 METER_STEPS_PER_SECOND = 10
-METER_FLOOR_DB = -48.0
-#: A VU-like release: a meter falls 20 dB a second, so a level drop of
-#: 20/48 of its height per second over the 48 dB range.
+#: A VU-like release: a meter falls 20 dB a second -- in dB, so on the LED
+#: scale a bar falls an eighth in 0.15 s near the top (3 dB steps) and in
+#: 0.6 s near the bottom (12 dB).
 METER_FALL_DB_PER_SECOND = 20.0
 
 
@@ -175,8 +187,8 @@ class Ballistics:
 
     def feed(self, level, dt):
         """The level shown after `dt` seconds that ended at `level`."""
-        fall = METER_FALL_DB_PER_SECOND / -METER_FLOOR_DB
-        self._shown = max(level, self._shown - fall * dt, 0.0)
+        fallen = bar_fraction(bar_db(self._shown) - METER_FALL_DB_PER_SECOND * dt)
+        self._shown = max(level, fallen, 0.0)
         return self._shown
 
 
@@ -247,15 +259,15 @@ def pixel_key(picture):
     toggle = picture.toggle.pixels() if picture.toggle is not None else None
     return (tuple((meter.pixels(), meter.hatched()) for meter in picture.meters),
             picture.cursor, toggle,
-            picture.active, tuple(picture.headings))
+            picture.active, tuple(picture.headings), tuple(picture.marks))
 
 
 #: What a panel shows: headings over meters, the cursor -- the box of the
 #: down arrow over the selected slot --, divider lines, a channel's toggle,
 #: and the box of the active bracket over the meter that plays, or None.
 Heading = namedtuple("Heading", "box text")
-Picture = namedtuple("Picture", "headings meters cursor dividers toggle active",
-                     defaults=((), None, None))
+Picture = namedtuple("Picture", "headings meters cursor dividers toggle active marks",
+                     defaults=((), None, None, ()))
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
 #: wide enough for a divider line in its middle with three dark columns on
@@ -265,12 +277,56 @@ GROUP_GAP = 7
 
 
 def meter_level(peak):
-    """0.0-1.0 for a linear peak, in dB down to METER_FLOOR_DB; anything
-    odd is silence."""
+    """0.0-1.0 for a linear peak on the channel LEDs' scale (bar_fraction):
+    a peak that lights n of the 8 LEDs fills n/8 of the bar and less than
+    (n+1)/8 (2026-10-07). Anything odd is silence."""
     if not isinstance(peak, (int, float)) or isinstance(peak, bool) or not peak > 0:
         return 0.0
-    db = 20 * math.log10(peak)
-    return max(0.0, min(1.0, (db - METER_FLOOR_DB) / -METER_FLOOR_DB))
+    return bar_fraction(20 * math.log10(peak))
+
+
+#: The levels marked beside every meter: where the channel LEDs turn yellow,
+#: and red. The displays are monochrome, so the colours are a place.
+MARKED_DB = (YELLOW_FROM_DB, RED_FROM_DB)
+#: A mark is a horizontal tick in the gap left of its bar, a tenth of the
+#: bar's width long (a pixel at least). Left only: ticks on both sides met
+#: across a channel's 2-column gap and widened a bar standing at a mark
+#: into a cap, which read as a level.
+MARK_OF_METER = 0.1
+#: Between two channel meters a tick leaves a dark column before the left
+#: neighbour, so it belongs to the bar on its right and touches nothing.
+CHANNEL_MARK_LENGTH = INNER_GAP - 1
+
+
+def mark_length(box):
+    """How long a tick beside a meter `box` wide is, in columns."""
+    return max(1, round((box[2] - box[0] + 1) * MARK_OF_METER))
+
+
+def meter_marks(box, length=None):
+    """The marks beside a meter's `box`: one tick `length` columns long
+    (mark_length unless given) per MARKED_DB level, left of the bar, in the
+    row where a bar at that level has its top -- the bar reaching a mark is
+    the LED of that colour lighting."""
+    x0, y0, _, y1 = box
+    length = mark_length(box) if length is None else length
+    rows = y1 - y0 + 1
+    marks = []
+    for db in MARKED_DB:
+        y = y1 - lit_rows(bar_fraction(db), rows) + 1
+        marks.append((x0 - length, y, x0 - 1, y))
+    return tuple(marks)
+
+
+def _marks(meters, longest=None):
+    """Every meter's marks, none longer than `longest` columns."""
+    marks = []
+    for meter in meters:
+        length = mark_length(meter.box)
+        if longest is not None:
+            length = min(length, longest)
+        marks.extend(meter_marks(meter.box, length))
+    return tuple(marks)
 
 
 #: The ninth slot's share of the row, in meters: two, so the return's CUE
@@ -386,7 +442,8 @@ def channel_picture(cursor, levels, mask, width, height, clips=()):
     dividers = tuple(_divider(slots[first - 1], slots[first], (m0, m1))
                      for _, first, _ in CHANNEL_GROUPS[1:])
     active = _bracket(meters[ANALOG_INPUT if playing is None else playing].box)
-    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None, active)
+    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None, active,
+                   _marks(meters, CHANNEL_MARK_LENGTH))
 
 
 #: The return's heading over each meter as a share of the panel's width --
@@ -426,7 +483,8 @@ def return_picture(cursor, mode, cue, levels, width, height, clips=()):
         box = boxes[RETURN_OPTIONS.index(cursor)]
         selected = (box[0], box[2])
     active = _bracket(boxes[RETURN_OPTIONS.index(mode)])
-    return Picture(names, meters, _arrow(selected, arrow), (divider,), toggle, active)
+    return Picture(names, meters, _arrow(selected, arrow), (divider,), toggle, active,
+                   _marks(meters))
 
 
 def cursor_announcement(args):
