@@ -539,7 +539,7 @@ if __name__ == '__main__':
 
     threading.Thread(target=ask_for_the_state, daemon=True).start()
 
-    # Not serve_forever: per shown meter the newest wins, unshown meters are
+    # Not serve_forever: per shown meter the loudest wins, unshown meters are
     # dropped before python-osc parses them (a3_mixer_latest). ~650 meter
     # datagrams a second held the thread at 88 % and stem, cursor and lamp
     # messages waited behind them (a3-audio/a3-mixer#6).
