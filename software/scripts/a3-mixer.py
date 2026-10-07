@@ -32,13 +32,15 @@ from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
 from a3_mixer_displays import (channel_announcement, cue_announcement,
                                cursor_announcement, mode_announcement, open_displays,
                                return_announcement)
-from a3_mixer_meters import StereoInputs, channel_vu_line
+from a3_mixer_meters import (MeterBallistics, StereoInputs, channel_vu_line,
+                             main_vu_line, peak_db)
 from a3_mixer_latest import serve
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
                             wait_for_truth)
-from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, LAMPS, MASTER_POTS,
-                          MixerOsc, TruthMissing, load as load_osc_truth)
+from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, FIRST_OUTPUT_SLOT, LAMPS,
+                          MASTER_POTS, OUTPUT_METERS, MixerOsc, TruthMissing,
+                          load as load_osc_truth)
 
 pixel_pin = board.D12
 num_pixels = 14
@@ -138,21 +140,6 @@ osc_vu_receive_port = osc.listen_port()
 # Datagrams taken per wake-up: the socket's ~176 KB queue holds fewer.
 OSC_DRAIN_LIMIT = 4096
 
-vu_channel_to_led_count = {
-    0 : 8,
-    1 : 8,
-    2 : 8,
-    3 : 8,
-    4 : 32,
-    5 : 32,
-    6 : 32,
-    7 : 32,
-    8 : 32,
-    9 : 32,
-    10 : 32,
-    11 : 32,
-}
-
 # The pots' and keys' addresses are a3_mixer_osc's tables (CHANNEL_POTS,
 # CHANNEL_KEYS, MASTER_POTS), as the truth's keys.
 
@@ -179,26 +166,22 @@ button_fx_to_mode_name = {
 
 stereo_inputs = StereoInputs()
 
-def db_value_to_index(value: float, num_leds: int):
-    index = int(np.interp(value, [-60, 0], [0, num_leds]))
-    if index == num_leds:
-        index = num_leds - 1
-    return index
+# Every LED meter moves the same way as the displays' and StemDeck's
+# (meter-ballistics, 2026-10-07): the analyzer sends raw peaks, and each
+# slot's ballistics -- Core's timing, on this process's clock -- make the
+# bar and the held peak.
+led_ballistics = [MeterBallistics(osc.meters(), time.monotonic)
+                  for _ in range(FIRST_OUTPUT_SLOT + len(OUTPUT_METERS))]
 
-def send_vu_data(vu: str, peak_db: float, rms_db: float):
-    # A channel's bar is its peak on the fixed DJ scale; the main meter keeps
-    # the linear peak-and-RMS drawing.
-    if int(vu) < num_channel:
-        sendData(channel_vu_line(vu, peak_db))
-        return
-    num_leds = vu_channel_to_led_count[int(vu)]
-    peak_index = db_value_to_index(peak_db, num_leds)
-    rms_index = db_value_to_index(rms_db, num_leds)
 
-#    print("peak: " + str(peak_db) + " " + str(peak_index))
-#    print("rms: " + str(rms_db) + " " + str(rms_index))
-
-    sendData("VU:" + vu + ":" + str(peak_index) + ":" + str(rms_index))
+def send_vu_data(slot: int, peak: float):
+    """A slot's raw linear peak through its ballistics to the firmware: a
+    channel on the LED scale, a main meter on its -60..0 dBFS rows."""
+    level_db, hold_db = led_ballistics[slot].feed(peak_db(peak))
+    if slot < num_channel:
+        sendData(channel_vu_line(slot, level_db, hold_db))
+    else:
+        sendData(main_vu_line(slot, level_db, hold_db))
 
 def vu_handler(address: str,
                *osc_arguments: List[Any]) -> None:
@@ -243,19 +226,9 @@ def vu_handler(address: str,
     send_vu_level(slot, osc_arguments[0], osc_arguments[1])
 
 def send_vu_level(slot: int, peak: float, rms: float):
-    """Linear peak and RMS to the firmware's slot, as LED indices."""
-    vu = str(slot)
-
-    # clamp to above 0 to avoid numerical error
-    if peak == 0.0:
-        peak = sys.float_info.epsilon
-    if rms == 0.0:
-        rms = sys.float_info.epsilon
-
-    peak_db = 20 * math.log(peak, 10)
-    rms_db  = 20 * math.log(rms, 10)
-
-    send_vu_data(vu, peak_db, rms_db)
+    """A slot's linear peak and RMS: the LEDs show the peak; RMS is no
+    longer drawn (meter-ballistics: bar and hold are the peak's)."""
+    send_vu_data(slot, peak)
 
 def send_button_leds_data(channel: int, led_on, led_mode):
     # led_mode is the colour channel of the strip's one pixel: 0 red, 1 green,
@@ -503,7 +476,7 @@ if __name__ == '__main__':
 
     # The displays show what Core announces; until it does, a dash. A failing
     # display is reported inside Displays and never reaches this server.
-    displays = open_displays()
+    displays = open_displays(osc.meters())
     displays.blank_all()
 
     # A damaged announcement is ignored: nothing may raise into the server.

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Meters: the newest wins, and the desk's only (a3-audio/a3-mixer#6).
+"""Meters: the loudest wins, and the desk's only (a3-audio/a3-mixer#6).
 
 Some 650 datagrams a second reach the desk: the beat-analyzer's meter
 bundles and StemDeck's single meters. The desk shows 28 of 66 meters, yet
@@ -10,12 +10,19 @@ python-osc parsed and dispatched every one; its thread ran at 88 % of the
 Pi, the socket's queue stayed full and stem, cursor and lamp messages from
 Core waited behind it. So, as Core does with positions (a3_core_latest,
 2026-10-02), the desk takes everything waiting, unpacks bundles, drops the
-meters it does not show, keeps per shown meter only the newest value, and
-hands every other message on once, in the order it came.
+meters it does not show, keeps per shown meter only the loudest message,
+and hands every other message on once, in the order it came.
 
-Only meters are merged: a level is worth nothing once a newer one has
-arrived. Everything else -- a stem mask, a cursor, a lamp -- is a step that
-counts and keeps its place.
+The loudest, not the newest (meter-ballistics, 2026-10-07): the analyzer and
+StemDeck send raw peaks now, and the desk's ballistics fall and hold them.
+A hit followed by a quieter window in one batch must survive, or the bar
+and the hold miss it. The message is kept whole, so its RMS is the loud
+window's own -- a max over messages would pair a peak with another window's
+RMS, and nothing on the desk draws RMS any more anyway. Equal peaks keep the
+newest; a meter whose floats do not read loses to one that does.
+
+Only meters are merged. Everything else -- a stem mask, a cursor, a lamp --
+is a step that counts and keeps its place.
 
 The OSC is read by hand, only as far as the address -- and a kept meter's
 floats, which go to the meter handler directly: python-osc still parses and
@@ -76,7 +83,7 @@ def _meter_key(message, osc):
 
 def coalesce(packets, osc):
     """`packets` as they arrived, (data, client), as single messages: shown
-    meters only the newest per address, at its place; unshown meters gone;
+    meters only the loudest per address, at its place; unshown meters gone;
     everything else as it came. A datagram that does not read is passed on
     whole -- the dispatcher deals with it, as it did before."""
     return [(message, client) for message, client, _ in _kept(packets, osc)]
@@ -91,10 +98,24 @@ def _kept(packets, osc):
                 unpacked.append((message, client, *_meter_key(message, osc)))
         except Damaged:
             unpacked.append((data, client, None, None))
-    last = {key: i for i, (_, _, kind, key) in enumerate(unpacked) if kind == "meter"}
+    loudest = {}
+    for i, (message, _, kind, key) in enumerate(unpacked):
+        if kind == "meter":
+            rank = (_peak_of(message), i)       # equal peaks: the newest
+            if key not in loudest or rank >= loudest[key]:
+                loudest[key] = rank
     return [(message, client, kind == "meter")
             for i, (message, client, kind, key) in enumerate(unpacked)
-            if kind is None or (kind == "meter" and last[key] == i)]
+            if kind is None or (kind == "meter" and loudest[key][1] == i)]
+
+
+def _peak_of(message):
+    """A meter message's peak, its first float; -inf for one that does not
+    read, so any meter that does wins over it."""
+    floats = floats_of(message)
+    if floats is None or len(floats) < 2 or floats[1] != floats[1]:   # NaN
+        return float("-inf")
+    return floats[1]
 
 
 def _padded_end(at):

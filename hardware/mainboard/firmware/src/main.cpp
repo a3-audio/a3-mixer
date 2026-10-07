@@ -242,13 +242,16 @@ void leds()
       int rms_index = Serial.readStringUntil('\n').toInt();
 
       // per-channel VU meters
-      // The desk sends the top lit LED's index in both fields (-1 = dark),
-      // the bar follows the peak; the second field is not read.
+      // VU:slot:bar:hold -- the bar's top LED and the held peak's LED
+      // (-1 = dark). The desk applies the ballistics; the hold LED stays lit
+      // above the bar in its position's colour.
       if(vu_index >= 0 && vu_index < 4) {
         int i = vu_index;
         int top_index = peak_index;
+        int hold_index = rms_index;
         for(int j = 0 ; j < 8 ; j++) {
-          uint32_t color = j <= top_index ? channelLedColour[j] : 0;
+          bool lit = j <= top_index || j == hold_index;
+          uint32_t color = lit ? channelLedColour[j] : 0;
           pixels.setPixelColor(vupxlstrips[i][j], color);
         }
         // Only here, the one place that sets NeoPixels: show() keeps
@@ -257,7 +260,9 @@ void leds()
       }
       // output VU meters
       else if(vu_index >= 4 && vu_index < 12) {
-        // rms-meter plus peak over all four modules (rows 1-32)
+        // VU:slot:hold:bar -- the field order this meter always had: the
+        // bar (the desk's ballistic peak) plus one dot (the held peak) over
+        // all four modules (rows 1-32)
         int output_vu_index = vu_index - 4;
         for(int j = 0 ; j < 32 ; j++){
           int module_index = j / 8;

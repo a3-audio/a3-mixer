@@ -28,15 +28,24 @@ same active bracket. At its right edge, behind a divider, sits the CUE field
 is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
 bracket never stands on CUE.
 
-Every meter has VU-like ballistics (display_panel.Ballistics), no display
-draws a peak mark, and a panel is redrawn only when its pixels move.
+Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
+Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
+and the held peak as a one-row line over the bar, 1.5 s and then falling.
+A panel is redrawn only when its pixels move.
 
-Every bar reads the channel LEDs' scale (2026-10-07; a3_mixer_meters
-bar_fraction): a level that lights n of the 8 LEDs fills n/8 of the bar.
-It used to run linear in dB from -48, and -12 dBFS filled three quarters
-of a bar beside four lit LEDs. The displays are monochrome, so a one-row
-tick left of every bar marks where the LEDs turn yellow (-9 dBFS) and red
-(-3 dBFS): beside the bar, never on it, so it is a scale and not a level.
+Every bar shows exactly what the channel LEDs show (2026-10-07;
+a3_mixer_meters bar_fraction): a level that lights n of the 8 LEDs fills
+exactly n/8 of the bar, in eight steps as the LEDs move, and a level that
+lights none leaves it empty -- the sliver below -36 dBFS is gone, decided
+2026-10-07. The hold line tops the segment of the LED the firmware keeps
+lit as hold. The bar used to run linear in dB (from -48, later between the
+thresholds) and stood over the yellow mark while only green LEDs were lit.
+The displays are monochrome, so a one-row tick left of every bar marks
+where the LEDs turn yellow and red: the bottom row of the first yellow
+segment (4/8, the LED at -9 dBFS) and of the first red one (6/8, -3 dBFS),
+rounded as the bar is (display_panel.lit_rows), so the bar covers a mark
+exactly when an LED of that colour is lit. Beside the bar, never on it, so
+it is a scale and not a level.
 
 Every meter shows a clip (2026-10-04): a step whose held peak is over full
 scale (above 1.0 linear) lights it, and it stays lit a second after the
@@ -78,11 +87,14 @@ sys.path.insert(
 
 import functools  # noqa: E402
 
+from a3_mixer_meters import (DEFAULT_METER_TIMING, MeterBallistics,  # noqa: E402
+                             bar_fraction, peak_db)
+
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, cue_announcement,
                            channel_picture,
-                           return_picture, meter_level, panel_for_channel, return_panel,
-                           pixel_key, playing_stem, Ballistics, ClipHold, ANALOG_INPUT,
+                           return_picture, panel_for_channel, return_panel,
+                           pixel_key, playing_stem, ClipHold, ANALOG_INPUT,
                            STEM_MODE,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
@@ -153,10 +165,14 @@ CLIP_HATCH = 3
 
 
 def _meter(draw, meter):
-    """A meter: a filled bar, hatched while it clips, nothing when silent.
-    Its rows and hatch are the meter's own pixels() and hatched(), so what
-    is painted is what the redraw rule compares."""
+    """A meter: a filled bar, hatched while it clips, nothing when silent,
+    and its hold line over it. Its rows, hatch and hold row are the meter's
+    own pixels(), hatched() and hold_row(), so what is painted is what the
+    redraw rule compares."""
     x0, y0, x1, y1 = meter.box
+    hold = meter.hold_row()
+    if hold is not None:
+        draw.line((x0, hold, x1, hold), fill="white")
     bar = meter.pixels()
     if not bar:
         return
@@ -339,7 +355,8 @@ class Displays:
     """
 
     def __init__(self, select, make_device, draw_fields, report=report,
-                 clock=time.monotonic, every=500, later=_later):
+                 clock=time.monotonic, every=500, later=_later,
+                 timing=DEFAULT_METER_TIMING):
         self._select = select
         self._make_device = make_device
         self._draw_fields = draw_fields
@@ -371,9 +388,11 @@ class Displays:
         self._aux_peaks = {}
         self._stem_aux_peaks = {}
         self._analog_peaks = {}  # per channel, then per side: {index: {side: held}}
+        self._timing = timing
         self._ballistics = {}
         self._clip_holds = {}
         self._levels = {panel: None for panel in PANELS}
+        self._holds = {panel: () for panel in PANELS}
         self._clips = {panel: () for panel in PANELS}
         self._next_step = None
         self._last_step = None
@@ -435,8 +454,9 @@ class Displays:
                     index = PANELS.index(panel)
                     analog = self._move(("analog", index), self._analog_peak(index), dt)
                     levels_and_clips = stems + [analog]
-                self._levels[panel] = tuple(level for level, _ in levels_and_clips)
-                self._clips[panel] = tuple(clip for _, clip in levels_and_clips)
+                self._levels[panel] = tuple(level for level, _, _ in levels_and_clips)
+                self._holds[panel] = tuple(hold for _, hold, _ in levels_and_clips)
+                self._clips[panel] = tuple(clip for _, _, clip in levels_and_clips)
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
             held = [self._stem_peaks, self._aux_peaks, self._stem_aux_peaks]
@@ -455,12 +475,15 @@ class Displays:
         return min(max(0.0, now - last), 1.0)
 
     def _move(self, source, peak, dt):
-        """(level, clip) of one meter after a step whose loudest peak was
-        `peak`: the level through its ballistics, the clip through its
-        hold."""
-        ballistics = self._ballistics.setdefault(source, Ballistics())
-        hold = self._clip_holds.setdefault(source, ClipHold())
-        return ballistics.feed(meter_level(peak), dt), hold.feed(peak, dt)
+        """(level, hold, clip) of one meter after a step whose loudest peak
+        was `peak`: the bar and the held peak through its ballistics, as
+        shares of the bar, the clip through its hold."""
+        ballistics = self._ballistics.get(source)
+        if ballistics is None:
+            ballistics = self._ballistics[source] = MeterBallistics(self._timing, self._clock)
+        clip = self._clip_holds.setdefault(source, ClipHold())
+        level_db, hold_db = ballistics.feed(peak_db(peak))
+        return bar_fraction(level_db), bar_fraction(hold_db), clip.feed(peak, dt)
 
     def _louder_side(self, peaks):
         """A mono meter of a stereo source: the louder of L and R, so a
@@ -562,16 +585,16 @@ class Displays:
             if panel == return_panel():
                 cursor, mode, cue = self._return[0], self._return_mode, self._return_cue
                 levels = self._levels[panel] or (0.0, 0.0)
-                clips = self._clips[panel]
+                clips, holds = self._clips[panel], self._holds[panel]
                 return lambda width, height: return_picture(cursor, mode, cue, levels,
-                                                            width, height, clips)
+                                                            width, height, clips, holds)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
             levels = self._levels[panel] or (0.0,) * (PAIRS + 1)
-            clips = self._clips[panel]
+            clips, holds = self._clips[panel], self._holds[panel]
         return lambda width, height: channel_picture(cursor, levels, mask, width, height,
-                                                     clips)
+                                                     clips, holds)
 
     def _post(self, panel):
         with self._wake:
@@ -678,9 +701,10 @@ class NoDisplays:
         pass
 
 
-def open_displays():
+def open_displays(timing=DEFAULT_METER_TIMING):
+    """The live displays, their meters on `timing` (Core's)."""
     try:
-        displays = Displays(*_hardware())
+        displays = Displays(*_hardware(), timing=timing)
     except Exception as error:  # noqa: BLE001 -- ImportError, font, anything
         report("displays unavailable, the desk runs without them: %s" % error)
         return NoDisplays()

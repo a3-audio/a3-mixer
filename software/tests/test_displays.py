@@ -293,17 +293,26 @@ class Meters(unittest.TestCase):
         panel = next(p for p in PANELS if p.label == label)
         return [m.level for m in self.displays._picture_for(panel)(128, 64).meters]
 
-    def step(self):
-        """One step a tenth of a second after the last, as on the desk."""
+    def step_seconds(self):
         from display_panel import METER_STEPS_PER_SECOND
-        self.now += 1.0 / METER_STEPS_PER_SECOND
+        return 1.0 / METER_STEPS_PER_SECOND
+
+    def step(self):
+        """One step after the last, at the desk's rate."""
+        self.now += self.step_seconds()
         self.displays.step_meters()
         self.displays.drain()
 
     def after(self, seconds):
         """The level a full bar shows after falling `seconds`."""
-        from display_panel import METER_FALL_DB_PER_SECOND, bar_fraction
-        return bar_fraction(-METER_FALL_DB_PER_SECOND * seconds)
+        from a3_mixer_meters import DEFAULT_METER_TIMING, bar_fraction
+        return bar_fraction(-DEFAULT_METER_TIMING.release_db_per_second * seconds)
+
+    def holds(self, label):
+        """The meters' held peaks as the panel would be drawn now."""
+        from display_panel import PANELS
+        panel = next(p for p in PANELS if p.label == label)
+        return [m.hold for m in self.displays._picture_for(panel)(128, 64).meters]
 
     def clips(self, label):
         """The meters' clip states as the panel would be drawn now."""
@@ -474,23 +483,78 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(self.levels("Deck 1")[0], 1.0)
 
-    def test_the_meter_falls_smoothly(self):
+    def test_the_meter_falls_at_the_release_rate(self):
         self.displays.note_peak(1, 1.0)
         self.step()
         self.displays.note_peak(1, 0.001)
         self.step()
-        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(0.1))
+        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(self.step_seconds()))
 
-    def test_a_move_of_less_than_a_pixel_posts_nothing(self):
-        """The bus carries ~17 draws a second (measured 2026-10-04): a panel
-        whose floats moved but whose pixels did not is not redrawn."""
+    def test_the_peak_is_held_over_the_falling_bar(self):
+        """Fed by raw peaks (meter-ballistics): the bar falls 20 dB/s, the
+        held peak stays 1.5 s, then falls at the same rate. Checked a step
+        before the hold ends: the bar steps as the LEDs do, and the full
+        LED is 0 dBFS exactly, so a hold falling by float dust would
+        already be an LED down."""
         self.displays.note_peak(1, 1.0)
         self.step()
-        self.rig.drawn.clear()
-        # 0.1 dB down: the top eighth is 3 dB over 5.6 rows, so under a row.
-        self.displays.note_peak(1, 10 ** (-0.1 / 20))
+        seconds = 0.0
+        while seconds < 1.4 - 1e-9:
+            self.step()
+            seconds = round(seconds + self.step_seconds(), 9)
+        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(1.4))
+        self.assertAlmostEqual(self.holds("Deck 1")[0], 1.0)
+        for _ in range(round(0.6 / self.step_seconds())):
+            self.step()
+        self.assertAlmostEqual(self.holds("Deck 1")[0], self.after(0.5))
+
+    def test_a_new_peak_restarts_the_hold(self):
+        self.displays.note_peak(1, 10 ** (-12 / 20))
         self.step()
-        self.assertNotEqual(self.levels("Deck 1")[0], 1.0)
+        for _ in range(round(1.0 / self.step_seconds())):
+            self.step()
+        self.displays.note_peak(1, 10 ** (-5 / 20))
+        self.step()
+        for _ in range(round(1.4 / self.step_seconds())):
+            self.step()
+        from a3_mixer_meters import bar_fraction
+        self.assertAlmostEqual(self.holds("Deck 1")[0], bar_fraction(-5.0))
+
+    def test_the_timing_is_the_one_given(self):
+        from a3_mixer_meters import MeterTiming, bar_fraction
+        displays = self.rig.displays(clock=lambda: self.now,
+                                     timing=MeterTiming(release_db_per_second=10.0,
+                                                        peak_hold_seconds=0.0))
+        displays.note_peak(1, 1.0)
+        displays.step_meters()
+        self.now += 1.0
+        displays.step_meters()
+        from display_panel import PANELS
+        meter = displays._picture_for(PANELS[0])(128, 64).meters[0]
+        self.assertAlmostEqual(meter.level, bar_fraction(-10.0))
+        self.assertAlmostEqual(meter.hold, bar_fraction(-10.0))
+
+    def test_a_falling_hold_redraws(self):
+        """Above a silent bar only the hold line moves: still a redraw."""
+        self.displays.note_peak(1, 1.0)
+        self.step()
+        for _ in range(round(1.6 / self.step_seconds())):
+            self.step()
+        self.rig.drawn.clear()
+        self.step()
+        self.assertEqual(4, len(self.rig.drawn))
+
+    def test_a_move_inside_one_led_posts_nothing(self):
+        """The bus carries ~17 draws a second (measured 2026-10-04): a level
+        that moved but lights the same LEDs moves no pixel and is not
+        redrawn."""
+        self.displays.note_peak(1, 10 ** (-1 / 20))
+        self.step()
+        self.rig.drawn.clear()
+        # -1 to -2 dBFS: both light 7 LEDs.
+        self.displays.note_peak(1, 10 ** (-2 / 20))
+        self.step()
+        self.assertEqual(self.levels("Deck 1")[0], 7 / 8)
         self.assertEqual([], self.rig.drawn)
 
     def test_a_fall_redraws_until_it_rests(self):
@@ -689,6 +753,7 @@ class Painting(unittest.TestCase):
         clip_5 = (False,) * 4 + (True,) + (False,) * 4
         clip_7 = (False,) * 6 + (True, False, False)
         clip_a = (False,) * 8 + (True,)
+        hold_music = (0.5, 1.0, 0.25, 0.75, 1.0, 0.6, 0.1, 0.8, 0.0)
         return {
             "channel-music-cursor-on-a-stem": channel_picture(2, music, stem(6), 128, 64),
             "channel-cursor-on-the-playing-stem": channel_picture(5, music, stem(6), 128, 64),
@@ -725,6 +790,12 @@ class Painting(unittest.TestCase):
             "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE, False,
                                                       (0.3, 0.6), 128, 64,
                                                       clips=(False, True)),
+            "channel-hold-lines": channel_picture(2, music, stem(6), 128, 64,
+                                                  holds=hold_music),
+            "channel-hold-over-a-silent-a": channel_picture(8, (0.0,) * 9, 0, 128, 64,
+                                                            holds=(0.0,) * 8 + (0.8,)),
+            "return-hold-lines": return_picture(STEM_MODE, STEM_MODE, False, (0.5, 0.2),
+                                                128, 64, holds=(0.8, 0.6)),
             "return-cue-on-cursor-on-cue": return_picture(CUE_CURSOR, STEM_MODE, True,
                                                           (0.8, 0.3), 128, 64),
             "return-cue-off-cursor-on-cue": return_picture(CUE_CURSOR, ANALOG_MODE, False,
@@ -740,6 +811,22 @@ class Painting(unittest.TestCase):
                 image = self.paint_state(name, picture)
                 for heading in picture.headings:
                     self.assertTrue(self.lit(image, heading.box), heading.text)
+
+    def test_the_hold_line_is_one_lit_row_over_a_dark_gap(self):
+        for name in ("channel-hold-lines", "channel-hold-over-a-silent-a",
+                     "return-hold-lines"):
+            picture = self.states()[name]
+            image = self.paint_state(name, picture)
+            for meter in picture.meters:
+                row = meter.hold_row()
+                if row is None:
+                    continue
+                with self.subTest(name, box=meter.box):
+                    x0, _, x1, y1 = meter.box
+                    self.assertTrue(self.all_lit(image, [(x, row) for x in range(x0, x1 + 1)]))
+                    top = y1 - meter.pixels() + 1
+                    self.assertTrue(self.none_lit(image, [(x, y) for x in range(x0, x1 + 1)
+                                                          for y in range(row + 1, top)]))
 
     def test_nothing_spills_out_of_its_box(self):
         for name, picture in self.states().items():
@@ -917,7 +1004,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 23)
+        self.assertEqual(len(self.with_brackets()), 26)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
