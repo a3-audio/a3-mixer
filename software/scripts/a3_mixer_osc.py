@@ -68,12 +68,13 @@ LAMPS = {
     "channel.filter.led": "fx",
 }
 
-#: The firmware's twelve meter slots, by what they measure: four inputs of
-#: eight LEDs, then eight outputs of thirty-two (decided 2026-09-30: the main
-#: sub and main tops 1-7). The slots are the firmware's numbering and stay;
-#: which /vu number feeds one is the channel map's.
-VU_SLOTS = (
-    "in1_pre", "in2_pre", "in3_pre", "in4_pre",
+#: The firmware's twelve meter slots: four inputs of eight LEDs, then eight
+#: outputs of thirty-two (decided 2026-09-30: the main sub and main tops 1-7).
+#: The slots are the firmware's numbering and stay; which /vu number feeds
+#: one is looked up by name. Slots 0-3 are the channels' stereo input meters
+#: (INPUT_METERS); these are the outputs', from FIRST_OUTPUT_SLOT on.
+FIRST_OUTPUT_SLOT = 4
+OUTPUT_METERS = (
     "main_sub", "main_top1", "main_top2", "main_top3",
     "main_top4", "main_top5", "main_top6", "main_top7",
 )
@@ -94,12 +95,16 @@ def _pattern_regex(pattern):
 
 
 #: The inputs' stereo meters, by slot and side (spec stereo-channel-meters,
-#: 2026-10-06): a channel's LEDs show the louder of its two. While the truth
-#: has them, the mono in<N>_pre light nothing; a truth from before has none,
-#: and the desk falls back to the mono ones.
+#: 2026-10-06): a channel's LEDs show the louder of its two. They carry
+#: whatever plays on the channel. The mono in<N>_pre they replaced are gone
+#: from the truth since 2026-10-07, and so is the desk's fallback to them.
 INPUT_METERS = ("in1_pre_L", "in1_pre_R", "in2_pre_L", "in2_pre_R",
                 "in3_pre_L", "in3_pre_R", "in4_pre_L", "in4_pre_R")
-MONO_INPUT_METERS = VU_SLOTS[:4]
+
+#: The four analog inputs before any channel processing, by channel and side
+#: (/vu 1-8 since 2026-10-07): a channel display's A, whatever plays there.
+ANALOG_METERS = ("analog1_L", "analog1_R", "analog2_L", "analog2_R",
+                 "analog3_L", "analog3_R", "analog4_L", "analog4_R")
 
 #: The beat-analyzer's stem meters, pairs 1-8: deck A's stems, then deck B's.
 STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
@@ -125,7 +130,6 @@ class MixerOsc:
         # meters a second among them, on a Pi 3B+.
         self._matchers = {key: _pattern_regex(entry["pattern"])
                           for key, entry in data["addresses"].items()}
-        self._has_stereo_inputs = set(INPUT_METERS) <= set(data.get("vu_meters", []))
         # Asked for every meter that arrives, before python-osc sees it (#6).
         self._shown_meters = frozenset(
             n for n in range(1, len(data.get("vu_meters", [])) + 1)
@@ -244,17 +248,17 @@ class MixerOsc:
         found = self._side(number, INPUT_METERS)
         return None if found is None else divmod(found, 2)
 
+    def analog_side(self, number):
+        """(channel 0-3, side 0 left / 1 right) for an analog input's meter,
+        or None for any other /vu/<number>."""
+        found = self._side(number, ANALOG_METERS)
+        return None if found is None else divmod(found, 2)
+
     def vu_slot(self, number):
-        """The firmware slot /vu/<number> lights, or None if the desk does
-        not show that meter. A mono input meter lights nothing while the
-        truth has the stereo ones (input_side)."""
-        meters = self._data.get("vu_meters", [])
-        if not 1 <= number <= len(meters):
-            return None
-        name = meters[number - 1]
-        if name in MONO_INPUT_METERS and self._has_stereo_inputs:
-            return None
-        return VU_SLOTS.index(name) if name in VU_SLOTS else None
+        """The firmware slot an output's /vu/<number> lights, or None. The
+        inputs' slots are lit through input_side."""
+        found = self._side(number, OUTPUT_METERS)
+        return None if found is None else FIRST_OUTPUT_SLOT + found
 
     def shows_meter(self, number):
         """Whether the desk shows /vu/<number> anywhere -- an LED, a display
@@ -266,7 +270,7 @@ class MixerOsc:
         return any(found is not None for found in (
             self.stem_pair(number), self.aux_side(number),
             self.stem_aux_side(number), self.input_side(number),
-            self.vu_slot(number)))
+            self.analog_side(number), self.vu_slot(number)))
 
     @property
     def digest(self):

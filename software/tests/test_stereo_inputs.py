@@ -6,7 +6,9 @@
 (spec stereo-channel-meters, 2026-10-06), the way DJ mixers do. The mono
 in<N>_pre read 3 dB low: REAPER's send downmix divides by the channel count.
 Core meters each channel as in<N>_pre_L and in<N>_pre_R (/vu 51-58 in its
-truth); the desk takes peak and RMS each as the max of the two sides."""
+truth); the desk takes peak and RMS each as the max of the two sides. Since
+2026-10-07 the mono meters are gone from the truth (/vu 1-8 are the analog
+inputs, test_analog_input_meters), and so is the desk's fallback to them."""
 
 import sys
 import unittest
@@ -77,12 +79,13 @@ class TheStereoMetersByName(unittest.TestCase):
         self.assertTrue(all(osc.vu_slot(n) is None for n in range(1, 5)))
         self.assertEqual(osc.vu_slot(5), 4)   # main_sub still lights
 
-    def test_a_truth_without_stereo_meters_falls_back_to_mono(self):
-        """A desk updated before Core still lights its inputs."""
-        osc = made_up()
-        self.assertEqual(osc.vu_slot(5), 0)   # in1_pre
-        self.assertTrue(all(osc.input_side(n) is None
-                            for n in range(len(osc._data["vu_meters"]) + 2)))
+    def test_a_mono_input_meter_lights_nothing(self):
+        """Since 2026-10-07 no truth has the mono in<N>_pre: /vu 1-8 are the
+        analog inputs, and the desk has no fallback to them."""
+        osc = made_up(vu_meters=["in1_pre", "in2_pre", "main_sub"])
+        self.assertIsNone(osc.vu_slot(1))
+        self.assertIsNone(osc.vu_slot(2))
+        self.assertFalse(osc.shows_meter(1))
 
 
 class TheDeskLightsTheLouderSide(unittest.TestCase):
@@ -96,15 +99,11 @@ class TheDeskLightsTheLouderSide(unittest.TestCase):
         self.assertIn("osc.input_side(number)", self.handler)
         self.assertIn("stereo_inputs.note(", self.handler)
 
-    def test_each_side_also_feeds_the_channels_a_meter(self):
-        """The display's A (2026-10-07) is the channel's input meter."""
+    def test_a_side_lights_the_leds_only(self):
+        """The stereo input meter carries whatever plays on the channel; A
+        is the analog input's own meter since 2026-10-07."""
         stereo = self.handler.split("osc.input_side(number)", 1)[1].split("return", 1)[0]
-        self.assertIn("displays.note_input(slot, side, osc_arguments[0])", stereo)
-
-    def test_a_mono_input_feeds_the_a_meter_too(self):
-        """A truth without the stereo meters: the mono in<N>_pre is A."""
-        mono = self.handler.split("osc.vu_slot(number)", 1)[1]
-        self.assertIn("displays.note_input(slot, 0, osc_arguments[0])", mono)
+        self.assertNotIn("displays.", stereo)
 
     def test_the_stereo_side_is_asked_before_the_slot(self):
         self.assertLess(self.handler.index("osc.input_side(number)"),

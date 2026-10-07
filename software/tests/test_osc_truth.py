@@ -41,8 +41,8 @@ MADE_UP = {
               **({"ch": [1, 4]} if key.startswith("channel.") else {})}
         for key in KEYS + ("device.hello",) if key != "vu"
     } | {"vu": {"pattern": "/t/vu/{n}", "n": [1, 40]}},
-    "vu_meters": ["free", "main_top1", "in2_pre", "main_sub", "in1_pre",
-                  "main_top2", "main_top3", "in4_pre", "main_top4", "in3_pre",
+    "vu_meters": ["free", "main_top1", "in2_pre_L", "main_sub", "analog1_L",
+                  "main_top2", "main_top3", "in4_pre_R", "main_top4", "analog3_R",
                   "main_top5", "main_top6", "main_top7", "main_top8",
                   "stem_a1", "stem_a2", "stem_a3", "stem_a4",
                   "stem_b1", "stem_b2", "stem_b3", "stem_b4"],
@@ -121,12 +121,14 @@ class WhichMeterIsWhichLed(unittest.TestCase):
     """The firmware's twelve slots stay what they were: 0-3 the inputs, 4-11
     the outputs. Which /vu number feeds a slot is looked up by name."""
 
-    def test_the_inputs_are_the_pre_fader_meters(self):
+    def test_the_inputs_are_their_stereo_meters(self):
+        """Slots 0-3 are lit by the louder side of in<N>_pre_L/R
+        (input_side, StereoInputs), never by vu_slot."""
         osc = made_up()
-        self.assertEqual(osc.vu_slot(5), 0)   # in1_pre
-        self.assertEqual(osc.vu_slot(3), 1)   # in2_pre
-        self.assertEqual(osc.vu_slot(10), 2)  # in3_pre
-        self.assertEqual(osc.vu_slot(8), 3)   # in4_pre
+        self.assertEqual(osc.input_side(3), (1, 0))   # in2_pre_L
+        self.assertEqual(osc.input_side(8), (3, 1))   # in4_pre_R
+        self.assertIsNone(osc.vu_slot(3))
+        self.assertIsNone(osc.vu_slot(5))             # analog1_L: A, no LED
 
     def test_the_outputs_are_the_main_sub_and_seven_tops(self):
         osc = made_up()
@@ -273,8 +275,9 @@ class TheRealTruth(unittest.TestCase):
 
     def test_it_has_every_meter_the_desk_shows(self):
         meters = json.loads(self.path.read_text())["vu_meters"]
-        for name in a3_mixer_osc.VU_SLOTS:
-            self.assertIn(name, meters)
+        shown = (a3_mixer_osc.OUTPUT_METERS + a3_mixer_osc.INPUT_METERS
+                 + a3_mixer_osc.ANALOG_METERS)
+        self.assertEqual([name for name in shown if name not in meters], [])
 
     def test_the_desk_can_reach_core_and_the_analyzer(self):
         self.assertEqual(self.osc.core()[0], self.osc.beatclock()[0])
