@@ -27,6 +27,7 @@ import os
 import re
 from pathlib import Path
 
+from a3_mixer_meters import DEFAULT_METER_TIMING, MeterTiming
 from a3_mixer_truth import cache_path
 
 #: The old copy the deploy put beside the script -- a fallback for one
@@ -120,6 +121,26 @@ STEM_AUX_METERS = ("stem_aux_L", "stem_aux_R")
 
 class TruthMissing(Exception):
     """No truth to read -- the desk cannot know where Core is."""
+
+
+class MetersRefused(ValueError):
+    """A "meters" block the desk will not meter by."""
+
+
+#: name -> (lowest allowed, whether the lowest itself is allowed), as
+#: a3-core's a3_osc has them: a release of 0 would freeze every meter.
+_METER_FLOORS = {"attack_ms": (0, True), "release_db_per_second": (0, False),
+                 "peak_hold_seconds": (0, True)}
+
+
+def _meter_value(name, value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MetersRefused(f"meters.{name} is not a number: {value!r}")
+    floor, floor_allowed = _METER_FLOORS[name]
+    if value < floor or (value == floor and not floor_allowed):
+        relation = ">=" if floor_allowed else ">"
+        raise MetersRefused(f"meters.{name} must be {relation} {floor}, is {value}")
+    return float(value)
 
 
 class MixerOsc:
@@ -283,9 +304,33 @@ class MixerOsc:
         truth it speaks, and Core's window shows whether it is Core's own."""
         return self.address("device.hello"), ["mixer", self._digest]
 
+    def meters(self):
+        """How every meter on the desk moves: Core's "meters" block, by the
+        rules of a3-core's a3_osc.Truth.meters(). The one fact with a
+        default -- the block came after every other, and a truth from before
+        it reads as the numbers it came with (DEFAULT_METER_TIMING). Keys
+        starting with "_" are comments. A number of the wrong type or out of
+        range, or an unknown key, is MetersRefused."""
+        block = self._data.get("meters", {})
+        if not isinstance(block, dict):
+            raise MetersRefused(f"meters is not an object: {block!r}")
+        given = {key: value for key, value in block.items() if not key.startswith("_")}
+        unknown = sorted(set(given) - set(MeterTiming._fields))
+        if unknown:
+            raise MetersRefused(f"meters has unknown keys: {', '.join(unknown)}")
+        merged = {**DEFAULT_METER_TIMING._asdict(), **given}
+        return MeterTiming(**{name: _meter_value(name, value) for name, value in merged.items()})
+
     def missing(self):
-        """The keys the desk uses that the truth does not have."""
-        return [key for key in KEYS_USED if key not in self._data["addresses"]]
+        """The keys the desk uses that the truth does not have -- and a
+        meters block it refuses, so such a truth is waited out like one
+        lacking a word, not run into a restart loop."""
+        lacking = [key for key in KEYS_USED if key not in self._data["addresses"]]
+        try:
+            self.meters()
+        except MetersRefused as refused:
+            lacking.append(str(refused))
+        return lacking
 
 
 def truth_path():

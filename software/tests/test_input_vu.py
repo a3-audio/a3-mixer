@@ -45,11 +45,10 @@ class TheInputMetersHaveEightLeds(unittest.TestCase):
         self.assertIn(f"vupxlstrips[{INPUTS}][{LEDS_PER_INPUT}]", firmware())
 
     def test_the_desk_scales_the_inputs_to_the_strip(self):
-        script = (SOFTWARE / "scripts/a3-mixer.py").read_text()
-        table = script[script.index("vu_channel_to_led_count"):]
-        table = table[:table.index("}")]
-        counts = dict(re.findall(r"(\d+)\s*:\s*(\d+)", table))
-        self.assertEqual({counts[str(slot)] for slot in range(INPUTS)}, {str(LEDS_PER_INPUT)})
+        import sys
+        sys.path.insert(0, str(SOFTWARE / "scripts"))
+        from a3_mixer_meters import CHANNEL_LED_THRESHOLDS_DB
+        self.assertEqual(len(CHANNEL_LED_THRESHOLDS_DB), LEDS_PER_INPUT)
 
 
 class EveryEncoderSwitchIsReported(unittest.TestCase):
@@ -82,12 +81,11 @@ class TheMainMeterHasAllFourModules(unittest.TestCase):
     FIRMWARE = SOFTWARE.parent / "hardware/mainboard/firmware/src/main.cpp"
 
     def test_the_desk_scales_the_outputs_to_32(self):
-        import re
-        script = (self.SOFTWARE / "scripts/a3-mixer.py").read_text()
-        table = script[script.index("vu_channel_to_led_count"):]
-        table = table[:table.index("}")]
-        counts = dict(re.findall(r"(\d+)\s*:\s*(\d+)", table))
-        self.assertEqual({counts[str(slot)] for slot in range(4, 12)}, {"32"})
+        import sys
+        sys.path.insert(0, str(self.SOFTWARE / "scripts"))
+        from a3_mixer_meters import MAIN_LED_COUNT, main_led_index
+        self.assertEqual(MAIN_LED_COUNT, 32)
+        self.assertEqual(main_led_index(0.0), 31)
 
     def test_the_firmware_draws_32_rows_and_no_stems(self):
         source = self.FIRMWARE.read_text()
