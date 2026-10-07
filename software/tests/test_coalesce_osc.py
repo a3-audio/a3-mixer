@@ -7,7 +7,7 @@
 Some 650 datagrams a second arrive, most of them meters the desk does not
 show; python-osc parsed and dispatched every one, the thread ran at 88 % and
 stem, cursor and lamp messages waited behind the queue. The desk now takes
-everything waiting, keeps per /vu address only the newest of the meters it
+everything waiting, keeps per /vu address only the loudest of the meters it
 shows, drops the others, and hands the rest on in arrival order.
 """
 
@@ -69,15 +69,44 @@ class TheDeskShowsTheseMeters(unittest.TestCase):
         self.assertFalse(made_up(vu_meters=["in1_pre"]).shows_meter(1))
 
 
-class OnlyTheNewestShownMeter(unittest.TestCase):
+class OnlyTheLoudestShownMeter(unittest.TestCase):
     def setUp(self):
         self.osc = a3_mixer_osc.load(real_truth_path())
 
-    def test_two_of_one_shown_meter_and_one_unshown_leave_the_newest(self):
+    def test_two_of_one_shown_meter_and_one_unshown_leave_the_loudest(self):
         old, unshown, new = (message("/vu/51", 0.1, 0.1),
                              message("/vu/60", 0.5, 0.5),
                              message("/vu/51", 0.2, 0.2))
         self.assertEqual(kept([old, unshown, new], self.osc), [new])
+
+    def test_the_louder_survives_when_it_came_first(self):
+        """Raw peaks since meter-ballistics (2026-10-07): a hit followed by
+        a quieter window must not be lost in a batch, or the hold misses
+        it."""
+        loud, quiet = message("/vu/51", 0.9, 0.2), message("/vu/51", 0.1, 0.3)
+        self.assertEqual(kept([loud, quiet], self.osc), [loud])
+
+    def test_the_peaks_rms_travels_with_it(self):
+        """The kept message is whole: its RMS is the loud window's own."""
+        loud = message("/vu/51", 0.9, 0.2)
+        self.assertEqual(kept([message("/vu/51", 0.1, 0.5), loud,
+                               message("/vu/51", 0.3, 0.6)], self.osc), [loud])
+
+    def test_equal_peaks_keep_the_newest(self):
+        first, second = message("/vu/51", 0.5, 0.1), message("/vu/51", 0.5, 0.2)
+        self.assertEqual(kept([first, second], self.osc), [second])
+
+    def test_a_meter_that_does_not_read_loses_to_one_that_does(self):
+        odd = _padded(b"/vu/51") + _padded(b",s") + _padded(b"loud")
+        fine = message("/vu/51", 0.01, 0.01)
+        self.assertEqual(kept([fine, odd], self.osc), [fine])
+        self.assertEqual(kept([odd, odd], self.osc), [odd])
+
+    def test_each_address_keeps_its_own_loudest(self):
+        a_loud, b_loud = message("/vu/51", 0.9, 0.0), message("/vu/52", 0.8, 0.0)
+        self.assertEqual(kept([a_loud, message("/vu/52", 0.1, 0.0),
+                               message("/vu/51", 0.2, 0.0), b_loud], self.osc),
+                         [a_loud, b_loud])
 
     def test_other_messages_keep_their_order_and_are_never_merged(self):
         mask = message("/channel/1/stem", 3.0)
@@ -137,7 +166,7 @@ class TheDeskTakesWhatWaits(unittest.TestCase):
         self.queue(meters[:10] + others + meters[10:] + [bundle(*meters[:5])])
         seen = []
         self.serve_once(lambda data, client: seen.append(data))
-        self.assertEqual(seen, others + [meters[4]])
+        self.assertEqual(seen, others + [meters[19]])      # the loudest, at its place
 
     def test_a_handler_that_raises_is_reported_and_the_rest_dispatched(self):
         self.queue([message("/beat", 1.0), message("/tap", 1.0)])
