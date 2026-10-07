@@ -16,10 +16,9 @@ solid triangle pointing down -- a "^" turned over -- between the headings
 and the meters, centred over the selected slot, right above the bracket
 when both mark one input; nothing else marks a meter.
 
-A's bar is the channel's input meter (in<N>_pre, the louder side), and
-only while A plays: that meter carries whatever plays on the channel, so
-with a stem on it, it is the stem. No meter has the analog input then, and
-A stays dark rather than show the stem under its letter.
+A's bar is the channel's analog input (analog<N>_L/R, the louder side),
+whatever plays on the channel: with a stem playing, the DJ still sees there
+is something on analog before switching to it (2026-10-07).
 
 The return's display is drawn the same way: two mono meters, STEM (StemDeck's
 aux bus) and ANALOG (the analog return), the louder side of each, under
@@ -361,7 +360,7 @@ class Displays:
         self._stem_peaks = {}
         self._aux_peaks = {}
         self._stem_aux_peaks = {}
-        self._input_peaks = {}  # per channel, then per side: {index: {side: held}}
+        self._analog_peaks = {}  # per channel, then per side: {index: {side: held}}
         self._ballistics = {}
         self._clip_holds = {}
         self._levels = {panel: None for panel in PANELS}
@@ -383,11 +382,11 @@ class Displays:
         with self._wake:
             self._hold(self._aux_peaks, side, peak)
 
-    def note_input(self, index, side, peak):
-        """Channel `index`'s input peak, L (0) or R (1), from the OSC
-        thread: its display's A while no stem plays there."""
+    def note_analog(self, index, side, peak):
+        """Channel `index`'s analog input peak, L (0) or R (1), from the OSC
+        thread: its display's A."""
         with self._wake:
-            self._hold(self._input_peaks.setdefault(index, {}), side, peak)
+            self._hold(self._analog_peaks.setdefault(index, {}), side, peak)
 
     def note_stem_aux(self, side, peak):
         """StemDeck's aux bus peak, L (0) or R (1), from the OSC thread.
@@ -431,7 +430,7 @@ class Displays:
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
             held = [self._stem_peaks, self._aux_peaks, self._stem_aux_peaks]
-            for peaks in held + list(self._input_peaks.values()):
+            for peaks in held + list(self._analog_peaks.values()):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
@@ -459,12 +458,8 @@ class Displays:
         return max(self._fresh(peaks, side) for side in (0, 1))
 
     def _analog_peak(self, index):
-        """A's raw peak on channel `index`: its input's louder side while no
-        stem plays there, silence while one does -- the input meter is the
-        stem's then."""
-        if playing_stem(self._channel_masks[index]) is not None:
-            return 0.0
-        return self._louder_side(self._input_peaks.get(index, {}))
+        """A's raw peak on channel `index`: its analog input's louder side."""
+        return self._louder_side(self._analog_peaks.get(index, {}))
 
     def _stem_return_peak(self):
         """STEM's raw peak: StemDeck's aux bus once the desk has heard it.
@@ -663,7 +658,7 @@ class NoDisplays:
     def note_stem_aux(self, side, peak):
         pass
 
-    def note_input(self, index, side, peak):
+    def note_analog(self, index, side, peak):
         pass
 
     def note_peak(self, pair, peak):

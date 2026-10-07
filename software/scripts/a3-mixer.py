@@ -203,7 +203,7 @@ def send_vu_data(vu: str, peak_db: float, rms_db: float):
 def vu_handler(address: str,
                *osc_arguments: List[Any]) -> None:
     # The meter's number is the channel map's; the firmware's slot is looked
-    # up by what the meter measures (a3_mixer_osc.VU_SLOTS).
+    # up by what the meter measures (a3_mixer_osc.INPUT_METERS, OUTPUT_METERS).
     number = osc.vu_number(address)
     if number is None:
         return
@@ -224,20 +224,22 @@ def vu_handler(address: str,
     if side is not None:
         displays.note_stem_aux(side, osc_arguments[0])
         return
-    # An input's stereo meter: its LEDs show the louder side.
-    # It is the channel display's A too (2026-10-07).
+    # An analog input's meter: the channel display's A, whatever plays on
+    # the channel (2026-10-07), no LED.
+    found = osc.analog_side(number)
+    if found is not None:
+        channel, side = found
+        displays.note_analog(channel, side, osc_arguments[0])
+        return
+    # An input's stereo meter carries what plays: its LEDs show the louder side.
     found = osc.input_side(number)
     if found is not None:
         slot, side = found
-        displays.note_input(slot, side, osc_arguments[0])
         send_vu_level(slot, *stereo_inputs.note(slot, side, osc_arguments[0], osc_arguments[1]))
         return
     slot = osc.vu_slot(number)
     if slot is None:
         return
-    # A truth without the stereo meters: the mono input is A.
-    if slot < num_channel:
-        displays.note_input(slot, 0, osc_arguments[0])
     send_vu_level(slot, osc_arguments[0], osc_arguments[1])
 
 def send_vu_level(slot: int, peak: float, rms: float):

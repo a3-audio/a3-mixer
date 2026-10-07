@@ -23,7 +23,8 @@ import a3_mixer_osc  # noqa: E402
 from a3_mixer_latest import coalesce, drain, serve  # noqa: E402
 from test_osc_truth import made_up, real_truth_path  # noqa: E402
 
-SHOWN_IN_THE_REAL_TRUTH = set(range(11, 19)) | {35, 36} | set(range(41, 59))
+SHOWN_IN_THE_REAL_TRUTH = set(range(1, 9)) | set(range(11, 19)) | {35, 36} \
+    | set(range(41, 59))
 
 
 def _padded(raw):
@@ -60,8 +61,12 @@ class TheDeskShowsTheseMeters(unittest.TestCase):
         self.assertEqual([osc.shows_meter(n) for n in range(1, 8)],
                          [False, True, True, True, True, False, True])
 
-    def test_a_mono_input_is_shown_while_there_are_no_stereo_ones(self):
-        self.assertTrue(made_up(vu_meters=["in1_pre"]).shows_meter(1))
+    def test_an_analog_input_is_shown(self):
+        self.assertTrue(made_up(vu_meters=["analog3_R"]).shows_meter(1))
+
+    def test_a_mono_input_is_not_shown(self):
+        """No truth has in<N>_pre since 2026-10-07; nothing reads it."""
+        self.assertFalse(made_up(vu_meters=["in1_pre"]).shows_meter(1))
 
 
 class OnlyTheNewestShownMeter(unittest.TestCase):
@@ -86,7 +91,7 @@ class OnlyTheNewestShownMeter(unittest.TestCase):
     def test_bundles_are_unpacked_nested_ones_too(self):
         beat = message("/beat", 1.0)
         shown = message("/vu/11", 0.4, 0.4)
-        packets = [bundle(message("/vu/11", 0.1, 0.1), message("/vu/1", 0.1, 0.1)),
+        packets = [bundle(message("/vu/11", 0.1, 0.1), message("/vu/60", 0.1, 0.1)),
                    bundle(beat, bundle(shown, message("/vu/66", 0.0, 0.0)))]
         self.assertEqual(kept(packets, self.osc), [beat, shown])
 

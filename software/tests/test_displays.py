@@ -381,42 +381,41 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0, 0])
 
-    def test_a_is_the_louder_side_of_the_channels_input(self):
-        self.displays.note_input(1, 0, 10 ** (-24 / 20))
-        self.displays.note_input(1, 1, 10 ** (-12 / 20))
+    def test_a_is_the_louder_side_of_the_channels_analog_input(self):
+        self.displays.note_analog(1, 0, 10 ** (-24 / 20))
+        self.displays.note_analog(1, 1, 10 ** (-12 / 20))
         self.step()
         self.assertAlmostEqual(self.levels("Deck 2")[8], 0.75)
 
     def test_a_channels_input_is_its_own_a_only(self):
-        self.displays.note_input(1, 0, 1.0)
+        self.displays.note_analog(1, 0, 1.0)
         self.step()
         for label in ("Deck 1", "Deck 3", "Deck 4"):
             self.assertEqual(self.levels(label)[8], 0.0, label)
         self.assertEqual(self.levels("Deck 2")[8], 1.0)
 
-    def test_while_a_stem_plays_a_shows_nothing(self):
-        """The channel's input meter carries whatever plays on the channel
-        (in<N>_pre, after TRIM/EQ): with a stem on it, that is the stem,
-        not the analog input. No other meter has the analog input, so A
-        stays silent rather than show the stem under its letter."""
+    def test_while_a_stem_plays_a_shows_the_analog_input(self):
+        """Since 2026-10-07 A meters the analog input itself (analog<N>_L/R),
+        not what plays: the DJ sees there is something on analog before
+        switching to it."""
         self.displays.show_channel(1, stem(2))
-        self.displays.note_input(1, 0, 1.0)
+        self.displays.note_analog(1, 0, 1.0)
         self.step()
-        self.assertEqual(self.levels("Deck 2")[8], 0.0)
+        self.assertEqual(self.levels("Deck 2")[8], 1.0)
 
     def test_an_over_on_the_input_lights_as_clip(self):
-        self.displays.note_input(0, 1, 2.0)
+        self.displays.note_analog(0, 1, 2.0)
         self.step()
         self.assertEqual(self.clips("Deck 1"), [False] * 8 + [True])
 
     def test_a_stopped_input_is_silence(self):
-        self.displays.note_input(0, 0, 1.0)
+        self.displays.note_analog(0, 0, 1.0)
         self.now = 5.0
         self.step()
         self.assertEqual(self.levels("Deck 1")[8], 0.0)
 
     def test_an_input_peak_draws_its_panel_on_the_step(self):
-        self.displays.note_input(3, 0, 1.0)
+        self.displays.note_analog(3, 0, 1.0)
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
         self.step()
@@ -692,6 +691,8 @@ class Painting(unittest.TestCase):
             "channel-music-cursor-on-a-stem": channel_picture(2, music, stem(6), 128, 64),
             "channel-cursor-on-the-playing-stem": channel_picture(5, music, stem(6), 128, 64),
             "channel-cursor-on-a-stem-plays": channel_picture(8, music, stem(1), 128, 64),
+            "channel-stem-plays-analog-has-a-level": channel_picture(
+                2, music[:8] + (0.7,), stem(1), 128, 64),
             "channel-cursor-on-a-analog-plays": channel_picture(8, analog, 0, 128, 64),
             "channel-analog-clips": channel_picture(8, (0.0,) * 8 + (1.0,), 0, 128, 64,
                                                     clips=clip_a),
@@ -845,6 +846,16 @@ class Painting(unittest.TestCase):
         above = [(x, y) for x in range(x0, x1 + 1) for y in range(y0 + 3, y1 - meter.pixels() + 1)]
         self.assertTrue(self.none_lit(image, above))
 
+    def test_a_paints_its_level_while_a_stem_plays(self):
+        """A is the analog input whatever plays (2026-10-07): a stem under
+        the bracket and A's bar filled at the same time."""
+        name = "channel-stem-plays-analog-has-a-level"
+        picture = self.states()[name]
+        image = self.paint_state(name, picture)
+        meter = picture.meters[8]
+        self.assertGreater(meter.pixels(), 0)
+        self.assertTrue(self.all_lit(image, self.bar_pixels(meter)))
+
     def test_a_silent_a_paints_only_its_letter(self):
         name = "channel-cursor-on-a-stem-plays"
         picture = self.states()[name]
@@ -904,7 +915,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 22)
+        self.assertEqual(len(self.with_brackets()), 23)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
