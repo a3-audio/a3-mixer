@@ -2,15 +2,19 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""A channel's display bar and its LEDs read one scale (2026-10-07).
+"""A display bar shows exactly what the channel's LEDs show (2026-10-07).
 
-The maintainer's photo: channel 2's LEDs lit half -- the green part -- while
-its display bar on A was almost full. The bar ran linear in dB from −48 to
-0, so −12 dBFS filled 75 % of it, where the LEDs light 4 of 8. Now every
-LED threshold sits at its eighth of the bar: a level that lights n LEDs
-fills at least n/8 of it and less than (n+1)/8. The displays are
-monochrome, so two marks beside every bar show where the LEDs turn yellow
-(−9 dBFS) and red (−3 dBFS)."""
+The maintainer: *"the display vu must show exactly the same as the channel
+input vu. yellow red marker must fit the dotted line in the displays."*
+
+The LEDs move in eight steps, so the bar does too: a level that lights n
+of the 8 LEDs fills exactly n/8 of the bar -- nothing between two steps,
+and nothing at all below the first LED (the sliver below -36 dBFS is gone).
+The held peak stands at the top of the segment of the LED the firmware
+keeps lit as hold. The displays are monochrome, so two marks beside every
+bar show where the LEDs turn yellow and red: at the bottom row of the first
+yellow segment and of the first red one -- the bar covers a mark exactly
+when an LED of that colour is lit."""
 
 import re
 import sys
@@ -23,11 +27,14 @@ sys.path.insert(0, str(SOFTWARE / "scripts"))
 sys.path.insert(0, str(SOFTWARE / "scripts" / "a3-mixer-set-display"))
 
 import a3_mixer_meters  # noqa: E402
-from a3_mixer_meters import CHANNEL_LED_THRESHOLDS_DB, channel_leds  # noqa: E402
+from a3_mixer_meters import (CHANNEL_LED_COLOURS, CHANNEL_LED_THRESHOLDS_DB,  # noqa: E402
+                             bar_fraction, channel_leds, channel_vu_line)
 
 W, H = 128, 64
 LEDS = len(CHANNEL_LED_THRESHOLDS_DB)
 JUST = 0.01
+#: Every threshold and a hair below each: where the LEDs change.
+EDGES_DB = tuple(db for t in CHANNEL_LED_THRESHOLDS_DB for db in (t - JUST, float(t)))
 
 
 def peak(db):
@@ -35,54 +42,44 @@ def peak(db):
     return 10 ** (db / 20)
 
 
-def level(db):
-    from display_panel import meter_level
-    return meter_level(peak(db))
+def colour_lit(db, colour):
+    """Whether a peak of `db` dBFS lights an LED of `colour`."""
+    return colour in CHANNEL_LED_COLOURS[:channel_leds(db)]
 
 
-class TheBarFillsTheEighthsTheLedsLight(unittest.TestCase):
-    def assertInEighth(self, db):
-        lit = channel_leds(db)
-        fraction = level(db)
-        if lit == LEDS:
-            self.assertEqual(fraction, 1.0, db)
-            return
-        self.assertGreaterEqual(fraction, lit / LEDS, db)
-        self.assertLess(fraction, (lit + 1) / LEDS, db)
-
-    def test_every_threshold_sits_at_its_eighth(self):
+class TheBarIsTheLeds(unittest.TestCase):
+    def test_every_threshold_fills_exactly_its_eighths(self):
         for count, threshold in enumerate(CHANNEL_LED_THRESHOLDS_DB, start=1):
             with self.subTest(threshold=threshold):
-                self.assertEqual(channel_leds(threshold), count)
-                self.assertAlmostEqual(level(threshold), count / LEDS)
-                self.assertInEighth(threshold)
+                self.assertEqual(bar_fraction(threshold), count / LEDS)
 
-    def test_just_below_every_threshold_stays_in_the_eighth_below(self):
-        for threshold in CHANNEL_LED_THRESHOLDS_DB:
+    def test_just_below_a_threshold_is_the_step_below(self):
+        for count, threshold in enumerate(CHANNEL_LED_THRESHOLDS_DB, start=1):
             with self.subTest(threshold=threshold):
-                self.assertInEighth(threshold - JUST)
+                self.assertEqual(bar_fraction(threshold - JUST), (count - 1) / LEDS)
 
-    def test_between_every_two_thresholds(self):
-        steps = CHANNEL_LED_THRESHOLDS_DB
-        for low, high in zip(steps, steps[1:]):
-            with self.subTest(between=(low, high)):
-                self.assertInEighth((low + high) / 2)
+    def test_nothing_between_two_steps(self):
+        for db in [x / 8 for x in range(-60 * 8, 6 * 8)]:
+            with self.subTest(db=db):
+                self.assertEqual(bar_fraction(db), channel_leds(db) / LEDS)
 
-    def test_the_photo_minus_twelve_is_half_a_bar_not_three_quarters(self):
-        self.assertEqual(channel_leds(-12.0), 4)
-        self.assertAlmostEqual(level(-12.0), 0.5)
+    def test_the_photo_minus_ten_is_half_a_bar(self):
+        """-10 dBFS lights four green LEDs: the bar is half, not over it."""
+        self.assertEqual(channel_leds(-10.0), 4)
+        self.assertEqual(bar_fraction(-10.0), 0.5)
 
-    def test_quiet_below_the_first_led_shows_less_than_an_eighth(self):
+    def test_below_the_first_led_the_bar_is_empty(self):
+        """No sliver below -36 dBFS any more: no LED, no bar (2026-10-07)."""
         for db in (-36 - JUST, -40.0, -47.0, -60.0, -120.0):
             with self.subTest(db=db):
-                self.assertEqual(channel_leds(db), 0)
-                self.assertInEighth(db)
+                self.assertEqual(bar_fraction(db), 0.0)
 
-    def test_below_the_first_led_the_bar_still_moves(self):
-        """A shows the analog input so the DJ sees something is there
-        before switching to it: a quiet input is a sliver, not nothing."""
-        self.assertGreater(level(-40.0), 0.0)
-        self.assertGreater(level(-40.0), level(-44.0))
+    def test_the_display_level_of_a_linear_peak(self):
+        from display_panel import meter_level
+        self.assertEqual(meter_level(peak(-10.0)), 0.5)
+        self.assertEqual(meter_level(peak(-40.0)), 0.0)
+        self.assertEqual(meter_level(1.0), 1.0)
+        self.assertEqual(meter_level(2.0), 1.0)
 
     def test_silence_is_an_empty_bar(self):
         from display_panel import meter_level
@@ -90,15 +87,13 @@ class TheBarFillsTheEighthsTheLedsLight(unittest.TestCase):
             with self.subTest(silence=silence):
                 self.assertEqual(meter_level(silence), 0.0)
 
-    def test_full_scale_and_over_fill_the_bar(self):
-        self.assertEqual(level(0.0), 1.0)
-        self.assertEqual(level(6.0), 1.0)
-        self.assertEqual(channel_leds(6.0), LEDS)
-
-    def test_it_rises_with_the_level(self):
-        dbs = [x / 4 for x in range(-60 * 4, 1)]
-        fractions = [level(db) for db in dbs]
-        self.assertEqual(fractions, sorted(fractions))
+    def test_the_hold_is_the_firmwares_hold_led(self):
+        """VU:slot:bar:hold lights LED `hold` (index = count - 1): the
+        display's hold line tops that LED's segment."""
+        for db in EDGES_DB + (-120.0, 6.0):
+            with self.subTest(db=db):
+                hold_index = int(channel_vu_line(0, -120.0, db).split(":")[3])
+                self.assertEqual(bar_fraction(db), (hold_index + 1) / LEDS)
 
 
 class TheScaleIsOneTable(unittest.TestCase):
@@ -107,73 +102,114 @@ class TheScaleIsOneTable(unittest.TestCase):
         self.assertIs(display_panel.CHANNEL_LED_THRESHOLDS_DB,
                       a3_mixer_meters.CHANNEL_LED_THRESHOLDS_DB)
 
-    def test_the_bar_and_its_inverse_agree(self):
-        from a3_mixer_meters import bar_db, bar_fraction
-        for db in (-48.0, -40.0, -36.0, -30.0, -12.0, -10.5, -1.0, 0.0):
-            with self.subTest(db=db):
-                self.assertAlmostEqual(bar_db(bar_fraction(db)), db)
+    def test_the_marks_are_where_the_colours_start(self):
+        from a3_mixer_meters import RED_FROM_FRACTION, YELLOW_FROM_FRACTION
+        self.assertEqual(YELLOW_FROM_FRACTION, CHANNEL_LED_COLOURS.index("yellow") / LEDS)
+        self.assertEqual(RED_FROM_FRACTION, CHANNEL_LED_COLOURS.index("red") / LEDS)
+        self.assertEqual((YELLOW_FROM_FRACTION, RED_FROM_FRACTION), (4 / 8, 6 / 8))
 
-
-class TheBarInPixels(unittest.TestCase):
-    """On the 45 rows of a channel bar an eighth is 5.6 rows: a level that
-    lights n LEDs lights the rows of the n-th eighth, to the row."""
-
-    def test_n_leds_light_the_rows_of_the_nth_eighth(self):
-        from display_panel import channel_picture, lit_rows
-        rows = None
-        for db in [t + d for t in CHANNEL_LED_THRESHOLDS_DB[:-1] for d in (-JUST, 0.0, 1.0)]:
-            with self.subTest(db=db):
-                meter = channel_picture(0, (level(db),) * 9, 0, W, H).meters[0]
-                rows = meter.box[3] - meter.box[1] + 1
-                lit = channel_leds(db)
-                self.assertGreaterEqual(meter.pixels(), lit_rows(lit / LEDS, rows))
-                self.assertLessEqual(meter.pixels(), lit_rows((lit + 1) / LEDS, rows))
-
-
-class MarksWhereTheLedsChangeColour(unittest.TestCase):
-    def test_yellow_and_red_start_where_the_firmware_says(self):
-        from a3_mixer_meters import RED_FROM_DB, YELLOW_FROM_DB
+    def test_the_colours_are_the_firmwares(self):
         source = FIRMWARE.read_text()
         table = source[source.index("channelLedColour[8]"):]
         names = re.findall(r"\b(GREEN|YELLOW|RED)\b", table[:table.index("};")])
-        self.assertEqual(YELLOW_FROM_DB, CHANNEL_LED_THRESHOLDS_DB[names.index("YELLOW")])
-        self.assertEqual(RED_FROM_DB, CHANNEL_LED_THRESHOLDS_DB[names.index("RED")])
-        self.assertEqual((YELLOW_FROM_DB, RED_FROM_DB), (-9, -3))
+        self.assertEqual([n.lower() for n in names], list(CHANNEL_LED_COLOURS))
+        self.assertEqual(CHANNEL_LED_THRESHOLDS_DB[names.index("YELLOW")], -9)
+        self.assertEqual(CHANNEL_LED_THRESHOLDS_DB[names.index("RED")], -3)
 
-    def pictures(self):
-        from display_panel import STEM_MODE, channel_picture, return_picture
-        return {
-            "channel": channel_picture(0, (0.0,) * 9, 0, W, H),
-            "return": return_picture(STEM_MODE, STEM_MODE, False, (0.0, 0.0), W, H),
-        }
+    def test_above_a_mark_exactly_when_its_colour_is_lit(self):
+        from a3_mixer_meters import RED_FROM_FRACTION, YELLOW_FROM_FRACTION
+        for db in EDGES_DB:
+            with self.subTest(db=db):
+                self.assertEqual(bar_fraction(db) > YELLOW_FROM_FRACTION,
+                                 colour_lit(db, "yellow"))
+                self.assertEqual(bar_fraction(db) > RED_FROM_FRACTION,
+                                 colour_lit(db, "red"))
 
+
+def pictures(level, hold=0.0):
+    """Every display drawn with all meters at `level` and `hold`."""
+    from display_panel import STEM_MODE, channel_picture, return_picture
+    return {
+        "channel": channel_picture(0, (level,) * 9, 0, W, H, holds=(hold,) * 9),
+        "return": return_picture(STEM_MODE, STEM_MODE, False, (level,) * 2, W, H,
+                                 holds=(hold,) * 2),
+    }
+
+
+def covered(meter, row):
+    """Whether `meter`'s bar covers panel row `row`."""
+    return meter.box[3] - meter.pixels() < row <= meter.box[3]
+
+
+class TheBarInPixels(unittest.TestCase):
+    """45 rows a bar on the 64-row panel, 5.625 an eighth: the segments are
+    lit_rows(n/8, rows) rows -- half up --, and the marks use the same
+    rounding, so a mark is always a segment's bottom row."""
+
+    def test_the_segments_on_the_real_panel(self):
+        from display_panel import lit_rows
+        meter = pictures(0.0)["channel"].meters[0]
+        rows = meter.box[3] - meter.box[1] + 1
+        self.assertEqual(rows, 45)
+        self.assertEqual([lit_rows(n / LEDS, rows) for n in range(LEDS + 1)],
+                         [0, 6, 11, 17, 23, 28, 34, 39, 45])
+
+    def test_n_leds_light_the_rows_of_n_segments(self):
+        from display_panel import lit_rows
+        for n in range(LEDS + 1):
+            for name, picture in pictures(n / LEDS).items():
+                for meter in picture.meters:
+                    with self.subTest(name, n=n, meter=meter.box):
+                        rows = meter.box[3] - meter.box[1] + 1
+                        self.assertEqual(meter.pixels(), lit_rows(n / LEDS, rows))
+
+    def test_the_marks_are_the_bottom_rows_of_the_first_yellow_and_red_segment(self):
+        from display_panel import lit_rows, meter_marks
+        yellow = CHANNEL_LED_COLOURS.index("yellow")
+        red = CHANNEL_LED_COLOURS.index("red")
+        for name, picture in pictures(0.0).items():
+            for meter in picture.meters:
+                with self.subTest(name, meter=meter.box):
+                    y1 = meter.box[3]
+                    rows = y1 - meter.box[1] + 1
+                    marks = [box[1] for box in meter_marks(meter.box)]
+                    self.assertEqual(marks, [y1 - lit_rows(yellow / LEDS, rows),
+                                             y1 - lit_rows(red / LEDS, rows)])
+
+    def test_the_bar_covers_a_mark_exactly_when_its_colour_is_lit(self):
+        from display_panel import meter_marks, meter_level
+        for db in EDGES_DB:
+            for name, picture in pictures(meter_level(peak(db) * (1 + 1e-9))).items():
+                for meter in picture.meters:
+                    yellow_row, red_row = (box[1] for box in meter_marks(meter.box))
+                    with self.subTest(name, db=db, meter=meter.box):
+                        self.assertEqual(covered(meter, yellow_row), colour_lit(db, "yellow"))
+                        self.assertEqual(covered(meter, red_row), colour_lit(db, "red"))
+
+    def test_the_hold_line_tops_the_held_leds_segment(self):
+        from display_panel import lit_rows
+        for n in range(1, LEDS + 1):
+            for name, picture in pictures(0.0, n / LEDS).items():
+                for meter in picture.meters:
+                    with self.subTest(name, n=n, meter=meter.box):
+                        rows = meter.box[3] - meter.box[1] + 1
+                        self.assertEqual(meter.hold_row(),
+                                         meter.box[3] - lit_rows(n / LEDS, rows) + 1)
+
+
+class MarksBesideTheBar(unittest.TestCase):
     def test_every_meter_has_a_yellow_and_a_red_mark(self):
         from display_panel import meter_marks
-        for name, picture in self.pictures().items():
+        for name, picture in pictures(0.0).items():
             for meter in picture.meters:
                 with self.subTest(name, meter=meter.box):
                     marks = [m for m in picture.marks if m in meter_marks(meter.box)]
                     self.assertEqual(len(marks), len(meter_marks(meter.box)))
                     self.assertEqual(len({m[1] for m in marks}), 2)
 
-    def test_a_mark_is_at_the_top_row_of_a_bar_at_its_level(self):
-        """A bar exactly at −9 dBFS reaches the yellow mark's row, one at
-        −3 the red mark's: the mark is where the bar's top stands."""
-        from a3_mixer_meters import RED_FROM_DB, YELLOW_FROM_DB
-        from display_panel import STEM_MODE, channel_picture, meter_marks, return_picture
-        for db in (YELLOW_FROM_DB, RED_FROM_DB):
-            pictures = (channel_picture(0, (level(db),) * 9, 0, W, H),
-                        return_picture(STEM_MODE, STEM_MODE, False, (level(db),) * 2, W, H))
-            for picture in pictures:
-                for meter in picture.meters:
-                    with self.subTest(db=db, meter=meter.box):
-                        top = meter.box[3] - meter.pixels() + 1
-                        rows = {box[1] for box in meter_marks(meter.box)}
-                        self.assertIn(top, rows)
-
     def test_a_mark_stands_beside_the_bar_never_on_it(self):
         from display_panel import meter_marks
-        for name, picture in self.pictures().items():
+        for name, picture in pictures(0.0).items():
             for meter in picture.meters:
                 x0, y0, x1, y1 = meter.box
                 for mx0, my0, mx1, my1 in meter_marks(meter.box):
@@ -183,7 +219,7 @@ class MarksWhereTheLedsChangeColour(unittest.TestCase):
                         self.assertTrue(mx1 < x0 or mx0 > x1)
 
     def test_the_marks_stay_on_the_panel_and_clear_of_the_bracket(self):
-        for name, picture in self.pictures().items():
+        for name, picture in pictures(0.0).items():
             bracket_bottom = picture.active[3]
             for x0, y0, x1, y1 in picture.marks:
                 with self.subTest(name, mark=(x0, y0, x1, y1)):
@@ -193,7 +229,7 @@ class MarksWhereTheLedsChangeColour(unittest.TestCase):
     def test_the_marks_cover_no_bar_and_no_divider(self):
         """In a 2-column gap the marks of two neighbours meet; they must
         not touch either neighbour's bar or a divider."""
-        for name, picture in self.pictures().items():
+        for name, picture in pictures(0.0).items():
             bars = {(x, y) for m in picture.meters
                     for x in range(m.box[0], m.box[2] + 1) for y in range(m.box[1], m.box[3] + 1)}
             lines = {(x, y) for x0, y0, x1, y1 in picture.dividers

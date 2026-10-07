@@ -33,12 +33,19 @@ Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
 and the held peak as a one-row line over the bar, 1.5 s and then falling.
 A panel is redrawn only when its pixels move.
 
-Every bar reads the channel LEDs' scale (2026-10-07; a3_mixer_meters
-bar_fraction): a level that lights n of the 8 LEDs fills n/8 of the bar.
-It used to run linear in dB from -48, and -12 dBFS filled three quarters
-of a bar beside four lit LEDs. The displays are monochrome, so a one-row
-tick left of every bar marks where the LEDs turn yellow (-9 dBFS) and red
-(-3 dBFS): beside the bar, never on it, so it is a scale and not a level.
+Every bar shows exactly what the channel LEDs show (2026-10-07;
+a3_mixer_meters bar_fraction): a level that lights n of the 8 LEDs fills
+exactly n/8 of the bar, in eight steps as the LEDs move, and a level that
+lights none leaves it empty -- the sliver below -36 dBFS is gone, decided
+2026-10-07. The hold line tops the segment of the LED the firmware keeps
+lit as hold. The bar used to run linear in dB (from -48, later between the
+thresholds) and stood over the yellow mark while only green LEDs were lit.
+The displays are monochrome, so a one-row tick left of every bar marks
+where the LEDs turn yellow and red: the bottom row of the first yellow
+segment (4/8, the LED at -9 dBFS) and of the first red one (6/8, -3 dBFS),
+rounded as the bar is (display_panel.lit_rows), so the bar covers a mark
+exactly when an LED of that colour is lit. Beside the bar, never on it, so
+it is a scale and not a level.
 
 Every meter shows a clip (2026-10-04): a step whose held peak is over full
 scale (above 1.0 linear) lights it, and it stays lit a second after the

@@ -42,8 +42,8 @@ _SCRIPTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SCRIPTS not in sys.path:
     sys.path.append(_SCRIPTS)
 
-from a3_mixer_meters import (CHANNEL_LED_THRESHOLDS_DB, RED_FROM_DB,  # noqa: E402,F401
-                             YELLOW_FROM_DB, bar_fraction)
+from a3_mixer_meters import (CHANNEL_LED_THRESHOLDS_DB, RED_FROM_FRACTION,  # noqa: E402,F401
+                             YELLOW_FROM_FRACTION, bar_fraction)
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
 #: I2C-Bus und unter welcher Adresse es antwortet, wie herum es eingebaut ist
@@ -279,16 +279,17 @@ GROUP_GAP = 7
 
 def meter_level(peak):
     """0.0-1.0 for a linear peak on the channel LEDs' scale (bar_fraction):
-    a peak that lights n of the 8 LEDs fills n/8 of the bar and less than
-    (n+1)/8 (2026-10-07). Anything odd is silence."""
+    a peak that lights n of the 8 LEDs fills exactly n/8 of the bar
+    (2026-10-07). Anything odd is silence."""
     if not isinstance(peak, (int, float)) or isinstance(peak, bool) or not peak > 0:
         return 0.0
     return bar_fraction(20 * math.log10(peak))
 
 
-#: The levels marked beside every meter: where the channel LEDs turn yellow,
-#: and red. The displays are monochrome, so the colours are a place.
-MARKED_DB = (YELLOW_FROM_DB, RED_FROM_DB)
+#: The heights marked beside every meter, as shares of the bar: the bottom
+#: of the first yellow and of the first red LED's segment. The displays are
+#: monochrome, so the colours are a place.
+MARKED_FRACTIONS = (YELLOW_FROM_FRACTION, RED_FROM_FRACTION)
 #: A mark is a horizontal tick in the gap left of its bar, a tenth of the
 #: bar's width long (a pixel at least). Left only: ticks on both sides met
 #: across a channel's 2-column gap and widened a bar standing at a mark
@@ -306,15 +307,17 @@ def mark_length(box):
 
 def meter_marks(box, length=None):
     """The marks beside a meter's `box`: one tick `length` columns long
-    (mark_length unless given) per MARKED_DB level, left of the bar, in the
-    row where a bar at that level has its top -- the bar reaching a mark is
-    the LED of that colour lighting."""
+    (mark_length unless given) per MARKED_FRACTIONS height, left of the
+    bar, in the bottom row of the first segment of that colour -- the row
+    just above a bar filled to that share, rounded as the bar is
+    (lit_rows). The bar covers a mark exactly when an LED of its colour is
+    lit."""
     x0, y0, _, y1 = box
     length = mark_length(box) if length is None else length
     rows = y1 - y0 + 1
     marks = []
-    for db in MARKED_DB:
-        y = y1 - lit_rows(bar_fraction(db), rows) + 1
+    for fraction in MARKED_FRACTIONS:
+        y = y1 - lit_rows(fraction, rows)
         marks.append((x0 - length, y, x0 - 1, y))
     return tuple(marks)
 

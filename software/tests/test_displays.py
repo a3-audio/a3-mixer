@@ -483,7 +483,7 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(self.levels("Deck 1")[0], 1.0)
 
-    def test_the_meter_falls_smoothly(self):
+    def test_the_meter_falls_at_the_release_rate(self):
         self.displays.note_peak(1, 1.0)
         self.step()
         self.displays.note_peak(1, 0.001)
@@ -492,16 +492,19 @@ class Meters(unittest.TestCase):
 
     def test_the_peak_is_held_over_the_falling_bar(self):
         """Fed by raw peaks (meter-ballistics): the bar falls 20 dB/s, the
-        held peak stays 1.5 s, then falls at the same rate."""
+        held peak stays 1.5 s, then falls at the same rate. Checked a step
+        before the hold ends: the bar steps as the LEDs do, and the full
+        LED is 0 dBFS exactly, so a hold falling by float dust would
+        already be an LED down."""
         self.displays.note_peak(1, 1.0)
         self.step()
         seconds = 0.0
-        while seconds < 1.5 - 1e-9:
+        while seconds < 1.4 - 1e-9:
             self.step()
             seconds = round(seconds + self.step_seconds(), 9)
-        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(1.5))
+        self.assertAlmostEqual(self.levels("Deck 1")[0], self.after(1.4))
         self.assertAlmostEqual(self.holds("Deck 1")[0], 1.0)
-        for _ in range(round(0.5 / self.step_seconds())):
+        for _ in range(round(0.6 / self.step_seconds())):
             self.step()
         self.assertAlmostEqual(self.holds("Deck 1")[0], self.after(0.5))
 
@@ -510,12 +513,12 @@ class Meters(unittest.TestCase):
         self.step()
         for _ in range(round(1.0 / self.step_seconds())):
             self.step()
-        self.displays.note_peak(1, 10 ** (-6 / 20))
+        self.displays.note_peak(1, 10 ** (-5 / 20))
         self.step()
         for _ in range(round(1.4 / self.step_seconds())):
             self.step()
         from a3_mixer_meters import bar_fraction
-        self.assertAlmostEqual(self.holds("Deck 1")[0], bar_fraction(-6.0))
+        self.assertAlmostEqual(self.holds("Deck 1")[0], bar_fraction(-5.0))
 
     def test_the_timing_is_the_one_given(self):
         from a3_mixer_meters import MeterTiming, bar_fraction
@@ -541,16 +544,17 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(4, len(self.rig.drawn))
 
-    def test_a_move_of_less_than_a_pixel_posts_nothing(self):
-        """The bus carries ~17 draws a second (measured 2026-10-04): a panel
-        whose floats moved but whose pixels did not is not redrawn."""
-        self.displays.note_peak(1, 1.0)
+    def test_a_move_inside_one_led_posts_nothing(self):
+        """The bus carries ~17 draws a second (measured 2026-10-04): a level
+        that moved but lights the same LEDs moves no pixel and is not
+        redrawn."""
+        self.displays.note_peak(1, 10 ** (-1 / 20))
         self.step()
         self.rig.drawn.clear()
-        # 0.1 dB down: the top eighth is 3 dB over 5.6 rows, so under a row.
-        self.displays.note_peak(1, 10 ** (-0.1 / 20))
+        # -1 to -2 dBFS: both light 7 LEDs.
+        self.displays.note_peak(1, 10 ** (-2 / 20))
         self.step()
-        self.assertNotEqual(self.levels("Deck 1")[0], 1.0)
+        self.assertEqual(self.levels("Deck 1")[0], 7 / 8)
         self.assertEqual([], self.rig.drawn)
 
     def test_a_fall_redraws_until_it_rests(self):
