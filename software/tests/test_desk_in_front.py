@@ -45,6 +45,27 @@ class CoreIsNewToTheDesk(unittest.TestCase):
         arrival.forget()
         self.assertTrue(arrival.heard(now=2.0))
 
+    def test_a_changed_boot_id_is_news_within_the_silence(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0, boot_id="one")
+        self.assertTrue(arrival.heard(now=2.0, boot_id="two"))
+
+    def test_the_same_boot_id_is_the_steady_beat(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0, boot_id="one")
+        self.assertFalse(arrival.heard(now=2.0, boot_id="one"))
+
+    def test_an_old_core_without_boot_id_keeps_the_silence_rule_only(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0)
+        self.assertFalse(arrival.heard(now=2.0))
+        self.assertTrue(arrival.heard(now=40.0))
+
+    def test_a_core_that_starts_to_send_a_boot_id_is_a_new_core(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0)
+        self.assertTrue(arrival.heard(now=2.0, boot_id="one"))
+
 
 class TheDeskReactsToCore(unittest.TestCase):
     def setUp(self):
@@ -167,13 +188,28 @@ class TheAnnouncementReachesTheReaction(unittest.TestCase):
     def test_hear_tells_of_every_announcement(self):
         heard = []
         sock = FakeSocket([message(ANNOUNCE_ADDRESS, "http://x", "b" * 64)] * 2)
-        hear(sock, lambda: heard.append(1), sock.running)
+        hear(sock, lambda boot_id: heard.append(1), sock.running)
         self.assertEqual(len(heard), 2)
+
+    def test_hear_passes_the_boot_id_on_when_there_is_one(self):
+        heard = []
+        sock = FakeSocket([message(ANNOUNCE_ADDRESS, "http://x", "b" * 64, "boot1"),
+                           message(ANNOUNCE_ADDRESS, "http://x", "b" * 64)])
+        hear(sock, heard.append, sock.running)
+        self.assertEqual(heard, ["boot1", None])
+
+    def test_a_changed_boot_id_makes_the_desk_say_hello_again(self):
+        log = []
+        reaction = DeskInFront(CoreArrival(), log.append, lambda: log.append("dump"), log.append)
+        reaction.heard(now=0.0, boot_id="one")
+        reaction.heard(now=2.0, boot_id="one")
+        reaction.heard(now=4.0, boot_id="two")
+        self.assertEqual(log, ["hello", "dump", "hello", "dump"])
 
     def test_hear_ignores_other_traffic(self):
         heard = []
         sock = FakeSocket([message("/vu/1", "x")])
-        hear(sock, lambda: heard.append(1), sock.running)
+        hear(sock, lambda boot_id: heard.append(1), sock.running)
         self.assertEqual(heard, [])
 
 

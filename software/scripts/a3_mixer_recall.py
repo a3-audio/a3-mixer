@@ -113,20 +113,23 @@ class StateAsker:
 
 class CoreArrival:
     """Whether an announcement (/core/here) means Core is new to the desk:
-    the first one, or the first after `silence` seconds without any. Core
-    announces every 2 s, so 5 s is two missed beats. The announcement carries
-    only the truth's address and fingerprint, no instance: a Core restarted
-    faster than `silence` cannot be told from the old one here."""
+    the first one, the first after `silence` seconds without any, or one
+    whose boot id differs from the last (a Core restarted faster than
+    `silence`). Core announces every 2 s, so 5 s is two missed beats. An
+    older Core sends no boot id (None); only the silence rule serves then."""
 
     DEFAULT_SILENCE = 5.0
 
     def __init__(self, silence=DEFAULT_SILENCE):
         self._silence = silence
         self._last = None
+        self._boot_id = None
 
-    def heard(self, now):
-        news = self._last is None or now - self._last > self._silence
+    def heard(self, now, boot_id=None):
+        news = (self._last is None or now - self._last > self._silence
+                or boot_id != self._boot_id)
         self._last = now
+        self._boot_id = boot_id
         return news
 
     def forget(self):
@@ -144,8 +147,8 @@ class DeskInFront:
         self._arrival = arrival
         self._send, self._dump, self._report = send, dump, report
 
-    def heard(self, now):
-        if not self._arrival.heard(now):
+    def heard(self, now, boot_id=None):
+        if not self._arrival.heard(now, boot_id):
             return
         try:
             self._send("hello")
