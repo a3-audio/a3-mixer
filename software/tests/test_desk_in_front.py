@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 Patric Schmitz, Raphael Eismann
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""The desk is in front: it says hello and sends its positions the moment it
+hears Core, not when its 30 s timer comes round (rig, 2026-10-14: after a
+Core reboot the desk was ignored for up to 30 s, because Core only takes a
+device's values after its hello).
+"""
+
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from a3_mixer_positions import Positions                          # noqa: E402
+from a3_mixer_recall import CoreArrival, DeskInFront  # noqa: E402
+from a3_mixer_truth import ANNOUNCE_ADDRESS, hear           # noqa: E402
+
+
+class CoreIsNewToTheDesk(unittest.TestCase):
+    def test_the_first_announcement_is_news(self):
+        self.assertTrue(CoreArrival().heard(now=0.0))
+
+    def test_the_steady_beat_is_not(self):
+        arrival = CoreArrival()
+        arrival.heard(now=0.0)
+        self.assertFalse(arrival.heard(now=2.0))
+        self.assertFalse(arrival.heard(now=4.0))
+
+    def test_a_core_back_after_silence_is_news(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0)
+        self.assertTrue(arrival.heard(now=40.0))
+
+    def test_two_missed_beats_are_not_yet_silence(self):
+        arrival = CoreArrival(silence=5.0)
+        arrival.heard(now=0.0)
+        self.assertFalse(arrival.heard(now=4.9))
+
+    def test_a_forgotten_arrival_is_news_again(self):
+        arrival = CoreArrival()
+        arrival.heard(now=0.0)
+        arrival.forget()
+        self.assertTrue(arrival.heard(now=2.0))
+
+
+class TheDeskReactsToCore(unittest.TestCase):
+    def setUp(self):
+        self.log = []
+
+    def reaction(self, send=None):
+        return DeskInFront(CoreArrival(),
+                           send or self.log.append,
+                           lambda: self.log.append("dump"),
+                           lambda text: self.log.append(("report", text)))
+
+    def test_hello_then_positions_on_the_first_announcement(self):
+        self.reaction().heard(now=0.0)
+        self.assertEqual(self.log, ["hello", "dump"])
+
+    def test_nothing_on_the_steady_beat(self):
+        reaction = self.reaction()
+        reaction.heard(now=0.0)
+        self.log.clear()
+        reaction.heard(now=2.0)
+        self.assertEqual(self.log, [])
+
+    def test_a_failed_hello_sends_no_positions_and_is_tried_next_time(self):
+        calls = []
+
+        def send(kind):
+            calls.append(kind)
+            if len(calls) == 1:
+                raise OSError("network unreachable")
+
+        reaction = self.reaction(send)
+        reaction.heard(now=0.0)
+        self.assertEqual([entry[0] for entry in self.log], ["report"])
+        reaction.heard(now=2.0)
+        self.assertEqual((calls, self.log[-1]), (["hello", "hello"], "dump"))
+
+
+class Table(unittest.TestCase):
+    def test_the_last_value_of_each_address_is_kept(self):
+        positions, sent = Positions(), []
+        positions.note("/a", "1")
+        positions.note("/b", "2")
+        positions.note("/a", "3")
+        positions.send_all(lambda address, value: sent.append((address, value)),
+                           lambda text: None)
+        self.assertEqual(sorted(sent), [("/a", "3"), ("/b", "2")])
+
+    def test_an_empty_table_sends_nothing_and_says_so_once(self):
+        positions, sent, said = Positions(), [], []
+        for _ in range(3):
+            positions.send_all(lambda *message: sent.append(message), said.append)
+        self.assertEqual((sent, len(said)), ([], 1))
+        self.assertIn("no positions known yet", said[0])
+
+    def test_the_table_is_not_empty_any_more_after_a_note(self):
+        positions, said = Positions(), []
+        positions.send_all(lambda *m: None, said.append)
+        positions.note("/a", "1")
+        positions.send_all(lambda *m: None, said.append)
+        positions.send_all(lambda *m: None, said.append)
+        self.assertEqual(len(said), 1)
+
+
+def message(address, *strings):
+    def padded(text):
+        raw = text.encode() + b"\0"
+        return raw + b"\0" * (-len(raw) % 4)
+    return padded(address) + padded("," + "s" * len(strings)) + b"".join(
+        padded(s) for s in strings)
+
+
+class FakeSocket:
+    def __init__(self, packets):
+        self.packets = list(packets)
+
+    def running(self):
+        return bool(self.packets)
+
+    def recvfrom(self, size):
+        return self.packets.pop(0), ("x", 0)
+
+
+class TheAnnouncementReachesTheReaction(unittest.TestCase):
+    def test_hear_tells_of_every_announcement(self):
+        heard = []
+        sock = FakeSocket([message(ANNOUNCE_ADDRESS, "http://x", "b" * 64)] * 2)
+        hear(sock, lambda: heard.append(1), sock.running)
+        self.assertEqual(len(heard), 2)
+
+    def test_hear_ignores_other_traffic(self):
+        heard = []
+        sock = FakeSocket([message("/vu/1", "x")])
+        hear(sock, lambda: heard.append(1), sock.running)
+        self.assertEqual(heard, [])
+
+
+class WiredIntoTheDesk(unittest.TestCase):
+    source = (Path(__file__).resolve().parents[1] / "scripts/a3-mixer.py").read_text()
+
+    def test_the_desk_uses_the_pieces(self):
+        for word in ("DeskInFront(", "Positions()", "target=hear"):
+            self.assertIn(word, self.source)
+
+    def test_pots_are_noted_before_they_are_sent(self):
+        self.assertIn("positions.note(", self.source)
+
+
+if __name__ == "__main__":
+    unittest.main()

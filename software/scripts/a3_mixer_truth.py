@@ -109,6 +109,16 @@ def take(url, announced, path, fetch=fetch, usable=None):
     return attempt(url, announced, path, fetch=fetch, usable=usable) is None
 
 
+def hear(sock, on_here, running):
+    """While running: tell `on_here()` of every /core/here, and nothing
+    else. Apart from keep() on purpose: the desk's serial reader is a
+    process of its own and listens for Core with a socket of its own."""
+    while running():
+        data, _ = sock.recvfrom(4096)
+        if announcement(data) is not None:
+            on_here()
+
+
 def keep(sock, own, path, restart, report, running, fetch=fetch):
     """While running: on a fingerprint the desk does not have, take the
     truth and restart; a refused one is reported and the loop goes on."""
