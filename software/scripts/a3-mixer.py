@@ -24,7 +24,7 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-from a3_mixer_positions import Positions
+from a3_mixer_positions import ASK_THE_PANEL, Positions
 from a3_mixer_recall import (CoreArrival, DeskInFront, HelloEvery, RecallRequest,
                              StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
@@ -358,7 +358,8 @@ def be_in_front_of_core():
     reaction = DeskInFront(
         CoreArrival(),
         lambda kind: say_hello(),
-        lambda: positions.send_all(osc_core.send_message, say),
+        lambda: positions.send_all(osc_core.send_message, say,
+                                   ask_panel=ask_the_panel),
         say)
     threading.Thread(
         target=hear, daemon=True, name="core arrival",
@@ -370,8 +371,16 @@ def sendData(data): # send Serial data
     data += "\r\n"
     ser.write(data.encode())
 
+def ask_the_panel():
+    """Every pot and fader once from the panel (a3_mixer_positions): after a
+    restart of this script the table is empty, and the panel sends a pot only
+    when it moves. Harmless to repeat; an older firmware ignores it."""
+    sendData(ASK_THE_PANEL)
+
+
 def serial_handler(): # dispatch from serial stream and send to osc
 
+    ask_the_panel()
     be_in_front_of_core()
     while True:
         line = ser.readline().decode('utf-8').rstrip()
