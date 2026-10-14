@@ -44,18 +44,34 @@ def _string(data, at):
     return text, end + 1 + (-(end + 1 - at) % 4)
 
 
-def announcement(data):
-    """(url, fingerprint) from a /core/here message, else None."""
+def _announced_strings(data):
+    """The strings of a /core/here message: two from an older Core, three
+    (url, fingerprint, boot id) from one with a boot id; else None."""
     try:
         address, at = _string(data, 0)
         tags, at = _string(data, at)
-        if address != ANNOUNCE_ADDRESS or tags != ",ss":
+        if address != ANNOUNCE_ADDRESS or tags not in (",ss", ",sss"):
             return None
-        url, at = _string(data, at)
-        mark, _ = _string(data, at)
+        strings = []
+        for _ in tags[1:]:
+            text, at = _string(data, at)
+            strings.append(text)
     except (ValueError, UnicodeDecodeError, struct.error):
         return None
-    return url, mark
+    return strings
+
+
+def announcement(data):
+    """(url, fingerprint) from a /core/here message, else None."""
+    strings = _announced_strings(data)
+    return None if strings is None else (strings[0], strings[1])
+
+
+def announced_boot_id(data):
+    """The boot id of a /core/here message: new with every Core start. None
+    from an older Core that sends none, or from anything else."""
+    strings = _announced_strings(data)
+    return strings[2] if strings and len(strings) == 3 else None
 
 
 def needs_fetch(announced, own):
@@ -110,13 +126,13 @@ def take(url, announced, path, fetch=fetch, usable=None):
 
 
 def hear(sock, on_here, running):
-    """While running: tell `on_here()` of every /core/here, and nothing
+    """While running: tell `on_here(boot_id)` of every /core/here, and nothing
     else. Apart from keep() on purpose: the desk's serial reader is a
     process of its own and listens for Core with a socket of its own."""
     while running():
         data, _ = sock.recvfrom(4096)
         if announcement(data) is not None:
-            on_here()
+            on_here(announced_boot_id(data))
 
 
 def keep(sock, own, path, restart, report, running, fetch=fetch):

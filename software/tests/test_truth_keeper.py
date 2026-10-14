@@ -19,7 +19,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from a3_mixer_truth import (ANNOUNCE_ADDRESS, announcement, cache_path,  # noqa: E402
+from a3_mixer_truth import (ANNOUNCE_ADDRESS, announced_boot_id, announcement, cache_path,  # noqa: E402
                             fetch, keep, needs_fetch, take, verified,
                             wait_for_truth, write_whole)
 
@@ -57,8 +57,20 @@ class TheAnnouncement(unittest.TestCase):
         data = osc(ANNOUNCE_ADDRESS, "http://10.0.0.1:9080/api/truth", "a" * 64)
         self.assertEqual(announcement(data), ("http://10.0.0.1:9080/api/truth", "a" * 64))
 
+    def test_a_boot_id_after_them_changes_nothing_about_them(self):
+        data = osc(ANNOUNCE_ADDRESS, "http://10.0.0.1:9080/api/truth", "a" * 64, "boot1")
+        self.assertEqual(announcement(data), ("http://10.0.0.1:9080/api/truth", "a" * 64))
+
+    def test_the_boot_id_is_the_third_string_or_none(self):
+        three = osc(ANNOUNCE_ADDRESS, "http://x", "a" * 64, "boot1")
+        two = osc(ANNOUNCE_ADDRESS, "http://x", "a" * 64)
+        self.assertEqual(announced_boot_id(three), "boot1")
+        self.assertIsNone(announced_boot_id(two))
+        self.assertIsNone(announced_boot_id(b"garbage"))
+
     def test_anything_else_is_none(self):
-        for data in (osc("/vu/1", 0.1, 0.2), osc(ANNOUNCE_ADDRESS, "only one"), b"garbage"):
+        for data in (osc("/vu/1", 0.1, 0.2), osc(ANNOUNCE_ADDRESS, "only one"),
+                     osc(ANNOUNCE_ADDRESS, "a", "b", "c", "d"), b"garbage"):
             self.assertIsNone(announcement(data))
 
 

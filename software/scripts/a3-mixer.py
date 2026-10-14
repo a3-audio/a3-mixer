@@ -362,7 +362,7 @@ def be_in_front_of_core():
         say)
     threading.Thread(
         target=hear, daemon=True, name="core arrival",
-        args=(listener, lambda: reaction.heard(time.monotonic()),
+        args=(listener, lambda boot_id: reaction.heard(time.monotonic(), boot_id),
               lambda: True)).start()
 
 
