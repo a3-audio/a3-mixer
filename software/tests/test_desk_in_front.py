@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from a3_mixer_positions import Positions                          # noqa: E402
+from a3_mixer_positions import ASK_THE_PANEL, Positions           # noqa: E402
 from a3_mixer_recall import CoreArrival, DeskInFront  # noqa: E402
 from a3_mixer_truth import ANNOUNCE_ADDRESS, hear           # noqa: E402
 
@@ -108,6 +108,42 @@ class Table(unittest.TestCase):
         self.assertEqual(len(said), 1)
 
 
+class AskThePanel(unittest.TestCase):
+    """The script may restart while the panel keeps running, and the panel
+    sends a pot only when it moves: the table stays empty. So the script asks
+    the panel to send every pot once (2026-10-14)."""
+
+    firmware = (Path(__file__).resolve().parents[2]
+                / "hardware/mainboard/firmware/src/main.cpp").read_text()
+
+    def test_an_empty_table_asks_the_panel(self):
+        asked = []
+        Positions().send_all(lambda *m: None, lambda text: None,
+                             ask_panel=lambda: asked.append(1))
+        self.assertEqual(asked, [1])
+
+    def test_a_known_table_does_not_ask(self):
+        positions, asked = Positions(), []
+        positions.note("/a", "1")
+        positions.send_all(lambda *m: None, lambda text: None,
+                           ask_panel=lambda: asked.append(1))
+        self.assertEqual(asked, [])
+
+    def test_the_question_is_a_meter_line_an_old_firmware_ignores(self):
+        # The old firmware reads "VU:<slot>:<a>:<b>" to the end of the line
+        # and draws only slots 0..11; any other word leaves the line's rest
+        # in its buffer and shifts every later line. Slot -1 it reads whole
+        # and draws nothing.
+        word, slot, first, second = ASK_THE_PANEL.split(":")
+        self.assertEqual(word, "VU")
+        self.assertFalse(0 <= int(slot) < 12)
+        int(first), int(second)
+
+    def test_the_firmware_knows_the_question(self):
+        slot = ASK_THE_PANEL.split(":")[1]
+        self.assertIn(f"SEND_ALL_POTS_SLOT = {slot};", self.firmware)
+
+
 def message(address, *strings):
     def padded(text):
         raw = text.encode() + b"\0"
@@ -150,6 +186,13 @@ class WiredIntoTheDesk(unittest.TestCase):
 
     def test_pots_are_noted_before_they_are_sent(self):
         self.assertIn("positions.note(", self.source)
+
+    def test_the_reader_asks_the_panel_when_it_starts(self):
+        reader = self.source.split("def serial_handler")[1]
+        self.assertIn("ask_the_panel()", reader.split("while True")[0])
+
+    def test_an_empty_table_asks_the_panel_when_core_appears(self):
+        self.assertIn("ask_panel=ask_the_panel", self.source)
 
 
 if __name__ == "__main__":

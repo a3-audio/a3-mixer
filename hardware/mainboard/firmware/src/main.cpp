@@ -97,6 +97,17 @@ const int num_tracks = 6; // including master and fx sections
 const int num_pots = 8;
 int pots_sent[num_tracks][num_pots];
 
+// A value no reading (0..1023) is within the deadband of: a pot holding it
+// is sent on the next scan, wherever it stands.
+const int POT_NOT_SENT = -1024;
+
+// "VU:-1:x:y" asks for every pot and fader once (the desk script after its
+// own restart: it knows no position, and a pot is sent only when it moves).
+// A meter line on purpose: an older firmware reads it whole and draws
+// nothing for a slot outside 0..11, where a new word would leave the rest of
+// the line in its buffer and garble every line after it.
+const int SEND_ALL_POTS_SLOT = -1;
+
 const std::array<std::string, 6 > track_names = {
     "0",
     "1",
@@ -225,6 +236,15 @@ void fxButtons()
   }
 }
 
+void forgetSentPots()
+{
+  for(int track = 0 ; track < num_tracks ; ++track) {
+    for(int pot = 0 ; pot < num_pots ; ++pot) {
+      pots_sent[track][pot] = POT_NOT_SENT;
+    }
+  }
+}
+
 void leds()
 {
   if (Serial.available()) {
@@ -240,6 +260,12 @@ void leds()
       int vu_index = Serial.readStringUntil(':').toInt();
       int peak_index = Serial.readStringUntil(':').toInt();
       int rms_index = Serial.readStringUntil('\n').toInt();
+
+      // Not sent here but by the next scan: readMux keeps its timing, and
+      // the lines come in its usual order.
+      if(vu_index == SEND_ALL_POTS_SLOT) {
+        forgetSentPots();
+      }
 
       // per-channel VU meters
       // VU:slot:bar:hold -- the bar's top LED and the held peak's LED
@@ -322,13 +348,11 @@ void initEncoderButtons()
   }
 }
 
+// Every pot once at start-up -- with 0 here, one resting within the deadband
+// of the bottom (a fader pulled down) was never sent.
 void initPotentiometer()
 {
-  for(int track = 0 ; track < num_tracks ; ++track) {
-    for(int pot = 0 ; pot < num_pots ; ++pot) {
-      pots_sent[track][pot] = 0;
-    }
-  }
+  forgetSentPots();
 }
 
 void initLedMatrix()
