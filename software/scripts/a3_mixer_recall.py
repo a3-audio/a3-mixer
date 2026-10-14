@@ -109,3 +109,48 @@ class StateAsker:
             self._failing = True
             return
         self._failing = False
+
+
+class CoreArrival:
+    """Whether an announcement (/core/here) means Core is new to the desk:
+    the first one, or the first after `silence` seconds without any. Core
+    announces every 2 s, so 5 s is two missed beats. The announcement carries
+    only the truth's address and fingerprint, no instance: a Core restarted
+    faster than `silence` cannot be told from the old one here."""
+
+    DEFAULT_SILENCE = 5.0
+
+    def __init__(self, silence=DEFAULT_SILENCE):
+        self._silence = silence
+        self._last = None
+
+    def heard(self, now):
+        news = self._last is None or now - self._last > self._silence
+        self._last = now
+        return news
+
+    def forget(self):
+        """The reaction failed: the next announcement is news again."""
+        self._last = None
+
+
+class DeskInFront:
+    """The desk is in front: when Core turns up, hello at once, then every
+    position. `send(kind)` sends "hello"; `dump()` sends the positions. A
+    hello that cannot be sent is said and tried again on the next
+    announcement; positions are not sent behind a hello that did not go."""
+
+    def __init__(self, arrival, send, dump, report):
+        self._arrival = arrival
+        self._send, self._dump, self._report = send, dump, report
+
+    def heard(self, now):
+        if not self._arrival.heard(now):
+            return
+        try:
+            self._send("hello")
+        except OSError as error:
+            self._arrival.forget()
+            self._report("a3-mixer: cannot say hello to Core yet: %s" % error)
+            return
+        self._dump()

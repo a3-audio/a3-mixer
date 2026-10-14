@@ -24,7 +24,9 @@ from pythonosc import dispatcher
 
 from typing import List, Any
 
-from a3_mixer_recall import HelloEvery, RecallRequest, StateAsker
+from a3_mixer_positions import Positions
+from a3_mixer_recall import (CoreArrival, DeskInFront, HelloEvery, RecallRequest,
+                             StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
@@ -36,8 +38,8 @@ from a3_mixer_meters import (MeterBallistics, StereoInputs, channel_vu_line,
                              main_vu_line, peak_db)
 from a3_mixer_latest import serve
 from a3_mixer_watchdog import watch_child
-from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, keep,
-                            wait_for_truth)
+from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, hear,
+                            keep, wait_for_truth)
 from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, FIRST_OUTPUT_SLOT, LAMPS,
                           MASTER_POTS, OUTPUT_METERS, MixerOsc, TruthMissing,
                           load as load_osc_truth)
@@ -70,6 +72,10 @@ recall = RecallRequest()
 clicks = Clicks()
 pushes = PushHoldOff()
 hello = HelloEvery()
+
+# Where every pot and fader stands, as last sent (a3_mixer_positions). Filled
+# and read by the serial reader's process only.
+positions = Positions()
 
 # OSC -- every address, port and IP out of the one truth, a3-core's
 # a3-osc.json, a copy of which the deploy puts beside this script. See
@@ -326,12 +332,47 @@ def beat_handler(address: str,
 ser = serial.Serial('/dev/ttyACM0', 4608000)
 ser.flush()
 
+def send_position(address, value):
+    """A pot or fader value: remembered for Core's next arrival, then sent."""
+    positions.note(address, value)
+    osc_core.send_message(address, value)
+
+
+def say_hello():
+    osc_core.send_message(*osc.hello())
+
+
+def be_in_front_of_core():
+    """The desk is in front (decided 2026-10-14): the moment Core's
+    announcement arrives and Core is new to the desk, hello at once and then
+    every position. Core takes a device's values only after its hello, and
+    the panel sends a pot only when it moves -- waiting for the 30 s beat
+    left the desk ignored for up to 30 s after Core came up.
+
+    Runs in the serial reader's process, which owns the positions, with a
+    socket of its own: the truth keeper's belongs to the other process.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("", ANNOUNCE_PORT))
+    reaction = DeskInFront(
+        CoreArrival(),
+        lambda kind: say_hello(),
+        lambda: positions.send_all(osc_core.send_message, say),
+        say)
+    threading.Thread(
+        target=hear, daemon=True, name="core arrival",
+        args=(listener, lambda: reaction.heard(time.monotonic()),
+              lambda: True)).start()
+
+
 def sendData(data): # send Serial data
     data += "\r\n"
     ser.write(data.encode())
 
 def serial_handler(): # dispatch from serial stream and send to osc
 
+    be_in_front_of_core()
     while True:
         line = ser.readline().decode('utf-8').rstrip()
 
@@ -424,14 +465,14 @@ def serial_handler(): # dispatch from serial stream and send to osc
             channel_names = map(str, range(4))
             if track in channel_names:
                 if index in CHANNEL_POTS:
-                    osc_core.send_message(
+                    send_position(
                         osc.channel_address(CHANNEL_POTS[index], int(track)),
                         value)
 
             # pots in the master section
             elif track == "master":
                 if index in MASTER_POTS:
-                    osc_core.send_message(osc.address(MASTER_POTS[index]), value)
+                    send_position(osc.address(MASTER_POTS[index]), value)
 
 
 if __name__ == '__main__':
