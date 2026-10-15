@@ -28,7 +28,7 @@ from a3_mixer_positions import ASK_THE_PANEL, Positions
 from a3_mixer_recall import (CoreArrival, DeskInFront, HelloEvery, RecallRequest,
                              StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
-                            channel_button, led_colour)
+                            channel_button, led_colour, panel_fields)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
@@ -383,7 +383,7 @@ def serial_handler(): # dispatch from serial stream and send to osc
     ask_the_panel()
     be_in_front_of_core()
     while True:
-        line = ser.readline().decode('utf-8').rstrip()
+        raw = ser.readline()
 
         # global time_last_receive
         # current_time_ns = time.clock_gettime_ns(time.CLOCK_REALTIME)
@@ -393,14 +393,12 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # print(f'time delta: {delta_time_ms}')
         # time_last_receive = current_time_ns
 
-        print(line)
+        print(raw.decode('utf-8', errors='replace').rstrip())
 
-        words = line.split(":")
-
-        track = words[1]
-        mode = words[2]
-        index = words[3]
-        value = words[4]
+        fields = panel_fields(raw)
+        if fields is None:
+            continue
+        track, mode, index, value = fields
 
         # The five encoders: positions in, stem words out (a3_mixer_encoders).
         # Only numeric tracks -- the encoders are 0..4.

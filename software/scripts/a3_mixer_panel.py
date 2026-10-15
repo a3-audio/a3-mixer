@@ -84,3 +84,21 @@ def channel_button(index):
 def led_colour(led_type):
     """Welche Farbe der Kanallampe diese Funktion anzuendet, oder None."""
     return LED_COLOUR.get(led_type)
+
+
+def panel_fields(raw):
+    """(track, mode, index, value) from one panel line, or None.
+
+    A line reads `T:<track>:<mode>:<index>:<value>`. Anything shorter, or
+    bytes that are not UTF-8, is refused rather than raised: an exception in
+    the serial reader ends that process, and the watchdog takes the desk
+    down with it.
+    """
+    try:
+        line = raw.decode("utf-8").rstrip()
+    except UnicodeDecodeError:
+        return None
+    words = line.split(":")
+    if len(words) < 5:
+        return None
+    return words[1], words[2], words[3], words[4]
