@@ -95,13 +95,24 @@ TEST (DeskComponent, NoHandsWhileWithheld)
     EXPECT_FALSE (desk->handsAccepted());
     desk->step (200);   // every control dims, as before Core answers
     for (const auto* key : { "channel.volume", "channel.cue" })
+    {
+        ASSERT_NE (desk->controlFor (key, 1), nullptr) << key;
         EXPECT_FALSE (desk->controlFor (key, 1)->isEnabled());
+    }
+    ASSERT_NE (desk->controlFor ("master.booth", 0), nullptr);
     EXPECT_FALSE (desk->controlFor ("master.booth", 0)->isEnabled());
+    desk->keyPressed (juce::KeyPress ('2'));   // CUE 2 from the keyboard
+    EXPECT_TRUE (c.sent.empty());
+    auto* cue = dynamic_cast<DeskKey*> (desk->controlFor ("channel.cue", 2));
+    ASSERT_NE (cue, nullptr);
+    cue->onPress (true);
+    EXPECT_TRUE (c.sent.empty());
     desk->touchPot (potIndex ("channel.gain", 1), 0.5f);
     EXPECT_TRUE (c.sent.empty());
     desk->setHandsWithheld (false);
     EXPECT_TRUE (desk->handsAccepted());
     desk->step (300);
+    ASSERT_NE (desk->controlFor ("channel.cue", 1), nullptr);
     EXPECT_TRUE (desk->controlFor ("channel.cue", 1)->isEnabled());
     desk->touchPot (potIndex ("channel.gain", 1), 0.5f);
     EXPECT_EQ (c.sent.size(), 1u);
@@ -118,11 +129,35 @@ TEST (DeskComponent, ControlForFindsTheFaderAndTheCue)
     ASSERT_NE (cue, nullptr);
     EXPECT_NE (dynamic_cast<DeskKey*> (cue), nullptr);
     EXPECT_NE (desk->controlFor ("channel.cue", 3), desk->controlFor ("channel.cue", 2));
-    EXPECT_NE (dynamic_cast<DeskKnob*> (desk->controlFor ("master.booth", 0)), nullptr);
-    EXPECT_NE (dynamic_cast<DeskKnob*> (desk->controlFor ("channel.gain", 4)), nullptr);
-    EXPECT_NE (dynamic_cast<DeskKey*> (desk->controlFor ("channel.filter", 1)), nullptr);
     EXPECT_EQ (desk->controlFor ("nope", 1), nullptr);
     EXPECT_EQ (desk->controlFor ("channel.volume", 9), nullptr);
+}
+
+// Ruling R15: every control with a truth key, or a lamp word arriving for it would never glow.
+TEST (DeskComponent, ControlForCoversEveryControlWithAKey)
+{
+    Captured c;
+    auto desk = deskAtStart (c);
+    const auto is = [&] (const char* key, int channel, auto* type) {
+        auto* control = desk->controlFor (key, channel);
+        EXPECT_NE (control, nullptr) << key << " " << channel;
+        return control != nullptr && dynamic_cast<decltype (type)> (control) != nullptr;
+    };
+    EXPECT_TRUE (is ("master.booth", 0, (DeskKnob*) nullptr));
+    EXPECT_TRUE (is ("channel.gain", 4, (DeskKnob*) nullptr));
+    EXPECT_TRUE (is ("channel.filter", 1, (DeskKey*) nullptr));
+    EXPECT_TRUE (is ("tap", 2, (DeskKey*) nullptr));
+    EXPECT_TRUE (is ("tap", 0, (DeskKey*) nullptr));
+    EXPECT_TRUE (is ("channel.stem.turn", 3, (DeskEncoder*) nullptr));
+    EXPECT_TRUE (is ("channel.stem.push", 3, (DeskEncoder*) nullptr));
+    EXPECT_EQ (desk->controlFor ("channel.stem.turn", 3), desk->controlFor ("channel.stem.push", 3));
+    EXPECT_TRUE (is ("aux-return.stem.turn", 0, (DeskEncoder*) nullptr));
+    EXPECT_TRUE (is ("aux-return.stem.push", 0, (DeskEncoder*) nullptr));
+    EXPECT_TRUE (is ("filter.mode", 1, (DeskKey*) nullptr));   // 1 = HPF, 2 = LPF: one word, two keys
+    EXPECT_TRUE (is ("filter.mode", 2, (DeskKey*) nullptr));
+    EXPECT_NE (desk->controlFor ("filter.mode", 1), desk->controlFor ("filter.mode", 2));
+    EXPECT_EQ (desk->controlFor ("filter.mode", 0), nullptr);
+    EXPECT_EQ (desk->controlFor ("tap", 5), nullptr);
 }
 
 TEST (DeskComponent, MetersAreThere)

@@ -241,6 +241,14 @@ juce::Component* DeskComponent::controlFor (const std::string& key, int channel)
 {
     if (const auto pot = potIndex (key, channel); pot >= 0)
         return _potControl[(size_t) pot];
+    if (key == "aux-return.stem.turn" || key == "aux-return.stem.push")
+        return channel == 0 ? _select.get() : nullptr;
+    // One word, two keys: the filter mode is HPF as 1 and LPF as 2.
+    if (key == "filter.mode")
+        return channel == 1 ? _hpf.get() : channel == 2 ? _lpf.get() : nullptr;
+    // Every TAP sends the same word: 0 stands for the first.
+    if (key == "tap")
+        return channel >= 0 && channel <= numChannels ? _taps[(size_t) std::max (channel, 1) - 1].get() : nullptr;
     if (channel < 1 || channel > numChannels)
         return nullptr;
     const auto i = (size_t) channel - 1;
@@ -248,6 +256,8 @@ juce::Component* DeskComponent::controlFor (const std::string& key, int channel)
         return _cueKeys[i].get();
     if (key == "channel.filter")
         return _fxKeys[i].get();
+    if (key == "channel.stem.turn" || key == "channel.stem.push")
+        return _encoders[i].get();
     return nullptr;
 }
 

@@ -59,8 +59,10 @@ public:
     void setHandsWithheld (bool withheld);
     bool handsAccepted() const;
     const DeskMeters* meters() const { return _meters.get(); }
-    /** The knob, fader or key a truth key such as "channel.volume", "channel.cue", "channel.filter" or
-        "master.booth" stands for (channel 0 for the master section); nullptr for an unknown one. */
+    /** The control a truth key stands for, for every control the desk has a key for: pots and fader
+        ("channel.volume", "master.booth"), "channel.cue", "channel.filter", "tap" (0 = the first), the INPUT
+        encoders ("channel.stem.turn"/".push"), SELECT ("aux-return.stem.turn"/".push", channel 0), and
+        "filter.mode" (1 = HPF, 2 = LPF). Channel 0 for the master section; nullptr for anything else. */
     juce::Component* controlFor (const std::string& key, int channel) const;
 
     const DeskOsc* osc() const { return _osc.get(); }
