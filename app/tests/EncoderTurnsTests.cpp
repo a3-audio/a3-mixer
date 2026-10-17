@@ -43,3 +43,10 @@ TEST (SlotTurns, TheReturnRingIsStemAnalogCue)
     EXPECT_EQ (returnTurnsTo (1, 2), -1);
     EXPECT_EQ (returnTurnsTo (2, 2), 0);
 }
+
+// A knob that has no size yet (0 x 0) must not make a division by zero.
+TEST (DragClicks, ANonPositiveStepIsOnePixel)
+{
+    EXPECT_EQ (DragClicks (0.f).feed (5.f), 5);
+    EXPECT_EQ (DragClicks (-3.f).feed (-4.f), -4);
+}

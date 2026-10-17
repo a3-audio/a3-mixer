@@ -15,7 +15,8 @@ inline constexpr float dragPerClickOfKnob = 0.25f;
 class DragClicks
 {
 public:
-    explicit DragClicks (float pixelsPerClick) : _per (pixelsPerClick) {}
+    /** A non-positive step (a control with no size yet) counts as one pixel. */
+    explicit DragClicks (float pixelsPerClick) : _per (pixelsPerClick > 0.f ? pixelsPerClick : 1.f) {}
     int feed (float dragUpPixels);
 
 private:
