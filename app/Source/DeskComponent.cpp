@@ -41,7 +41,7 @@ float currentFingertip()
     return fingertipPixels (display != nullptr ? display->dpi : 0.0, display != nullptr ? display->scale : 1.0);
 }
 
-DeskComponent::DeskComponent (Send send) : _send (std::move (send))
+DeskComponent::DeskComponent (Send send, juce::String device) : _send (std::move (send)), _device (std::move (device))
 {
     setLookAndFeel (&_look);
     setWantsKeyboardFocus (true);
@@ -207,7 +207,7 @@ void DeskComponent::step (double nowMs)
     _now = _lastStep = nowMs;
     if (_wire != nullptr && _link == DeskLink::Opened::ok)
         for (const auto due : _ask.due (nowMs, _core.fingerprint() == _osc->truth().digest()))
-            send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest()) : _wire->recall());
+            send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest(), _device) : _wire->recall());
     updateHands();
     showLamps();
     showMeters();
@@ -217,7 +217,7 @@ void DeskComponent::step (double nowMs)
 
 bool DeskComponent::handsAccepted() const
 {
-    return _wire != nullptr && _link == DeskLink::Opened::ok && _ask.joined() && ! _core.silent (_now);
+    return ! _withheld && _wire != nullptr && _link == DeskLink::Opened::ok && _ask.joined() && ! _core.silent (_now);
 }
 
 void DeskComponent::touchPot (int pot, float value)
@@ -229,6 +229,26 @@ void DeskComponent::touchPot (int pot, float value)
     _state.setFromTouch (pot, value);
     send (_wire->pot (pot, _state.value (pot)));
     syncControls();
+}
+
+void DeskComponent::setHandsWithheld (bool withheld)
+{
+    _withheld = withheld;
+    updateHands();
+}
+
+juce::Component* DeskComponent::controlFor (const std::string& key, int channel) const
+{
+    if (const auto pot = potIndex (key, channel); pot >= 0)
+        return _potControl[(size_t) pot];
+    if (channel < 1 || channel > numChannels)
+        return nullptr;
+    const auto i = (size_t) channel - 1;
+    if (key == "channel.cue")
+        return _cueKeys[i].get();
+    if (key == "channel.filter")
+        return _fxKeys[i].get();
+    return nullptr;
 }
 
 void DeskComponent::setLocked (bool locked)

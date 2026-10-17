@@ -42,7 +42,7 @@ class DeskComponent : public juce::Component, private juce::Timer
 public:
     using Send = std::function<bool (const Outgoing&)>;
 
-    explicit DeskComponent (Send send);
+    explicit DeskComponent (Send send, juce::String device = "desk");
     ~DeskComponent() override;
 
     /** A truth lacking a key the desk needs builds nothing: no wire, no sending, the status says what is missing. */
@@ -55,7 +55,13 @@ public:
 
     void touchPot (int pot, float value);
     void setLocked (bool locked);
+    /** While true no hand is taken and every control dims, as before Core answers. */
+    void setHandsWithheld (bool withheld);
     bool handsAccepted() const;
+    const DeskMeters* meters() const { return _meters.get(); }
+    /** The knob, fader or key a truth key such as "channel.volume", "channel.cue", "channel.filter" or
+        "master.booth" stands for (channel 0 for the master section); nullptr for an unknown one. */
+    juce::Component* controlFor (const std::string& key, int channel) const;
 
     const DeskOsc* osc() const { return _osc.get(); }
     VuInbox* vuInbox() { return _vu.get(); }
@@ -89,6 +95,7 @@ private:
     void tap();
 
     Send _send;
+    juce::String _device;
     DeskLook _look;
     DeskLayout _layout;
     std::unique_ptr<DeskOsc> _osc;
@@ -102,7 +109,7 @@ private:
     CoreWatch _core;
     DeskLink::Opened _link = DeskLink::Opened::noTruth;
     juce::String _truthProblem, _statusText;
-    bool _locked = false, _handsShown = false;
+    bool _locked = false, _withheld = false, _handsShown = false;
     double _now = 0.0, _lastStep = 0.0;
 
     std::vector<juce::Component*> _handed;   // every control and indicator but the pots: enabled with the hands

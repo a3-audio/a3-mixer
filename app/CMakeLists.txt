@@ -21,37 +21,13 @@ endif()
 
 find_package(JUCE 9.0.3 CONFIG REQUIRED)
 
-# Everything but Main.cpp: the app and the tests compile the same list.
-set(A3DESK_SOURCES
-    Source/DeskControls.cpp
-    Source/DeskControlsUi.cpp
-    Source/DeskIndicatorsUi.cpp
-    Source/DeskLook.cpp
-    Source/DeskComponent.cpp
-    Source/DeskInbox.cpp
-    Source/DeskLayout.cpp
-    Source/DeskLink.cpp
-    Source/DeskMeters.cpp
-    Source/EncoderTurns.cpp
-    Source/DeskOsc.cpp
-    Source/DeskWindow.cpp
-    Source/DeskWire.cpp
-    Source/DeskState.cpp
-    Source/DisplayPaint.cpp
-    Source/DisplayPicture.cpp
-    Source/LedScale.cpp
-    Source/StartupAsk.cpp
-    Source/VuInbox.cpp
-    Source/shared/MeterBallistics.cpp
-    Source/shared/OscSendGuard.cpp
-    Source/shared/OscTruth.cpp
-    Source/shared/TruthKeeperLink.cpp)
-list(TRANSFORM A3DESK_SOURCES PREPEND "${PROJECT_SOURCE_DIR}/" OUTPUT_VARIABLE A3DESK_SOURCES_ABS)
+# Everything but Main.cpp: the app and the tests compile the same list, as other apps do.
+include(cmake/A3DeskSources.cmake)
 
 set(A3DESK_DEFINITIONS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 juce_add_gui_app(A3Desk PRODUCT_NAME "A3 Desk")
-target_sources(A3Desk PRIVATE Source/Main.cpp ${A3DESK_SOURCES_ABS})
+target_sources(A3Desk PRIVATE Source/Main.cpp ${A3DESK_LIBRARY_SOURCES})
 target_include_directories(A3Desk PRIVATE Source)
 target_compile_definitions(A3Desk PRIVATE ${A3DESK_DEFINITIONS}
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:A3Desk,JUCE_PRODUCT_NAME>"
@@ -59,7 +35,7 @@ target_compile_definitions(A3Desk PRIVATE ${A3DESK_DEFINITIONS}
 # A rewrite that drops a case must not compile (memory feedback_a-rewrite-drops-a-case).
 target_compile_options(A3Desk PRIVATE -Werror=switch)
 target_link_libraries(A3Desk
-    PRIVATE juce::juce_gui_basics juce::juce_osc juce::juce_cryptography
+    PRIVATE ${A3DESK_JUCE_MODULES}
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
            juce::juce_recommended_warning_flags)
 

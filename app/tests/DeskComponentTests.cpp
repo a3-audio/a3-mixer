@@ -39,9 +39,9 @@ const DeskOsc& osc()
     return made;
 }
 
-std::unique_ptr<DeskComponent> deskAtStart (Captured& c)
+std::unique_ptr<DeskComponent> deskAtStart (Captured& c, const juce::String& device = "desk")
 {
-    auto desk = std::make_unique<DeskComponent> (c.sink());
+    auto desk = std::make_unique<DeskComponent> (c.sink(), device);
     desk->setSize (620, 1000);
     desk->useTruth (test::truth());
     desk->setLinkState (DeskLink::Opened::ok);
@@ -74,6 +74,64 @@ a3::OscTruth truthWithout (const char* key)
         addresses->removeProperty (key);
     return a3::parseOscTruth (juce::JSON::toString (data));
 }
+}
+
+TEST (DeskComponent, HelloCarriesTheDeviceName)
+{
+    Captured c;
+    auto desk = deskAtStart (c, "prodj");
+    desk->step (0);
+    ASSERT_FALSE (c.sent.empty());
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("device.hello"));
+    EXPECT_EQ (c.sent[0].message[0].getString(), "prodj");
+}
+
+TEST (DeskComponent, NoHandsWhileWithheld)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    ASSERT_TRUE (desk->handsAccepted());
+    desk->setHandsWithheld (true);
+    EXPECT_FALSE (desk->handsAccepted());
+    desk->step (200);   // every control dims, as before Core answers
+    for (const auto* key : { "channel.volume", "channel.cue" })
+        EXPECT_FALSE (desk->controlFor (key, 1)->isEnabled());
+    EXPECT_FALSE (desk->controlFor ("master.booth", 0)->isEnabled());
+    desk->touchPot (potIndex ("channel.gain", 1), 0.5f);
+    EXPECT_TRUE (c.sent.empty());
+    desk->setHandsWithheld (false);
+    EXPECT_TRUE (desk->handsAccepted());
+    desk->step (300);
+    EXPECT_TRUE (desk->controlFor ("channel.cue", 1)->isEnabled());
+    desk->touchPot (potIndex ("channel.gain", 1), 0.5f);
+    EXPECT_EQ (c.sent.size(), 1u);
+}
+
+TEST (DeskComponent, ControlForFindsTheFaderAndTheCue)
+{
+    Captured c;
+    auto desk = deskAtStart (c);
+    auto* fader = desk->controlFor ("channel.volume", 2);
+    ASSERT_NE (fader, nullptr);
+    EXPECT_NE (dynamic_cast<DeskFader*> (fader), nullptr);
+    auto* cue = desk->controlFor ("channel.cue", 3);
+    ASSERT_NE (cue, nullptr);
+    EXPECT_NE (dynamic_cast<DeskKey*> (cue), nullptr);
+    EXPECT_NE (desk->controlFor ("channel.cue", 3), desk->controlFor ("channel.cue", 2));
+    EXPECT_NE (dynamic_cast<DeskKnob*> (desk->controlFor ("master.booth", 0)), nullptr);
+    EXPECT_NE (dynamic_cast<DeskKnob*> (desk->controlFor ("channel.gain", 4)), nullptr);
+    EXPECT_NE (dynamic_cast<DeskKey*> (desk->controlFor ("channel.filter", 1)), nullptr);
+    EXPECT_EQ (desk->controlFor ("nope", 1), nullptr);
+    EXPECT_EQ (desk->controlFor ("channel.volume", 9), nullptr);
+}
+
+TEST (DeskComponent, MetersAreThere)
+{
+    Captured c;
+    auto desk = std::make_unique<DeskComponent> (c.sink());
+    EXPECT_EQ (desk->meters(), nullptr);
+    desk->useTruth (test::truth());
+    EXPECT_NE (desk->meters(), nullptr);
 }
 
 TEST (DeskComponent, AtStartItSendsOnlyHelloAndRecall)

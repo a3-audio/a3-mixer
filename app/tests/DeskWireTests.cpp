@@ -86,6 +86,14 @@ TEST (DeskWire, HelloNamesTheDeskAndItsTruth)
     EXPECT_EQ (hello.message[1].getString(), "abc");
 }
 
+TEST (DeskWire, HelloNamesTheDevice)
+{
+    const auto hello = DeskWire (osc()).hello ("abc", "prodj");
+    EXPECT_EQ (hello.message[0].getString(), "prodj");
+    EXPECT_EQ (hello.message[1].getString(), "abc");
+    EXPECT_EQ (DeskWire (osc()).hello ("abc").message[0].getString(), "desk");
+}
+
 TEST (StartupAsk, AtStartHelloAndRecallOnly)
 {
     StartupAsk ask;

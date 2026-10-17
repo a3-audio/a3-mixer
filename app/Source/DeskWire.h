@@ -37,7 +37,7 @@ public:
     Outgoing channelPush (int channel) const;
     Outgoing returnPush() const;
     Outgoing tap() const;
-    Outgoing hello (const juce::String& truthDigest) const;
+    Outgoing hello (const juce::String& truthDigest, const juce::String& device = "desk") const;
     Outgoing recall() const;
 
 private:

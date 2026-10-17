@@ -21,13 +21,13 @@ target_sources(a3-desk-tests PRIVATE
     LedScaleTests.cpp
     MeterBallisticsTests.cpp
     SharedTests.cpp
-    ${A3DESK_SOURCES_ABS})
+    ${A3DESK_LIBRARY_SOURCES})
 target_include_directories(a3-desk-tests PRIVATE "${PROJECT_SOURCE_DIR}/Source" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(a3-desk-tests PRIVATE ${A3DESK_DEFINITIONS}
     A3DESK_FIXTURES="${PROJECT_SOURCE_DIR}/../software/tests/fixtures")
 target_compile_options(a3-desk-tests PRIVATE -Werror=switch)
 target_link_libraries(a3-desk-tests
-    PRIVATE juce::juce_gui_basics juce::juce_osc juce::juce_cryptography GTest::gtest
+    PRIVATE ${A3DESK_JUCE_MODULES} GTest::gtest
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 # PRE_TEST: the list is read when ctest runs, under xvfb-run, not at build time.
 gtest_discover_tests(a3-desk-tests DISCOVERY_MODE PRE_TEST)
