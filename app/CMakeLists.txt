@@ -23,7 +23,10 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 
 # Everything but Main.cpp: the app and the tests compile the same list.
 set(A3DESK_SOURCES
-    Source/shared/OscSendGuard.cpp)
+    Source/shared/MeterBallistics.cpp
+    Source/shared/OscSendGuard.cpp
+    Source/shared/OscTruth.cpp
+    Source/shared/TruthKeeperLink.cpp)
 list(TRANSFORM A3DESK_SOURCES PREPEND "${PROJECT_SOURCE_DIR}/" OUTPUT_VARIABLE A3DESK_SOURCES_ABS)
 
 set(A3DESK_DEFINITIONS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0)

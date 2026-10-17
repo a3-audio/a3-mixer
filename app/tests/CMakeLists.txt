@@ -9,6 +9,8 @@ juce_add_console_app(a3-desk-tests PRODUCT_NAME "a3-desk-tests")
 target_sources(a3-desk-tests PRIVATE
     TestRunner.cpp
     GuardTests.cpp
+    MeterBallisticsTests.cpp
+    SharedTests.cpp
     ${A3DESK_SOURCES_ABS})
 target_include_directories(a3-desk-tests PRIVATE "${PROJECT_SOURCE_DIR}/Source" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(a3-desk-tests PRIVATE ${A3DESK_DEFINITIONS}
