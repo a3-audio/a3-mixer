@@ -91,6 +91,13 @@ TEST (DeskOsc, OutOfRangeAndForeignWordsDoNotMatch)
     EXPECT_FALSE (osc.match ("/track/1/volume").has_value());
 }
 
+TEST (DeskOsc, AnOversizedNumberFromTheNetworkIsNoMatchAndNoThrow)
+{
+    const DeskOsc osc (test::truth());
+    const auto huge = osc.address ("channel.gain", 1).replace ("1", "99999999999999999999");
+    EXPECT_NO_THROW (EXPECT_FALSE (osc.match (huge).has_value()));
+}
+
 TEST (DeskOsc, CoreAndTheClockAreOnCoresHost)
 {
     const DeskOsc osc (test::truth());

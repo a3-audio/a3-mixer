@@ -21,7 +21,7 @@ std::pair<std::string, std::string> regexOf (const std::string& pattern)
         {
             const auto end = pattern.find ('}', i);
             field = pattern.substr (i + 1, end - i - 1);
-            out += "(\\d+)";
+            out += "(\\d{1,9})";   // bounded: stoi must not overflow on network input
             i = end;
             continue;
         }

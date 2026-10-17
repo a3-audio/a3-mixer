@@ -4,7 +4,6 @@
 
 #include "DeskControls.h"
 
-#include <algorithm>
 #include <map>
 
 namespace desk
