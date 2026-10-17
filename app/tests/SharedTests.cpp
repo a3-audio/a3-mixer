@@ -81,6 +81,15 @@ TEST (TruthKeeper, TheSameFingerprintNeedsNoFetch)
     EXPECT_TRUE (tk::needsFetch ("abc", "abd"));
 }
 
+// With $A3_OSC_TRUTH set the desk still hears /core/here (for "Core silent")
+// but never fetches, rewrites the cache or reloads: the override wins.
+TEST (TruthKeeper, AnOverrideNeverFetches)
+{
+    EXPECT_TRUE (tk::shouldFetch (tk::followsCore (nullptr), "abc", "abd"));
+    EXPECT_FALSE (tk::shouldFetch (tk::followsCore (nullptr), "abc", "abc"));
+    EXPECT_FALSE (tk::shouldFetch (tk::followsCore ("/x/given.json"), "abc", "abd"));
+}
+
 TEST (TruthKeeper, BodyHeaderAndAnnouncementMustAgree)
 {
     EXPECT_TRUE (tk::verified ("h", "h", "h"));

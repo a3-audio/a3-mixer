@@ -32,8 +32,9 @@ std::optional<Announcement> readAnnouncement (const juce::OSCMessage& message);
 class TruthKeeperLink : private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback>
 {
 public:
+    /** `followingCore` false ($A3_OSC_TRUTH set): it still tells `onHeard`, but never fetches. */
     TruthKeeperLink (juce::File cache, std::function<juce::String (const juce::String& body)> usable,
-                     std::function<void()> onNewTruth);
+                     std::function<void()> onNewTruth, bool followingCore);
     ~TruthKeeperLink() override;
 
     bool start();
@@ -49,6 +50,7 @@ private:
     void refuse (const juce::String& reason);
 
     std::string _own;
+    bool _followingCore;
     juce::File _cache;
     std::function<juce::String (const juce::String&)> _usable;
     std::function<void()> _onNewTruth;

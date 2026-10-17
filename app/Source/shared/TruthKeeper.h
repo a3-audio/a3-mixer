@@ -70,6 +70,15 @@ needsFetch (std::string const &announced, std::string const &own)
   return announced != own;
 }
 
+/** Whether an announcement is fetched: never under an override (the desk
+ *  still hears /core/here, for "Core silent"), else only another truth. */
+inline bool
+shouldFetch (bool followingCore, std::string const &announced,
+             std::string const &own)
+{
+  return followingCore && needsFetch (announced, own);
+}
+
 inline bool
 verified (std::string const &bodyHash, std::string const &header,
           std::string const &announced)

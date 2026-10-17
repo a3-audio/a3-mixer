@@ -24,8 +24,9 @@ std::optional<Announcement> readAnnouncement (const juce::OSCMessage& message)
 }
 
 TruthKeeperLink::TruthKeeperLink (juce::File cache, std::function<juce::String (const juce::String&)> usable,
-                                  std::function<void()> onNewTruth)
-    : _cache (std::move (cache)), _usable (std::move (usable)), _onNewTruth (std::move (onNewTruth))
+                                  std::function<void()> onNewTruth, bool followingCore)
+    : _followingCore (followingCore), _cache (std::move (cache)), _usable (std::move (usable)),
+      _onNewTruth (std::move (onNewTruth))
 {
 }
 
@@ -61,7 +62,7 @@ void TruthKeeperLink::oscMessageReceived (const juce::OSCMessage& message)
         return;
     if (onHeard)
         onHeard (*announcement);
-    if (truthkeeper::needsFetch (announcement->fingerprint.toStdString(), _own))
+    if (truthkeeper::shouldFetch (_followingCore, announcement->fingerprint.toStdString(), _own))
         fetch (announcement->url, announcement->fingerprint);
 }
 
