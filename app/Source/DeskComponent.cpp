@@ -41,7 +41,7 @@ float currentFingertip()
     return fingertipPixels (display != nullptr ? display->dpi : 0.0, display != nullptr ? display->scale : 1.0);
 }
 
-DeskComponent::DeskComponent (Send send) : _send (std::move (send))
+DeskComponent::DeskComponent (Send send, juce::String device) : _send (std::move (send)), _device (std::move (device))
 {
     setLookAndFeel (&_look);
     setWantsKeyboardFocus (true);
@@ -147,6 +147,7 @@ void DeskComponent::buildMaster()
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              _select.get(), _returnDisplay.get(), _hpf.get(), _lpf.get(), _lock.get(), _matrix.get() })
         show (*c);
+    _status->onLiveTapped = [this] { liveTapped(); };
     show (*_status, false);   // says why the rest is dim: never dimmed itself
 }
 
@@ -207,7 +208,9 @@ void DeskComponent::step (double nowMs)
     _now = _lastStep = nowMs;
     if (_wire != nullptr && _link == DeskLink::Opened::ok)
         for (const auto due : _ask.due (nowMs, _core.fingerprint() == _osc->truth().digest()))
-            send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest()) : _wire->recall());
+            send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest(), _device) : _wire->recall());
+    if (_inbox != nullptr)
+        _inbox->step (nowMs);
     updateHands();
     showLamps();
     showMeters();
@@ -217,7 +220,7 @@ void DeskComponent::step (double nowMs)
 
 bool DeskComponent::handsAccepted() const
 {
-    return _wire != nullptr && _link == DeskLink::Opened::ok && _ask.joined() && ! _core.silent (_now);
+    return ! _withheld && _wire != nullptr && _link == DeskLink::Opened::ok && _ask.joined() && ! _core.silent (_now);
 }
 
 void DeskComponent::touchPot (int pot, float value)
@@ -229,6 +232,36 @@ void DeskComponent::touchPot (int pot, float value)
     _state.setFromTouch (pot, value);
     send (_wire->pot (pot, _state.value (pot)));
     syncControls();
+}
+
+void DeskComponent::setHandsWithheld (bool withheld)
+{
+    _withheld = withheld;
+    updateHands();
+}
+
+juce::Component* DeskComponent::controlFor (const std::string& key, int channel) const
+{
+    if (const auto pot = potIndex (key, channel); pot >= 0)
+        return _potControl[(size_t) pot];
+    if (key == "aux-return.stem.turn" || key == "aux-return.stem.push")
+        return channel == 0 ? _select.get() : nullptr;
+    // One word, two keys: the filter mode is HPF as 1 and LPF as 2.
+    if (key == "filter.mode")
+        return channel == 1 ? _hpf.get() : channel == 2 ? _lpf.get() : nullptr;
+    // Every TAP sends the same word: 0 stands for the first.
+    if (key == "tap")
+        return channel >= 0 && channel <= numChannels ? _taps[(size_t) std::max (channel, 1) - 1].get() : nullptr;
+    if (channel < 1 || channel > numChannels)
+        return nullptr;
+    const auto i = (size_t) channel - 1;
+    if (key == "channel.cue")
+        return _cueKeys[i].get();
+    if (key == "channel.filter")
+        return _fxKeys[i].get();
+    if (key == "channel.stem.turn" || key == "channel.stem.push")
+        return _encoders[i].get();
+    return nullptr;
 }
 
 void DeskComponent::setLocked (bool locked)
@@ -390,8 +423,22 @@ juce::String DeskComponent::statusRight() const
     return right;
 }
 
+bool DeskComponent::liveOffered() const
+{
+    return _osc != nullptr && _wire != nullptr && _osc->hasOptional ("prodj.live");
+}
+
+void DeskComponent::liveTapped()
+{
+    // Only a human tap sends it, and only with hands; Core answers with the state, the chip never guesses.
+    if (! liveOffered() || ! handsAccepted())
+        return;
+    send (_wire->prodjLive (! _ind.prodjLive));
+}
+
 void DeskComponent::showStatus()
 {
+    _status->setLive ({ liveOffered(), _ind.prodjLive, handsAccepted() });
     _statusText = statusRight();
     _status->setText ("A3 DESK" + juce::String (_locked ? "  master locked" : ""), _statusText);
 }

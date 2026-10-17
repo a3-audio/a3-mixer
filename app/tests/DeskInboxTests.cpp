@@ -194,3 +194,62 @@ TEST (DeskMeters, TheClipPeaksReadTheBarsNames)
     EXPECT_FLOAT_EQ (meters.returnStemPeak(), 1.3f);
     EXPECT_FLOAT_EQ (meters.returnAnalogPeak(), 1.4f);
 }
+
+namespace
+{
+struct LiveDesk
+{
+    DeskOsc osc { test::truthWithLive (true) };
+    DeskState state { (int) allPots().size() };
+    Indicators ind;
+    StartupAsk ask;
+    DeskInbox inbox { osc, state, ind, ask };
+
+    template <typename... Args>
+    void hear (double nowMs, Args... args)
+    {
+        juce::OSCMessage m (juce::OSCAddressPattern (osc.address ("prodj.live")));
+        (m.addArgument (juce::OSCArgument (args)), ...);
+        inbox.receive (m, nowMs);
+    }
+};
+}
+
+TEST (DeskInbox, LiveIsALease)
+{
+    LiveDesk d;
+    EXPECT_FALSE (d.ind.prodjLive);
+    d.hear (0.0, 1);
+    EXPECT_TRUE (d.ind.prodjLive);
+    d.inbox.step (11999.0);
+    EXPECT_TRUE (d.ind.prodjLive);
+    d.inbox.step (12001.0);
+    EXPECT_FALSE (d.ind.prodjLive);
+}
+
+TEST (DeskInbox, ARepeatedOneRenewsTheLeaseAndAZeroEndsIt)
+{
+    LiveDesk d;
+    d.hear (0.0, 1);
+    d.hear (5000.0, 1);
+    d.inbox.step (16999.0);
+    EXPECT_TRUE (d.ind.prodjLive);
+    d.hear (17000.0, 0);
+    EXPECT_FALSE (d.ind.prodjLive);
+}
+
+TEST (DeskInbox, ALiveOfTheWrongTypeOrNotFiniteIsDropped)
+{
+    LiveDesk d;
+    d.hear (0.0, 1.0f);
+    d.hear (0.0, "1");
+    d.hear (0.0, std::numeric_limits<float>::quiet_NaN());
+    d.hear (0.0, 2);
+    d.hear (0.0, -1);
+    d.hear (0.0, 1, 1);   // two arguments are not the word
+    EXPECT_FALSE (d.ind.prodjLive);
+    d.hear (0.0, 1);
+    d.hear (1.0, 1.0f);   // a damaged message neither ends nor renews it
+    d.inbox.step (12001.0);
+    EXPECT_FALSE (d.ind.prodjLive);
+}

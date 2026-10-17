@@ -61,10 +61,28 @@ private:
 class StatusLine : public juce::Component
 {
 public:
+    /** The pro-DJ LIVE chip at the line's right end: offered only when the truth has the word. */
+    struct LiveChip
+    {
+        bool offered = false, lit = false, tappable = false;
+    };
+
     void setText (juce::String left, juce::String right);
+    void setLive (LiveChip chip);
+    /** The chip's area in the line's own coordinates; empty when it is not offered. */
+    juce::Rectangle<float> liveChip() const;
     void paint (juce::Graphics&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+    std::function<void()> onLiveTapped;
 
 private:
+    void paintLiveChip (juce::Graphics&, juce::Rectangle<float> chip) const;
+
+    /** Shares: the chip's width of the line, its height of the line's. */
+    static constexpr float liveChipWidth = 0.2f, liveChipHeight = 0.9f;
+
     juce::String _left, _right;
+    LiveChip _live;
 };
 }

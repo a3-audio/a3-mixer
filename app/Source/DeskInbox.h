@@ -20,6 +20,9 @@ namespace desk
 /** TAP's lamp on /beat, as long as the hardware's. */
 inline constexpr double tapFlashMs = 60.0;
 
+/** How long a "1" keeps LIVE on (Core repeats it every 5 s while it is on). */
+inline constexpr double liveLeaseMs = 12000.0;
+
 /** The lamps and the selectors as Core last told them. */
 struct Indicators
 {
@@ -30,6 +33,9 @@ struct Indicators
     bool returnCue = false;
     double tapLitUntilMs = -1.0;
     float bpm = 0.f;
+    /** pro-DJ LIVE is a lease: on while the last "1" is younger than liveLeaseMs. */
+    bool prodjLive = false;
+    double prodjLiveUntilMs = -1.0;
 };
 
 /** Every message from Core on desk.osc. A damaged one changes nothing: nothing may raise into the receiver. */
@@ -40,6 +46,8 @@ public:
         : _osc (osc), _state (state), _ind (indicators), _ask (ask) {}
 
     void receive (const juce::OSCMessage& message, double nowMs);
+    /** Lets an unrepeated LIVE run out. */
+    void step (double nowMs);
 
 private:
     const DeskOsc& _osc;

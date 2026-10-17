@@ -323,6 +323,50 @@ TEST (DeskUi, TheStatusLinePaintsItsText)
     EXPECT_GT (lightOf (snapshotOf (line, 300, 24)), empty);
 }
 
+TEST (DeskUi, TheLiveChipPaintsLitAndDark)
+{
+    StatusLine line;
+    line.setBounds (0, 0, 600, 24);
+    line.setText ("", "");
+    line.setLive ({ true, false, true });
+    const auto chip = line.liveChip().toNearestInt();
+    ASSERT_FALSE (chip.isEmpty());
+    const auto dark = snapshotOf (line, 600, 24).getClippedImage (chip);
+    line.setLive ({ true, true, true });
+    const auto lit = snapshotOf (line, 600, 24).getClippedImage (chip);
+    EXPECT_GT (lightOf (lit), lightOf (dark));
+}
+
+TEST (DeskUi, TheLiveChipIsAShareOfTheLineAtItsRightEnd)
+{
+    StatusLine line;
+    line.setBounds (0, 0, 600, 24);
+    EXPECT_TRUE (line.liveChip().isEmpty());   // not offered: no chip
+    line.setLive ({ true, false, true });
+    const auto chip = line.liveChip();
+    EXPECT_GT (chip.getWidth(), 0.f);
+    EXPECT_LE (chip.getHeight(), 24.f);
+    EXPECT_FLOAT_EQ (chip.getRight(), 600.f);
+    line.setBounds (0, 0, 1200, 48);
+    EXPECT_NEAR (line.liveChip().getWidth(), 2.f * chip.getWidth(), 0.01f);
+}
+
+TEST (DeskUi, ATapOnTheLiveChipIsReportedAndOneElsewhereIsNot)
+{
+    StatusLine line;
+    line.setBounds (0, 0, 600, 24);
+    line.setLive ({ true, false, true });
+    int taps = 0;
+    line.onLiveTapped = [&] { ++taps; };
+    const auto in = line.liveChip().getCentre();
+    line.mouseUp (eventAt (line, in, in, false));
+    EXPECT_EQ (taps, 1);
+    line.mouseUp (eventAt (line, in, in, true));   // a drag is no tap
+    const juce::Point<float> out { 10.f, 12.f };
+    line.mouseUp (eventAt (line, out, out, false));
+    EXPECT_EQ (taps, 1);
+}
+
 // A disabled control must read visibly dimmer than the enabled one, and the
 // dimming is one helper's work, so one test covers every control.
 TEST (DeskUi, EveryControlPaintsDisabledDimmer)

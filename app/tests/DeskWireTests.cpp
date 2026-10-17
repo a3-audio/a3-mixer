@@ -86,6 +86,14 @@ TEST (DeskWire, HelloNamesTheDeskAndItsTruth)
     EXPECT_EQ (hello.message[1].getString(), "abc");
 }
 
+TEST (DeskWire, HelloNamesTheDevice)
+{
+    const auto hello = DeskWire (osc()).hello ("abc", "prodj");
+    EXPECT_EQ (hello.message[0].getString(), "prodj");
+    EXPECT_EQ (hello.message[1].getString(), "abc");
+    EXPECT_EQ (DeskWire (osc()).hello ("abc").message[0].getString(), "desk");
+}
+
 TEST (StartupAsk, AtStartHelloAndRecallOnly)
 {
     StartupAsk ask;
@@ -208,4 +216,19 @@ TEST (StartupAsk, JoinedThenAStaleTruthSaysNoHello)
     ask.due (0, true);
     ask.answered();
     EXPECT_TRUE (ask.due (30000, false).empty());
+}
+
+TEST (DeskWire, ProdjLiveIsAnInt)
+{
+    const DeskOsc withWord (test::truthWithLive (true));
+    const DeskWire wire (withWord);
+    for (const bool on : { true, false })
+    {
+        const auto out = wire.prodjLive (on);
+        EXPECT_EQ (out.to, Outgoing::To::core);
+        EXPECT_EQ (out.message.getAddressPattern().toString(), "/prodj/live");
+        ASSERT_EQ (out.message.size(), 1);
+        ASSERT_TRUE (out.message[0].isInt32());
+        EXPECT_EQ (out.message[0].getInt32(), on ? 1 : 0);
+    }
 }

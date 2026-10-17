@@ -42,7 +42,7 @@ class DeskComponent : public juce::Component, private juce::Timer
 public:
     using Send = std::function<bool (const Outgoing&)>;
 
-    explicit DeskComponent (Send send);
+    explicit DeskComponent (Send send, juce::String device = "desk");
     ~DeskComponent() override;
 
     /** A truth lacking a key the desk needs builds nothing: no wire, no sending, the status says what is missing. */
@@ -55,7 +55,15 @@ public:
 
     void touchPot (int pot, float value);
     void setLocked (bool locked);
+    /** While true no hand is taken and every control dims, as before Core answers. */
+    void setHandsWithheld (bool withheld);
     bool handsAccepted() const;
+    const DeskMeters* meters() const { return _meters.get(); }
+    /** The control a truth key stands for, for every control the desk has a key for: pots and fader
+        ("channel.volume", "master.booth"), "channel.cue", "channel.filter", "tap" (0 = the first), the INPUT
+        encoders ("channel.stem.turn"/".push"), SELECT ("aux-return.stem.turn"/".push", channel 0), and
+        "filter.mode" (1 = HPF, 2 = LPF). Channel 0 for the master section; nullptr for anything else. */
+    juce::Component* controlFor (const std::string& key, int channel) const;
 
     const DeskOsc* osc() const { return _osc.get(); }
     VuInbox* vuInbox() { return _vu.get(); }
@@ -83,12 +91,15 @@ private:
     void releaseLostGrabs (bool hands);
     void show (juce::Component& control, bool takesHands = true);
     void showStatus();
+    bool liveOffered() const;
+    void liveTapped();
     juce::String statusRight() const;
     void pressKey (const std::string& key, int channel, bool down);
     void pressFilter (bool highPass, bool down);
     void tap();
 
     Send _send;
+    juce::String _device;
     DeskLook _look;
     DeskLayout _layout;
     std::unique_ptr<DeskOsc> _osc;
@@ -102,7 +113,7 @@ private:
     CoreWatch _core;
     DeskLink::Opened _link = DeskLink::Opened::noTruth;
     juce::String _truthProblem, _statusText;
-    bool _locked = false, _handsShown = false;
+    bool _locked = false, _withheld = false, _handsShown = false;
     double _now = 0.0, _lastStep = 0.0;
 
     std::vector<juce::Component*> _handed;   // every control and indicator but the pots: enabled with the hands

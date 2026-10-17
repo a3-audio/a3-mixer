@@ -37,8 +37,10 @@ public:
     Outgoing channelPush (int channel) const;
     Outgoing returnPush() const;
     Outgoing tap() const;
-    Outgoing hello (const juce::String& truthDigest) const;
+    Outgoing hello (const juce::String& truthDigest, const juce::String& device = "desk") const;
     Outgoing recall() const;
+    /** pro-DJ LIVE on or off, int32 1/0, only ever from a human tap. */
+    Outgoing prodjLive (bool on) const;
 
 private:
     juce::OSCMessage to (const std::string& key, int number = 0) const;

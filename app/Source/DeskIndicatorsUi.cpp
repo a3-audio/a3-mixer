@@ -121,11 +121,56 @@ void StatusLine::setText (juce::String left, juce::String right)
     repaint();
 }
 
+void StatusLine::setLive (LiveChip chip)
+{
+    if (chip.offered == _live.offered && chip.lit == _live.lit && chip.tappable == _live.tappable)
+        return;
+    _live = chip;
+    repaint();
+}
+
+juce::Rectangle<float> StatusLine::liveChip() const
+{
+    if (! _live.offered)
+        return {};
+    auto line = getLocalBounds().toFloat();
+    const auto chip = line.removeFromRight (line.getWidth() * liveChipWidth);
+    return chip.withSizeKeepingCentre (chip.getWidth(), chip.getHeight() * liveChipHeight);
+}
+
+void StatusLine::mouseUp (const juce::MouseEvent& e)
+{
+    // One finger arrives as touch#0 and X's emulated mouse#0: only the mouse acts (as Motion does).
+    if (! onLiveTapped || e.source.isTouch() || e.mouseWasDraggedSinceMouseDown())
+        return;
+    if (liveChip().contains (e.position))
+        onLiveTapped();
+}
+
 void StatusLine::paint (juce::Graphics& g)
 {
     g.setColour (theme::caption);
     g.setFont (juce::FontOptions (static_cast<float> (getHeight()) * 0.75f));
-    g.drawText (_left, getLocalBounds(), juce::Justification::centredLeft, true);
-    g.drawText (_right, getLocalBounds(), juce::Justification::centredRight, true);
+    const auto chip = liveChip();
+    auto textArea = getLocalBounds();
+    if (! chip.isEmpty())
+        textArea.removeFromRight (getWidth() - juce::roundToInt (chip.getX()));
+    g.drawText (_left, textArea, juce::Justification::centredLeft, true);
+    g.drawText (_right, textArea, juce::Justification::centredRight, true);
+    if (! chip.isEmpty())
+        paintLiveChip (g, chip);
+}
+
+void StatusLine::paintLiveChip (juce::Graphics& g, juce::Rectangle<float> chip) const
+{
+    // Lit is the one coloured thing on the line (colour is state): another party may operate the room.
+    // Dark is a key at rest; dimmed when a tap would do nothing (no hands), never hidden.
+    const float corner = chip.getHeight() * 0.25f;
+    const DimWhenDisabled dim (g, _live.lit || _live.tappable);
+    g.setColour (_live.lit ? theme::lampLock : theme::keyFace);
+    g.fillRoundedRectangle (chip, corner);
+    g.setColour (_live.lit ? theme::background : theme::caption);
+    g.setFont (juce::FontOptions (chip.getHeight() * 0.62f, _live.lit ? juce::Font::bold : juce::Font::plain));
+    g.drawText (_live.lit ? "PRO-DJ LIVE" : "pro-DJ", chip, juce::Justification::centred, true);
 }
 }

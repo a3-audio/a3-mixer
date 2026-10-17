@@ -71,11 +71,18 @@ Outgoing DeskWire::tap() const
     return { Outgoing::To::beatClock, m };
 }
 
-Outgoing DeskWire::hello (const juce::String& truthDigest) const
+Outgoing DeskWire::hello (const juce::String& truthDigest, const juce::String& device) const
 {
     auto m = to ("device.hello");
-    m.addString ("desk");
+    m.addString (device);
     m.addString (truthDigest);
+    return { Outgoing::To::core, m };
+}
+
+Outgoing DeskWire::prodjLive (bool on) const
+{
+    auto m = to ("prodj.live");
+    m.addInt32 (on ? 1 : 0);
     return { Outgoing::To::core, m };
 }
 

@@ -32,7 +32,7 @@ std::pair<std::string, std::string> regexOf (const std::string& pattern)
     return { out, field };
 }
 
-std::vector<std::string> heardKeys()
+std::vector<std::string> heardKeys (const a3::OscTruth& truth)
 {
     std::vector<std::string> keys (channelPotKeys.begin(), channelPotKeys.end());
     keys.insert (keys.end(), masterPotKeys.begin(), masterPotKeys.end());
@@ -41,13 +41,15 @@ std::vector<std::string> heardKeys()
     for (const auto* key : { "filter.led", "channel.stem", "channel.stem.cursor", "aux-return.stem",
                              "aux-return.stem.mode", "aux-return.cue.led", "beat" })
         keys.emplace_back (key);
+    if (truth.hasAddress ("prodj.live"))   // optional: an older Core's truth lacks it
+        keys.emplace_back ("prodj.live");
     return keys;
 }
 }
 
 DeskOsc::DeskOsc (a3::OscTruth truth) : _truth (std::move (truth))
 {
-    for (const auto& key : heardKeys())
+    for (const auto& key : heardKeys (_truth))
     {
         const auto [regex, field] = regexOf (_truth.pattern (key).toStdString());
         _matchers.push_back ({ key, std::regex (regex),
@@ -71,6 +73,8 @@ juce::StringArray DeskOsc::missing (const a3::OscTruth& truth)
         lacking.add ("host core");
     return lacking;
 }
+
+bool DeskOsc::hasOptional (const std::string& key) const { return _truth.hasAddress (key); }
 
 juce::String DeskOsc::address (const std::string& key, int number) const
 {

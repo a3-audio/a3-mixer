@@ -28,6 +28,12 @@ std::optional<int> countIn (const juce::OSCArgument& a, int upper)
 }
 }
 
+void DeskInbox::step (double nowMs)
+{
+    if (_ind.prodjLive && nowMs >= _ind.prodjLiveUntilMs)
+        _ind.prodjLive = false;
+}
+
 void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
 {
     _ask.answered();   // anything on desk.osc: Core follows this desk
@@ -89,6 +95,18 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
     {
         if (const auto v = numberIn (m[0]))
             _ind.returnCue = *v > 0.5f;
+        return;
+    }
+    if (key == "prodj.live")
+    {
+        // Exactly one int 0 or 1; anything else neither lights nor ends it.
+        if (m.size() != 1)
+            return;
+        if (const auto v = countIn (m[0], 1))
+        {
+            _ind.prodjLive = *v == 1;
+            _ind.prodjLiveUntilMs = nowMs + liveLeaseMs;
+        }
         return;
     }
     if (key == "beat")
