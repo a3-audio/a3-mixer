@@ -4,7 +4,7 @@ The 4-channel DJ mixer of [A³ Audio](https://github.com/a3-audio/a3-system). It
 sends its faders, knobs and buttons to A³ Core over OSC and shows the meters
 and lamps that come back. This repository holds the control scripts
 (`software/scripts/`), the panel firmware (`hardware/mainboard/firmware/`) and
-the KiCad hardware (`hardware/`).
+the KiCad hardware (`hardware/`). `app/` is the virtual desk (A3 Desk).
 
 **Documentation: https://a3-audio.github.io/a3-doc/**
 
