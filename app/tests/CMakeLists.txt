@@ -8,6 +8,7 @@ include(GoogleTest)
 juce_add_console_app(a3-desk-tests PRODUCT_NAME "a3-desk-tests")
 target_sources(a3-desk-tests PRIVATE
     TestRunner.cpp
+    DeskOscTests.cpp
     DisplayPictureTests.cpp
     GuardTests.cpp
     LedScaleTests.cpp

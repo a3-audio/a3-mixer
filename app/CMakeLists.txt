@@ -23,6 +23,8 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 
 # Everything but Main.cpp: the app and the tests compile the same list.
 set(A3DESK_SOURCES
+    Source/DeskControls.cpp
+    Source/DeskOsc.cpp
     Source/DisplayPaint.cpp
     Source/DisplayPicture.cpp
     Source/LedScale.cpp
