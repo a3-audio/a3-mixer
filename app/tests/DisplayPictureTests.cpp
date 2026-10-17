@@ -94,6 +94,7 @@ TEST (DisplayPaint, PaintsTheBarWhiteAndTheHatchDark)
     const auto picture = channelPicture (0, { 1, 0, 0, 0, 0, 0, 0, 0, 0 }, 1, oledWidth, oledHeight,
                                          { true, false, false, false, false, false, false, false, false }, {});
     const auto image = paintPicture (picture, oledWidth, oledHeight);
+    ASSERT_EQ (picture.meters.size(), 9u);   // an empty picture must fail, not crash the runner
     const auto& bar = picture.meters[0].box;
     int white = 0, dark = 0;
     for (int x = bar.x0; x <= bar.x1; ++x)
