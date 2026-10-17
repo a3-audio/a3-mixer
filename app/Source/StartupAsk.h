@@ -45,8 +45,10 @@ class CoreWatch
 public:
     static constexpr double silentAfterMs = 5000.0;
 
-    /** True for a new Core: a boot id other than the last one heard (an older
-        Core sends none, and is never "new"). */
+    /** True when the desk must ask again: a new Core (a boot id other than
+        the last one heard; an older Core sends none, and is never "new"), or
+        a Core heard again after silence -- what it sent meanwhile is lost,
+        and after a minute it no longer follows the desk. */
     bool heard (const juce::String& fingerprint, const juce::String& bootId, double nowMs);
     bool silent (double nowMs) const;
     const juce::String& fingerprint() const { return _fingerprint; }

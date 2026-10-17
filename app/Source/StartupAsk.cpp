@@ -44,11 +44,12 @@ bool StartupAsk::gaveUp (double nowMs) const
 bool CoreWatch::heard (const juce::String& fingerprint, const juce::String& bootId, double nowMs)
 {
     const bool newCore = _lastMs.has_value() && bootId.isNotEmpty() && _bootId.isNotEmpty() && bootId != _bootId;
+    const bool backFromSilence = _lastMs.has_value() && silent (nowMs);
     _lastMs = nowMs;
     _fingerprint = fingerprint;
     if (bootId.isNotEmpty())
         _bootId = bootId;
-    return newCore;
+    return newCore || backFromSilence;
 }
 
 bool CoreWatch::silent (double nowMs) const

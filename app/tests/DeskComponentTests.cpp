@@ -237,9 +237,31 @@ TEST (DeskComponent, LosingTheHandsMidDragReleasesThePot)
     desk->receive (relay, 7000);
     desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-1" }, 7100);
     desk->step (7100);
+    answer (*desk, 7200);
+    desk->step (7200);
     ASSERT_TRUE (desk->handsAccepted());
     EXPECT_FALSE (desk->state().grabbed (pot));
     EXPECT_NEAR (control->getValue(), 0.7, 1e-6);
+}
+
+// Final review I1: back from silence is a new start -- hello and recall at once,
+// and no hand until Core has answered (what it sent meanwhile is lost).
+TEST (DeskComponent, BackFromSilenceAsksAgainAndTakesNoHandUntilAnswered)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->step (7000);   // Core silent
+    c.sent.clear();
+    desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-1" }, 7100);
+    desk->step (7100);
+    EXPECT_EQ (c.addresses(), juce::StringArray (osc().address ("device.hello"), osc().address ("state.recall")));
+    EXPECT_FALSE (desk->handsAccepted());
+    c.sent.clear();
+    desk->touchPot (potIndex ("channel.gain", 1), 0.5f);
+    EXPECT_TRUE (c.sent.empty());
+    answer (*desk, 7200);
+    desk->step (7200);
+    EXPECT_TRUE (desk->handsAccepted());
 }
 
 // Stale dims the whole surface (spec 4.1): every child but the status line, LOCK too.

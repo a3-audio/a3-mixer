@@ -171,6 +171,17 @@ TEST (CoreWatch, AnOlderCoreWithoutBootIdIsNeverANewOne)
     EXPECT_FALSE (core.heard ("f", {}, 2000));
 }
 
+// Final review I1: a Core heard again after silence (a link drop, same boot id)
+// has lost every relay sent meanwhile, and may have dropped the desk -- ask again.
+TEST (CoreWatch, BackFromSilenceIsAskedAgain)
+{
+    CoreWatch core;
+    EXPECT_FALSE (core.heard ("f", "boot-1", 0));
+    EXPECT_FALSE (core.heard ("f", "boot-1", 5000));    // 5 s exactly is not yet silence
+    EXPECT_TRUE (core.heard ("f", "boot-1", 10001));
+    EXPECT_FALSE (core.heard ("f", "boot-1", 12000));
+}
+
 TEST (DeskWire, RecallGoesToCoreAsInt1)
 {
     const auto recall = DeskWire (osc()).recall();
