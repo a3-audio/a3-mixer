@@ -23,6 +23,8 @@ int channelLeds (double peakDb);
 double barFraction (double peakDb);
 
 inline constexpr int mainLedCount = 32;
+/** The output matrix's columns: SUB and the seven tops, one main_* meter each. */
+inline constexpr int matrixColumns = 8;
 inline constexpr double mainFloorDb = -60.0;
 /** The output matrix's row, linear in dB from mainFloorDb to 0; the bottom row stays lit. */
 int mainLedIndex (double db);

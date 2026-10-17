@@ -21,8 +21,6 @@ juce::String unusable (const juce::String& body)
     const auto lacking = desk::DeskOsc::missing (truth);
     return lacking.isEmpty() ? juce::String() : "it lacks " + lacking.joinIntoString (", ");
 }
-
-double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
 }
 
 class DeskApp : public juce::JUCEApplication
@@ -41,7 +39,7 @@ public:
         // $A3_OSC_TRUTH set: still hear /core/here (Core silent), but never fetch or reload.
         const bool followingCore = a3::truthkeeper::followsCore (std::getenv ("A3_OSC_TRUTH"));
         keeper = std::make_unique<a3::TruthKeeperLink> (cache, unusable, [this] { load(); }, followingCore);
-        keeper->onHeard = [this] (const a3::Announcement& a) { window->content.announced (a, nowMs()); };
+        keeper->onHeard = [this] (const a3::Announcement& a) { window->content.announced (a, desk::nowMs()); };
         keeper->start();
         load();
     }

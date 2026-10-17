@@ -22,8 +22,6 @@ juce::Colour ledColour (int index)
     }
     return theme::ledOff;
 }
-
-constexpr int matrixColumns = 8;
 }
 
 void LedColumn::setLeds (int lit, int holdIndex)
@@ -52,7 +50,7 @@ void LedColumn::paint (juce::Graphics& g)
 
 void OutputMatrix::setColumn (int column, int bar, int hold)
 {
-    if (column < 0 || column >= matrixColumns)
+    if (column < 0 || column >= leds::matrixColumns)
         return;
     if (_bar[(size_t) column] == bar && _hold[(size_t) column] == hold)
         return;
@@ -65,9 +63,9 @@ void OutputMatrix::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
     const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
-    const float cw = static_cast<float> (getWidth()) / matrixColumns, ch = static_cast<float> (getHeight()) / leds::mainLedCount;
+    const float cw = static_cast<float> (getWidth()) / leds::matrixColumns, ch = static_cast<float> (getHeight()) / leds::mainLedCount;
     const float d = juce::jmin (cw, ch) * 0.7f;
-    for (int c = 0; c < matrixColumns; ++c)
+    for (int c = 0; c < leds::matrixColumns; ++c)
         for (int row = 0; row < leds::mainLedCount; ++row)
         {
             const bool held = row == _hold[(size_t) c] && row > _bar[(size_t) c];

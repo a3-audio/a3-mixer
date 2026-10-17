@@ -17,7 +17,6 @@ namespace desk
 namespace
 {
 constexpr float captionTextOfBand = 0.6f, textOfMatrixLine = 0.9f;
-constexpr int matrixColumns = 8;
 
 double fraction (float linear) { return leds::barFraction (leds::peakDb (linear)); }
 
@@ -326,7 +325,7 @@ void DeskComponent::showMeters()
         _leds[(size_t) ch - 1]->setLeds (leds::channelLeds (leds::peakDb (r.bar)),
                                          leds::channelLeds (leds::peakDb (r.hold)) - 1);
     }
-    for (int column = 0; column < matrixColumns; ++column)
+    for (int column = 0; column < leds::matrixColumns; ++column)
     {
         const auto r = _meters->output (column, now);
         _matrix->setColumn (column, leds::mainLedIndex (leds::peakDb (r.bar)), leds::mainLedIndex (leds::peakDb (r.hold)));
@@ -408,8 +407,8 @@ void DeskComponent::paint (juce::Graphics& g)
     auto band = _layout.matrixCaption;
     const auto names = band.removeFromTop (band.getHeight() * 0.5f);
     g.setFont (juce::FontOptions (names.getHeight() * textOfMatrixLine));
-    const float column = names.getWidth() / matrixColumns;
-    for (int c = 0; c < matrixColumns; ++c)
+    const float column = names.getWidth() / leds::matrixColumns;
+    for (int c = 0; c < leds::matrixColumns; ++c)
         g.drawFittedText (c == 0 ? juce::String ("SUB") : juce::String (c),
                           names.withX (names.getX() + column * static_cast<float> (c)).withWidth (column).toNearestInt(),
                           juce::Justification::centred, 1, 0.5f);

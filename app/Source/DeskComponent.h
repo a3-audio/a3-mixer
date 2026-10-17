@@ -26,6 +26,10 @@
 
 namespace desk
 {
+/** The desk's one clock: announced, receive and step compare its readings,
+    so every caller takes them from here. */
+inline double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
+
 /** A fingertip on the primary display, in pixels: the one place the desk asks the screen. */
 float currentFingertip();
 
@@ -66,7 +70,7 @@ public:
 private:
     static constexpr int stepsPerSecond = 25;
 
-    void timerCallback() override { step (juce::Time::getMillisecondCounterHiRes()); }
+    void timerCallback() override { step (nowMs()); }
     void buildControls();
     void buildStrip (int channel);
     void buildMaster();

@@ -9,11 +9,6 @@
 
 namespace desk
 {
-namespace
-{
-double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
-}
-
 DeskWindow::DeskWindow()
     : DocumentWindow ("A3 Desk", theme::background, allButtons),
       content ([this] (const Outgoing& out) { return link != nullptr && link->send (out); })

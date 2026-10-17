@@ -36,7 +36,7 @@ public:
     void paint (juce::Graphics&) override;
 
 private:
-    std::array<int, 8> _bar {}, _hold {};
+    std::array<int, leds::matrixColumns> _bar {}, _hold {};
 };
 
 /** A display, the OLED's picture at its own pixels, scaled whole -- the same picture as the hardware's. */
