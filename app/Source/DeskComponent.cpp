@@ -76,6 +76,10 @@ void DeskComponent::buildControls()
             _knobs.push_back (std::make_unique<DeskKnob> (potCaption (pot.key), colour, fillsFromTheMiddle (pot.key)));
             control = _knobs.back().get();
         }
+        // Two taps put it back (smoke test 2026-10-17), through JUCE's own double
+        // click: a drag start, the value, a drag end -- the very path a hand takes.
+        if (const auto rest = restPosition (pot.key))
+            control->setDoubleClickReturnValue (true, *rest);
         const int index = static_cast<int> (i);
         control->onDragStart = [this, index] { _state.grab (index); };
         control->onDragEnd = [this, index] { _state.release (index); syncControls(); };

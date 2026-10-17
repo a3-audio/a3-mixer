@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,6 +45,8 @@ juce::String potCaption (const std::string& key);
 bool isGuarded (const std::string& key);
 /** The EQ bands and the phones' blend read as a distance from their middle. */
 bool fillsFromTheMiddle (const std::string& key);
+/** Where two taps put a pot, or nothing for one that stays where it was left. */
+std::optional<float> restPosition (const std::string& key);
 /** Every key the desk sends or reads -- a3_mixer_osc.KEYS_USED. */
 std::vector<std::string> keysUsed();
 }

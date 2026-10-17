@@ -53,6 +53,22 @@ bool fillsFromTheMiddle (const std::string& key)
     return key == "channel.eq.high" || key == "channel.eq.mid" || key == "channel.eq.low" || key == "master.phones-mix";
 }
 
+std::optional<float> restPosition (const std::string& key)
+{
+    // Motion's answers for the same words (a3-motion-ui MixerControls.hh: mixer-,
+    // master- and filterControlRestPosition, and its channel fader's double tap):
+    // one answer in the system, whichever surface the hand is on. 1.0 on gain and
+    // volume is 0 dB at Core (slope_volume: full travel is 0 dB). Master, booth and
+    // phones have none there -- full is the whole room, or an ear, at once.
+    static const std::map<std::string, float> rests {
+        { "channel.eq.high", 0.5f }, { "channel.eq.mid", 0.5f }, { "channel.eq.low", 0.5f },
+        { "channel.gain", 1.f },     { "channel.aux-send", 0.f }, { "channel.volume", 1.f },
+        { "master.phones-mix", 0.5f }, { "master.aux-return", 0.f }, { "filter.frequency", 0.5f },
+        { "filter.resonance", 0.f } };
+    const auto found = rests.find (key);
+    return found != rests.end() ? std::optional<float> (found->second) : std::nullopt;
+}
+
 std::vector<std::string> keysUsed()
 {
     std::vector<std::string> keys (channelPotKeys.begin(), channelPotKeys.end());

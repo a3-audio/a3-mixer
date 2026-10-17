@@ -132,3 +132,28 @@ TEST (DeskOsc, TheMeterThreadReadsANumberCheaply)
     EXPECT_FALSE (osc.vuNumberOf (osc.address ("vu", test::truth().vuCount() + 1)).has_value());
     EXPECT_FALSE (osc.vuNumberOf (osc.address ("channel.gain", 1)).has_value());
 }
+
+// Where two taps put a pot is the system's one answer for these words: Motion's
+// table (a3-motion-ui MixerControls.hh, mixer/master/filterControlRestPosition,
+// and its channel fader's double tap). Core plays 1.0 on gain and volume as
+// 0 dB (a3-core.py slope_volume: full travel is 0 dB, never above).
+TEST (DeskControls, TwoTapsPutAPotWhereMotionPutsIt)
+{
+    const std::vector<std::pair<std::string, float>> rests {
+        { "channel.eq.high", 0.5f }, { "channel.eq.mid", 0.5f }, { "channel.eq.low", 0.5f },
+        { "channel.gain", 1.f },     { "channel.aux-send", 0.f }, { "channel.volume", 1.f },
+        { "master.phones-mix", 0.5f }, { "master.aux-return", 0.f }, { "filter.frequency", 0.5f },
+        { "filter.resonance", 0.f } };
+    for (const auto& [key, rest] : rests)
+    {
+        ASSERT_TRUE (restPosition (key).has_value()) << key;
+        EXPECT_FLOAT_EQ (*restPosition (key), rest) << key;
+    }
+}
+
+// Full on the master, the booth or the phones is the whole room -- or an ear -- at once.
+TEST (DeskControls, MasterBoothAndPhonesHaveNoRest)
+{
+    for (const auto* key : { "master.volume", "master.booth", "master.phones-volume" })
+        EXPECT_FALSE (restPosition (key).has_value()) << key;
+}

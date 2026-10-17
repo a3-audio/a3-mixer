@@ -14,7 +14,8 @@
 namespace desk
 {
 /** A pot: JUCE's rotary slider, dragged vertically, wheel for fine steps.
-    No double-click to rest (spec Q10: a reset mid-set is a jump on the PA). */
+    Two taps put it at restPosition() where it has one (set by DeskComponent;
+    the maintainer's call of 2026-10-17 over spec Q10). */
 class DeskKnob : public juce::Slider
 {
 public:

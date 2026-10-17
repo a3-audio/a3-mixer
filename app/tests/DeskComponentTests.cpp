@@ -7,6 +7,7 @@
 #include "DeskComponent.h"
 #include "DeskControls.h"
 #include "DeskLink.h"
+#include "FakePeer.h"
 #include "TestTruth.h"
 
 using namespace desk;
@@ -327,4 +328,132 @@ TEST (DeskLink, TheStatusSaysWhyItCannotRun)
     EXPECT_TRUE (statusFor (DeskLink::Opened::portTaken).contains ("another desk"));
     EXPECT_TRUE (statusFor (DeskLink::Opened::ok).isEmpty());
     EXPECT_TRUE (statusFor (DeskLink::Opened::noSender).contains ("cannot send"));
+}
+
+namespace
+{
+juce::MouseEvent clickOn (juce::Component& c, juce::Point<float> at, juce::Point<float> downAt, bool dragged)
+{
+    return { juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys(), 1.f,
+             juce::MouseInputSource::defaultOrientation, juce::MouseInputSource::defaultRotation,
+             juce::MouseInputSource::defaultTiltX, juce::MouseInputSource::defaultTiltY, &c, &c,
+             juce::Time::getCurrentTime(), downAt, juce::Time::getCurrentTime(), 2, dragged };
+}
+
+/** What a drag to `value` would have sent for this pot. */
+Outgoing dragTo (int pot, float value)
+{
+    const DeskWire wire (osc());
+    return wire.pot (pot, value);
+}
+
+/** The n-th child of a kind, in the order the desk built them (channel strips first). */
+template <typename Kind>
+Kind* nthChild (DeskComponent& desk, int n)
+{
+    for (auto* child : desk.getChildren())
+        if (auto* found = dynamic_cast<Kind*> (child); found != nullptr && n-- == 0)
+            return found;
+    return nullptr;
+}
+}
+
+// The maintainer, smoke test 2026-10-17: "double-tap should reset to the default value".
+// The reset is a hand on the pot: grabbed, sent as a drag would send it, ringed, released.
+TEST (DeskComponent, TwoTapsPutEachKindOfPotBackAsADragWould)
+{
+    for (const auto& [key, channel] : std::vector<std::pair<std::string, int>> {
+             { "channel.gain", 1 }, { "channel.eq.mid", 2 }, { "channel.volume", 3 }, { "channel.aux-send", 4 },
+             { "filter.frequency", 0 }, { "master.phones-mix", 0 }, { "master.aux-return", 0 } })
+    {
+        Captured c;
+        auto desk = deskJoined (c);
+        const int pot = potIndex (key, channel);
+        auto* control = potControl (*desk, pot);
+        ASSERT_NE (control, nullptr) << key;
+        desk->touchPot (pot, 0.3f);
+        c.sent.clear();
+        const auto centre = control->getLocalBounds().getCentre().toFloat();
+        control->mouseDoubleClick (clickOn (*control, centre, centre, false));
+        const auto rest = *restPosition (key);
+        ASSERT_EQ (c.sent.size(), 1u) << key;
+        const auto expected = dragTo (pot, rest);
+        EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), expected.message.getAddressPattern().toString());
+        ASSERT_TRUE (c.sent[0].message[0].isFloat32()) << key;
+        EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), rest) << key;
+        EXPECT_FLOAT_EQ (desk->state().value (pot), rest) << key;
+        EXPECT_TRUE (desk->state().marked (pot)) << key;
+        EXPECT_FALSE (desk->state().grabbed (pot)) << key;
+    }
+}
+
+TEST (DeskComponent, TwoTapsLeaveMasterBoothAndPhonesWhereTheyAre)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    for (const auto* key : { "master.volume", "master.booth", "master.phones-volume" })
+    {
+        const int pot = potIndex (key, 0);
+        desk->touchPot (pot, 0.3f);
+        c.sent.clear();
+        auto* control = potControl (*desk, pot);
+        const auto centre = control->getLocalBounds().getCentre().toFloat();
+        control->mouseDoubleClick (clickOn (*control, centre, centre, false));
+        EXPECT_TRUE (c.sent.empty()) << key;
+        EXPECT_FLOAT_EQ (desk->state().value (pot), 0.3f) << key;
+    }
+}
+
+namespace
+{
+using Source = juce::MouseInputSource::InputSourceType;
+
+/** One finger down and up as the rig's X delivers it: through the window's peer, by source. */
+void press (juce::ComponentPeer& peer, Source source, juce::Point<float> at, juce::int64 timeMs)
+{
+    peer.handleMouseEvent (source, at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), 1.f, 0.f, timeMs);
+}
+
+void lift (juce::ComponentPeer& peer, Source source, juce::Point<float> at, juce::int64 timeMs)
+{
+    peer.handleMouseEvent (source, at, juce::ModifierKeys(), 1.f, 0.f, timeMs);
+}
+
+/** A tap of one finger on the rig: touch#0, and 2 ms later X's emulated mouse#0 (memory: every touch arrives twice). */
+void tapTwiceDelivered (juce::ComponentPeer& peer, juce::Point<float> at, juce::int64 t)
+{
+    press (peer, Source::touch, at, t);
+    press (peer, Source::mouse, at, t + 2);
+    lift (peer, Source::touch, at, t + 60);
+    lift (peer, Source::mouse, at, t + 62);
+}
+}
+
+// JUCE counts clicks per input source, so the rig's double delivery of one
+// finger is never two taps -- and a real double tap still resets, once.
+TEST (DeskComponent, OneTapArrivingTwiceIsNoDoubleTap)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    test::PeerHost window;
+    window.setBounds (desk->getLocalBounds());
+    window.addAndMakeVisible (*desk);
+    window.addToDesktop (0);
+    window.setVisible (true);   // an invisible window has nothing under the finger
+    auto* peer = window.getPeer();
+    ASSERT_NE (peer, nullptr);
+    const int pot = potIndex ("channel.eq.high", 2);
+    desk->touchPot (pot, 0.3f);
+    c.sent.clear();
+    const auto at = potControl (*desk, pot)->getBounds().getCentre().toFloat();
+
+    tapTwiceDelivered (*peer, at, 10000);
+    EXPECT_TRUE (c.sent.empty());
+    EXPECT_FLOAT_EQ (desk->state().value (pot), 0.3f);
+
+    tapTwiceDelivered (*peer, at, 20000);
+    tapTwiceDelivered (*peer, at, 20200);
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), 0.5f);
+    window.removeChildComponent (desk.get());
 }

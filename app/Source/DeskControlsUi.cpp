@@ -23,7 +23,6 @@ DeskKnob::DeskKnob (juce::String c, juce::Colour a, bool middle) : caption (std:
     setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
     setRange (0.0, 1.0);
     setRotaryParameters (startAngle, endAngle, true);
-    setDoubleClickReturnValue (false, 0.0);
 }
 
 void DeskKnob::resized()
@@ -44,7 +43,6 @@ DeskFader::DeskFader (juce::Colour c) : colour (c)
     setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
     setRange (0.0, 1.0);
     setSliderSnapsToMousePosition (false);
-    setDoubleClickReturnValue (false, 0.0);
 }
 
 void DeskFader::resized()
