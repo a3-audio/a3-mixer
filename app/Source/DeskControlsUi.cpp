@@ -66,8 +66,15 @@ DeskEncoder::DeskEncoder (juce::String caption) : _caption (std::move (caption))
 void DeskEncoder::paint (juce::Graphics& g)
 {
     const DimWhenDisabled dim (g, isEnabled());
-    DeskLook::paintKnob (g, getLocalBounds().toFloat(), _caption, std::nullopt, 0.5f, theme::neutralArc, false,
-                         false, startAngle, endAngle);
+    DeskLook::paintEncoder (g, getLocalBounds().toFloat(), _caption, _clicks);
+}
+
+void DeskEncoder::turn (int clicks)
+{
+    _clicks += clicks;
+    repaint();
+    if (onTurn)
+        onTurn (clicks);
 }
 
 void DeskEncoder::mouseDown (const juce::MouseEvent&)
@@ -84,8 +91,7 @@ void DeskEncoder::mouseDrag (const juce::MouseEvent& e)
     if (clicks == 0)
         return;
     _turned = true;
-    if (onTurn)
-        onTurn (clicks);
+    turn (clicks);
 }
 
 void DeskEncoder::mouseUp (const juce::MouseEvent& e)
@@ -98,8 +104,8 @@ void DeskEncoder::mouseUp (const juce::MouseEvent& e)
 
 void DeskEncoder::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
 {
-    if (wheel.deltaY != 0.f && onTurn)
-        onTurn (wheel.deltaY > 0.f ? 1 : -1);
+    if (wheel.deltaY != 0.f)
+        turn (wheel.deltaY > 0.f ? 1 : -1);
 }
 
 DeskKey::DeskKey (juce::String caption, juce::Colour lamp) : _caption (std::move (caption)), _lamp (lamp) {}

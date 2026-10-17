@@ -14,7 +14,8 @@ namespace shares
 // Shares of the window's height unless named otherwise. Read off the V02
 // photo (spec §4.2); Task D3 replaces them with the measured front panel.
 constexpr float gapOfWidth = 0.02f, masterColumns = 1.6f;
-constexpr float status = 0.02f, top = 0.075f, display = 0.07f, encoder = 0.05f, pot = 0.058f;
+// The encoder row is a pot row: the photo's display encoders are no smaller than the pots.
+constexpr float status = 0.02f, top = 0.075f, display = 0.07f, pot = 0.058f, encoder = pot;
 constexpr float tap = 0.035f, keys = 0.05f, caption = 0.03f;
 constexpr float matrix = 0.20f, matrixCaption = 0.03f, filterPots = 0.075f, filterKeys = 0.05f;
 constexpr float master = 0.12f, monitorPots = 0.075f, phones = 0.075f;

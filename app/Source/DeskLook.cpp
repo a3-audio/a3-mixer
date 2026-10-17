@@ -14,6 +14,9 @@ namespace
 {
 constexpr float captionOfCell = 0.22f, knobOfSpace = 0.86f, strokeOfKnob = 0.09f;
 constexpr float capOfRing = 0.72f, markerOfStroke = 0.75f;
+/** The encoder's knurl, and the step its cap turns per click: a step the eye
+    can follow, not the hardware's detent count (unmeasured, a3_mixer_encoders). */
+constexpr int knurlsPerTurn = 24;
 
 juce::Point<float> onCircle (juce::Point<float> centre, float radius, float angle)
 {
@@ -76,42 +79,81 @@ DeskLook::DeskLook()
     setColour (juce::ResizableWindow::backgroundColourId, theme::background);
 }
 
+namespace
+{
+/** Where a knob's parts sit in its cell: one geometry for pots and encoders. */
+struct KnobParts
+{
+    juce::Rectangle<float> caption;
+    juce::Point<float> centre;
+    float stroke, ring, cap;
+};
+
+KnobParts partsOf (juce::Rectangle<float> cell)
+{
+    KnobParts k;
+    k.caption = cell.removeFromBottom (cell.getHeight() * captionOfCell);
+    const float diameter = juce::jmin (cell.getWidth(), cell.getHeight()) * knobOfSpace;
+    k.centre = cell.getCentre();
+    k.stroke = diameter * strokeOfKnob;
+    k.ring = diameter * 0.5f - k.stroke * 0.5f;
+    k.cap = k.ring * capOfRing;
+    return k;
+}
+
+void paintCap (juce::Graphics& g, const KnobParts& k, float pointerAngle, const juce::String& caption)
+{
+    g.setColour (theme::cap);
+    g.fillEllipse (k.centre.x - k.cap, k.centre.y - k.cap, 2.f * k.cap, 2.f * k.cap);
+    g.setColour (theme::pointer);
+    g.drawLine ({ onCircle (k.centre, k.cap * 0.35f, pointerAngle), onCircle (k.centre, k.cap * 0.9f, pointerAngle) },
+                juce::jmax (1.5f, k.stroke * 0.45f));
+    g.setColour (theme::caption);
+    g.setFont (juce::FontOptions (k.caption.getHeight() * 0.7f));
+    g.drawText (caption, k.caption, juce::Justification::centred, false);
+}
+}
+
 void DeskLook::paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption,
                           std::optional<float> arcValue, float pointerValue, juce::Colour arc, bool fromMiddle,
                           bool marked, float startAngle, float endAngle)
 {
-    const auto captionArea = cell.removeFromBottom (cell.getHeight() * captionOfCell);
-    const float diameter = juce::jmin (cell.getWidth(), cell.getHeight()) * knobOfSpace;
-    const auto centre = cell.getCentre();
-    const float stroke = diameter * strokeOfKnob;
-    const float ring = diameter * 0.5f - stroke * 0.5f;
-
+    const auto k = partsOf (cell);
     g.setColour (theme::ringTrack);
-    arcPath (g, centre, ring, startAngle, endAngle, stroke);
+    arcPath (g, k.centre, k.ring, startAngle, endAngle, k.stroke);
     const auto angleOf = [&] (float v) { return startAngle + juce::jlimit (0.f, 1.f, v) * (endAngle - startAngle); };
     if (arcValue)
     {
         g.setColour (arc);
         const float from = fromMiddle ? angleOf (0.5f) : startAngle;
-        arcPath (g, centre, ring, juce::jmin (from, angleOf (*arcValue)), juce::jmax (from, angleOf (*arcValue)), stroke);
+        arcPath (g, k.centre, k.ring, juce::jmin (from, angleOf (*arcValue)), juce::jmax (from, angleOf (*arcValue)), k.stroke);
         if (marked)
         {
             g.setColour (theme::marker);
-            const auto at = onCircle (centre, ring + stroke * 1.4f, angleOf (*arcValue));
-            const float r = stroke * markerOfStroke;
-            g.drawEllipse (at.x - r, at.y - r, 2.f * r, 2.f * r, juce::jmax (1.f, stroke * 0.3f));
+            const auto at = onCircle (k.centre, k.ring + k.stroke * 1.4f, angleOf (*arcValue));
+            const float r = k.stroke * markerOfStroke;
+            g.drawEllipse (at.x - r, at.y - r, 2.f * r, 2.f * r, juce::jmax (1.f, k.stroke * 0.3f));
         }
     }
-    const float capRadius = ring * capOfRing;
-    g.setColour (theme::cap);
-    g.fillEllipse (centre.x - capRadius, centre.y - capRadius, 2.f * capRadius, 2.f * capRadius);
-    g.setColour (theme::pointer);
-    g.drawLine ({ onCircle (centre, capRadius * 0.35f, angleOf (pointerValue)),
-                  onCircle (centre, capRadius * 0.9f, angleOf (pointerValue)) },
-                juce::jmax (1.5f, stroke * 0.45f));
+    paintCap (g, k, angleOf (pointerValue), caption);
+}
+
+void DeskLook::paintEncoder (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption, int clicks)
+{
+    // Endless, so no travel and no value arc: a closed ring, knurled like the
+    // hardware's encoder cap -- what tells it from the pots below at a glance.
+    const auto k = partsOf (cell);
+    constexpr float fullTurn = juce::MathConstants<float>::twoPi;
+    g.setColour (theme::ringTrack);
+    arcPath (g, k.centre, k.ring, 0.f, fullTurn, k.stroke);
     g.setColour (theme::caption);
-    g.setFont (juce::FontOptions (captionArea.getHeight() * 0.7f));
-    g.drawText (caption, captionArea, juce::Justification::centred, false);
+    for (int i = 0; i < knurlsPerTurn; ++i)
+    {
+        const float a = fullTurn * static_cast<float> (i) / static_cast<float> (knurlsPerTurn);
+        g.drawLine ({ onCircle (k.centre, k.ring - k.stroke * 0.3f, a), onCircle (k.centre, k.ring + k.stroke * 0.3f, a) },
+                    juce::jmax (1.f, k.stroke * 0.2f));
+    }
+    paintCap (g, k, fullTurn * static_cast<float> (clicks) / static_cast<float> (knurlsPerTurn), caption);
 }
 
 void DeskLook::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float position,

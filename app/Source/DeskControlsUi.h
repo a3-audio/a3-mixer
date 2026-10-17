@@ -43,7 +43,8 @@ public:
     bool known = false, marked = false;
 };
 
-/** An endless push encoder: drag or wheel turns, a click without a drag pushes. */
+/** An endless push encoder: drag or wheel turns, a click without a drag pushes.
+    Its cap turns a step per click sent: the selection itself is the display's. */
 class DeskEncoder : public juce::Component
 {
 public:
@@ -58,9 +59,12 @@ public:
     std::function<void()> onPush;
 
 private:
+    void turn (int clicks);
+
     juce::String _caption;
     std::optional<turns::DragClicks> _drag;
     bool _turned = false;
+    int _clicks = 0;
 };
 
 /** A key: press and release go out as they happen; lit by Core's lamp. */

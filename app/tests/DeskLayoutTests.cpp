@@ -81,3 +81,11 @@ TEST (DeskLayout, TheFaderCapRidesItsSlot)
     EXPECT_FLOAT_EQ (faderCap (fader, 1.f).getY(), 0.f);
     EXPECT_FLOAT_EQ (faderCap (fader, 0.5f).getWidth(), 40.f);
 }
+
+// The V02 photo: the display encoders' caps are no smaller than the pots'.
+TEST (DeskLayout, TheEncoderIsAsLargeAsAPot)
+{
+    const auto l = layOutDesk (roomy, finger);
+    for (const auto& s : l.strips)
+        EXPECT_GE (s.encoder.getHeight() + 0.01f, s.pots[0].getHeight());
+}

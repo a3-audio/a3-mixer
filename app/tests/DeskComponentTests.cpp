@@ -457,3 +457,65 @@ TEST (DeskComponent, OneTapArrivingTwiceIsNoDoubleTap)
     EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), 0.5f);
     window.removeChildComponent (desk.get());
 }
+
+// Smoke test 2026-10-17: "the encoder for display control is missing on the channels".
+// The channel encoder is the hardware's (a3_mixer_encoders): a turn sends
+// channel.stem.turn with the clicks, a press channel.stem.push 1.
+TEST (DeskComponent, TheChannelEncoderSendsTheHardwaresTurnAndPush)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* encoder = nthChild<DeskEncoder> (*desk, 1);   // channel 2's
+    ASSERT_NE (encoder, nullptr);
+    const juce::Point<float> start { encoder->getWidth() * 0.5f, encoder->getHeight() * 0.5f };
+    const float click = turns::dragPerClickOfKnob * static_cast<float> (encoder->getHeight());
+    encoder->mouseDown (clickOn (*encoder, start, start, false));
+    encoder->mouseDrag (clickOn (*encoder, start.translated (0.f, -2.5f * click), start, true));
+    encoder->mouseUp (clickOn (*encoder, start.translated (0.f, -2.5f * click), start, true));
+    encoder->mouseDown (clickOn (*encoder, start, start, false));
+    encoder->mouseUp (clickOn (*encoder, start, start, false));
+    encoder->mouseWheelMove (clickOn (*encoder, start, start, false), juce::MouseWheelDetails { 0.f, -0.1f, false, false, false });
+
+    ASSERT_EQ (c.sent.size(), 3u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("channel.stem.turn", 2));
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 2);
+    EXPECT_EQ (c.sent[1].message.getAddressPattern().toString(), osc().address ("channel.stem.push", 2));
+    EXPECT_EQ (c.sent[1].message[0].getInt32(), 1);
+    EXPECT_EQ (c.sent[2].message[0].getInt32(), -1);
+}
+
+// The display shows the selection Core reports, not the desk's own count of clicks.
+TEST (DeskComponent, TheChannelDisplayFollowsCoresCursor)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* display = nthChild<OledView> (*desk, 1);
+    ASSERT_NE (display, nullptr);
+    desk->step (140);
+    const auto before = display->createComponentSnapshot (display->getLocalBounds());
+    juce::OSCMessage cursor (juce::OSCAddressPattern (osc().address ("channel.stem.cursor", 2)), 5);
+    desk->receive (cursor, 150);
+    desk->step (180);
+    const auto after = display->createComponentSnapshot (display->getLocalBounds());
+    int differing = 0;
+    for (int y = 0; y < before.getHeight(); ++y)
+        for (int x = 0; x < before.getWidth(); ++x)
+            differing += before.getPixelAt (x, y) != after.getPixelAt (x, y) ? 1 : 0;
+    EXPECT_GT (differing, 0);
+}
+
+// The hardware's encoder sits right under its display, a cap at least a pot's
+// size (V02 photo): the virtual one must be found there, not read as a pot.
+TEST (DeskComponent, TheEncoderHangsUnderItsDisplay)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        auto* encoder = nthChild<DeskEncoder> (*desk, ch);
+        auto* display = nthChild<OledView> (*desk, ch);
+        ASSERT_NE (encoder, nullptr);
+        EXPECT_NEAR (encoder->getBounds().getCentreX(), display->getBounds().getCentreX(), 1.0);
+        EXPECT_LE (std::abs (encoder->getY() - display->getBottom()), 1);
+    }
+}

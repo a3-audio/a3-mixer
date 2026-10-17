@@ -382,3 +382,44 @@ TEST (DeskUi, EveryIndicatorPaintsDisabledDimmer)
     dimmer (matrix, 80, 160);
     dimmer (oled, 256, 128);
 }
+
+namespace
+{
+/** Light at the foot of a control's ring, where a pot's travel has its gap. */
+double lightAtTheFoot (juce::Component& c)
+{
+    const auto shot = snapshotOf (c, 120, 100);
+    return lightOf (shot.getClippedImage ({ 50, 64, 20, 12 }));
+}
+}
+
+// An encoder is endless: its ring has no ends, which is what tells it from a pot at a glance.
+TEST (DeskUi, AnEncoderReadsAsEndlessNotAsAPot)
+{
+    DeskLook look;
+    DeskKnob knob ("TRIM", theme::channel[0], false);
+    knob.setLookAndFeel (&look);
+    knob.known = true;
+    DeskEncoder encoder ("INPUT");
+    EXPECT_LT (lightAtTheFoot (knob), 1.0);
+    EXPECT_GT (lightAtTheFoot (encoder), 20.0);
+    knob.setLookAndFeel (nullptr);
+}
+
+// The cap turns with the hand, a step per click: the turn is felt where it was made.
+TEST (DeskUi, AnEncoderTurnsItsCapWithTheClicks)
+{
+    DeskEncoder encoder ("INPUT");
+    encoder.setBounds (0, 0, 100, 100);
+    const auto before = snapshotOf (encoder, 100, 100);
+    const juce::Point<float> start { 50.f, 50.f };
+    encoder.mouseDown (eventAt (encoder, start, start, false));
+    encoder.mouseDrag (eventAt (encoder, { 50.f, 20.f }, start, true));
+    encoder.mouseUp (eventAt (encoder, { 50.f, 20.f }, start, true));
+    const auto after = snapshotOf (encoder, 100, 100);
+    int differing = 0;
+    for (int y = 0; y < before.getHeight(); ++y)
+        for (int x = 0; x < before.getWidth(); ++x)
+            differing += before.getPixelAt (x, y) != after.getPixelAt (x, y) ? 1 : 0;
+    EXPECT_GT (differing, 10);
+}

@@ -41,5 +41,7 @@ public:
     static void paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption,
                            std::optional<float> arcValue, float pointerValue, juce::Colour arc,
                            bool fromMiddle, bool marked, float startAngle, float endAngle);
+    /** An endless encoder: a closed, knurled ring and a cap turned `clicks` steps from noon. */
+    static void paintEncoder (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption, int clicks);
 };
 }
