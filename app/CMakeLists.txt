@@ -24,8 +24,6 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 # Everything but Main.cpp: the app and the tests compile the same list, as other apps do.
 include(cmake/A3DeskSources.cmake)
 
-set(A3DESK_DEFINITIONS JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
-
 juce_add_gui_app(A3Desk PRODUCT_NAME "A3 Desk")
 target_sources(A3Desk PRIVATE Source/Main.cpp ${A3DESK_LIBRARY_SOURCES})
 target_include_directories(A3Desk PRIVATE Source)

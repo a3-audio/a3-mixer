@@ -31,3 +31,6 @@ target_link_libraries(a3-desk-tests
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 # PRE_TEST: the list is read when ctest runs, under xvfb-run, not at build time.
 gtest_discover_tests(a3-desk-tests DISCOVERY_MODE PRE_TEST)
+# The source set on its own, in script mode: what another app gets from it.
+add_test(NAME DeskSourceSet.ExportsWhatTheTargetsCompileWith
+    COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_SOURCE_DIR}/SourceSetExports.cmake")
