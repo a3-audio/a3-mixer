@@ -24,6 +24,8 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 # Everything but Main.cpp: the app and the tests compile the same list.
 set(A3DESK_SOURCES
     Source/DeskControls.cpp
+    Source/DeskInbox.cpp
+    Source/DeskMeters.cpp
     Source/DeskOsc.cpp
     Source/DeskWire.cpp
     Source/DeskState.cpp
@@ -31,6 +33,7 @@ set(A3DESK_SOURCES
     Source/DisplayPicture.cpp
     Source/LedScale.cpp
     Source/StartupAsk.cpp
+    Source/VuInbox.cpp
     Source/shared/MeterBallistics.cpp
     Source/shared/OscSendGuard.cpp
     Source/shared/OscTruth.cpp
