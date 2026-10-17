@@ -23,6 +23,7 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 
 # Everything but Main.cpp: the app and the tests compile the same list.
 set(A3DESK_SOURCES
+    Source/LedScale.cpp
     Source/shared/MeterBallistics.cpp
     Source/shared/OscSendGuard.cpp
     Source/shared/OscTruth.cpp
