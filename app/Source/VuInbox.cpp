@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <algorithm>
 #include <cmath>
 
 #include "VuInbox.h"
@@ -20,14 +21,16 @@ void VuInbox::note (int number, float peak)
 
 std::vector<std::optional<float>> VuInbox::take()
 {
-    const juce::SpinLock::ScopedLockType lock (_lock);
-    std::vector<std::optional<float>> out (_peaks.size());
-    for (size_t i = 0; i < _peaks.size(); ++i)
-        if (_fresh[i])
-        {
-            out[i] = _peaks[i];
-            _fresh[i] = false;
-        }
+    {
+        const juce::SpinLock::ScopedLockType lock (_lock);
+        std::copy (_peaks.begin(), _peaks.end(), _scratchPeaks.begin());
+        std::copy (_fresh.begin(), _fresh.end(), _scratchFresh.begin());
+        std::fill (_fresh.begin(), _fresh.end(), false);
+    }
+    std::vector<std::optional<float>> out (_scratchPeaks.size());
+    for (size_t i = 0; i < out.size(); ++i)
+        if (_scratchFresh[i])
+            out[i] = _scratchPeaks[i];
     return out;
 }
 }

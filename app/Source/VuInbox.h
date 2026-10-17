@@ -14,7 +14,8 @@ namespace desk
 class VuInbox
 {
 public:
-    explicit VuInbox (int meters) : _peaks ((size_t) meters, 0.f), _fresh ((size_t) meters, false) {}
+    explicit VuInbox (int meters) : _peaks ((size_t) meters, 0.f), _fresh ((size_t) meters, false),
+          _scratchPeaks ((size_t) meters, 0.f), _scratchFresh ((size_t) meters, false) {}
     void note (int number, float peak);
     std::vector<std::optional<float>> take();
 
@@ -22,5 +23,8 @@ private:
     juce::SpinLock _lock;
     std::vector<float> _peaks;
     std::vector<bool> _fresh;
+    // Message-thread scratch, pre-sized: take() copies into it under the lock without allocating.
+    std::vector<float> _scratchPeaks;
+    std::vector<bool> _scratchFresh;
 };
 }

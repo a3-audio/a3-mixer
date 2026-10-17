@@ -122,6 +122,7 @@ TEST (VuInbox, IgnoresNonFinitePeaks)
     vu.note (1, std::numeric_limits<float>::quiet_NaN());
     vu.note (2, std::numeric_limits<float>::infinity());
     const auto taken = vu.take();
+    ASSERT_EQ (taken.size(), 4u);
     EXPECT_FALSE (taken[0].has_value());
     EXPECT_FALSE (taken[1].has_value());
 }
@@ -156,4 +157,19 @@ TEST (DeskMeters, AChannelShowsItsLouderSide)
     EXPECT_FLOAT_EQ (meters.takenPeak ("in2_pre_R"), 0.5f);
     meters.take (std::vector<std::optional<float>> ((size_t) test::truth().vuCount(), 0.f), 1040);
     EXPECT_LT (meters.channelInput (2, 3000).bar, 0.5f);   // falls on its own clock
+}
+
+TEST (DeskMeters, AnalogAndReturnMetersReadTheirOwnNames)
+{
+    const DeskOsc osc (test::truth());
+    DeskMeters meters (osc, test::truth().meterBallistics());
+    std::vector<std::optional<float>> peaks ((size_t) test::truth().vuCount());
+    peaks[(size_t) osc.vuNumber ("analog3_R") - 1] = 0.4f;
+    peaks[(size_t) osc.vuNumber ("stem_aux_R") - 1] = 0.6f;
+    peaks[(size_t) osc.vuNumber ("aux_L") - 1] = 0.8f;
+    meters.take (peaks, 1000);
+    EXPECT_NEAR (meters.analog (3, 1000).bar, 0.4f, 1e-4f);
+    EXPECT_NEAR (meters.returnStem (1000).bar, 0.6f, 1e-4f);
+    EXPECT_NEAR (meters.returnAnalog (1000).bar, 0.8f, 1e-4f);
+    EXPECT_FLOAT_EQ (meters.analog (1, 1000).bar, 0.f);
 }
