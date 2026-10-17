@@ -20,8 +20,9 @@ const DeskOsc& osc()
 }
 }
 
-// D5: exactly what the hardware sends. Pots as numbers (Core floats them and
-// relays a float), keys as the panel's text edges -- a3_core_buttons tells a
+// D5: keys, turns and tap as the hardware sends them. Pots are float32 by plan
+// change #3 (the hardware sends strings; Core floats them either way and relays
+// a float) -- do not "fix" them back to strings. Keys are the panel's text edges -- a3_core_buttons tells a
 // press ("1") from a screen's state (a number) by the type.
 TEST (DeskWire, PotsTravelAsFloat32)
 {
@@ -58,8 +59,13 @@ TEST (DeskWire, TurnsAndPushesAreInt32)
     const auto turn = wire.channelTurn (4, -2);
     EXPECT_EQ (turn.message.getAddressPattern().toString(), osc().address ("channel.stem.turn", 4));
     EXPECT_EQ (turn.message[0].getInt32(), -2);
+    EXPECT_TRUE (turn.message[0].isInt32());
     EXPECT_EQ (wire.returnTurn (1).message[0].getInt32(), 1);
+    EXPECT_TRUE (wire.returnTurn (1).message[0].isInt32());
+    EXPECT_EQ (wire.returnTurn (1).message.getAddressPattern().toString(), osc().address ("aux-return.stem.turn"));
     EXPECT_EQ (wire.channelPush (1).message[0].getInt32(), 1);
+    EXPECT_TRUE (wire.channelPush (1).message[0].isInt32());
+    EXPECT_TRUE (wire.returnPush().message[0].isInt32());
     EXPECT_EQ (wire.returnPush().message.getAddressPattern().toString(), osc().address ("aux-return.stem.push"));
 }
 
@@ -68,6 +74,8 @@ TEST (DeskWire, TapGoesToTheBeatClockAsInt1)
     const auto tap = DeskWire (osc()).tap();
     EXPECT_EQ (tap.to, Outgoing::To::beatClock);
     EXPECT_EQ (tap.message[0].getInt32(), 1);
+    EXPECT_TRUE (tap.message[0].isInt32());
+    EXPECT_EQ (tap.message.getAddressPattern().toString(), osc().address ("tap"));
 }
 
 TEST (DeskWire, HelloNamesTheDeskAndItsTruth)
@@ -161,4 +169,32 @@ TEST (CoreWatch, AnOlderCoreWithoutBootIdIsNeverANewOne)
     CoreWatch core;
     core.heard ("f", {}, 0);
     EXPECT_FALSE (core.heard ("f", {}, 2000));
+}
+
+TEST (DeskWire, RecallGoesToCoreAsInt1)
+{
+    const auto recall = DeskWire (osc()).recall();
+    EXPECT_EQ (recall.to, Outgoing::To::core);
+    EXPECT_EQ (recall.message.getAddressPattern().toString(), osc().address ("state.recall"));
+    ASSERT_TRUE (recall.message[0].isInt32());
+    EXPECT_EQ (recall.message[0].getInt32(), 1);
+}
+
+TEST (StartupAsk, ARestartDuringAStaleTruthDoesNotBurnTheRecallWindow)
+{
+    StartupAsk ask;
+    ask.due (0, true);
+    ask.answered();
+    ask.coreRestarted (9000);
+    EXPECT_TRUE (ask.due (200000, false).empty());
+    EXPECT_FALSE (ask.gaveUp (200000));
+    EXPECT_EQ (ask.due (200000, true), (std::vector<StartupAsk::Send> { StartupAsk::Send::hello, StartupAsk::Send::recall }));
+}
+
+TEST (StartupAsk, JoinedThenAStaleTruthSaysNoHello)
+{
+    StartupAsk ask;
+    ask.due (0, true);
+    ask.answered();
+    EXPECT_TRUE (ask.due (30000, false).empty());
 }

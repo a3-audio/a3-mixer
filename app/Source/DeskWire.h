@@ -19,7 +19,9 @@ struct Outgoing
     juce::OSCMessage message;
 };
 
-/** Every message the desk sends, built from truth keys. Exactly the hardware's (D5). */
+/** Every message the desk sends, built from truth keys. Keys, turns and tap as the
+    hardware sends them (D5); pots as float32 (plan change #3), not the hardware's
+    strings -- do not change them back. */
 class DeskWire
 {
 public:

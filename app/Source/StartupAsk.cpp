@@ -33,7 +33,7 @@ void StartupAsk::coreRestarted (double nowMs)
     _joined = false;
     _lastHello.reset();
     _lastRecall.reset();
-    _askingSince = nowMs;
+    _askingSince.reset();   // the clock starts at the first call that may ask
 }
 
 bool StartupAsk::gaveUp (double nowMs) const
