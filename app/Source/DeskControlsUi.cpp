@@ -33,6 +33,11 @@ void DeskKnob::resized()
     setMouseDragSensitivity (juce::jmax (1, juce::roundToInt (dragOfKnobForFullTurn * static_cast<float> (getHeight()))));
 }
 
+bool DeskKnob::hitTest (int x, int y)
+{
+    return known && juce::Slider::hitTest (x, y);
+}
+
 DeskFader::DeskFader (juce::Colour c) : colour (c)
 {
     setSliderStyle (juce::Slider::LinearVertical);

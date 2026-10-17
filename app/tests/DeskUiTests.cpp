@@ -127,6 +127,17 @@ TEST (DeskUi, TheCapFollowsTheFinger)
     fader.setLookAndFeel (nullptr);
 }
 
+// Final review M1: the fader's rule for the knob too -- an unknown pointer is
+// drawn at 0, and a drag from there would send near zero to the room.
+TEST (DeskUi, AnUnknownKnobCannotBeGrabbed)
+{
+    DeskKnob knob ("TRIM", theme::channel[0], false);
+    knob.setBounds (0, 0, 120, 100);
+    EXPECT_FALSE (knob.hitTest (60, 50));
+    knob.known = true;
+    EXPECT_TRUE (knob.hitTest (60, 50));
+}
+
 TEST (DeskUi, AnUnknownFaderCannotBeGrabbed)
 {
     DeskFader fader (theme::channel[0]);

@@ -20,6 +20,8 @@ class DeskKnob : public juce::Slider
 public:
     DeskKnob (juce::String caption, juce::Colour arc, bool fromMiddle);
     void resized() override;
+    /** Only a known value can be grabbed, as with the fader. */
+    bool hitTest (int x, int y) override;
 
     juce::String caption;
     juce::Colour arc;
