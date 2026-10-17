@@ -10,6 +10,15 @@
 
 using namespace desk;
 
+namespace
+{
+int sizeOf (const juce::var& table)
+{
+    const auto* object = table.getDynamicObject();
+    return object != nullptr ? object->getProperties().size() : -1;
+}
+}
+
 TEST (DeskControls, TheTablesAreTheHardwares)
 {
     const auto& t = test::fixture()["tables"];
@@ -21,6 +30,12 @@ TEST (DeskControls, TheTablesAreTheHardwares)
         EXPECT_EQ (juce::String (key), t["channel_keys"][juce::Identifier (name)].toString());
     for (const auto& [key, name] : lamps)
         EXPECT_EQ (juce::String (name), t["lamps"][juce::Identifier (key)].toString());
+
+    // The loops above only walk our tables: a row the fixture has and we lack must fail too.
+    EXPECT_EQ (sizeOf (t["channel_pots"]), (int) channelPotKeys.size());
+    EXPECT_EQ (sizeOf (t["master_pots"]), (int) masterPotKeys.size());
+    EXPECT_EQ (sizeOf (t["channel_keys"]), (int) channelKeys.size());
+    EXPECT_EQ (sizeOf (t["lamps"]), (int) lamps.size());
 }
 
 TEST (DeskControls, ItUsesTheHardwaresWordsAndNoOthers)
