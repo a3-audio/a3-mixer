@@ -1,0 +1,12 @@
+Package: a3-desk
+Version: 0
+Architecture: amd64
+Maintainer: Rafjagger
+Section: sound
+Priority: optional
+Depends: ${shlibs:Depends}, libx11-6, libxext6, libxrandr2, libxinerama1, libxcursor1
+Description: A3 Desk, the A3 Mixer on a screen
+ The virtual desk of the A3 system: the A3 Mixer's layout on any machine of
+ the A3 network -- a second operator, or a stand-in for the hardware desk.
+ It sends what the hardware sends and shows what A3 Core reports; Core
+ follows up to four. Opened by hand (a3-desk); no service.
