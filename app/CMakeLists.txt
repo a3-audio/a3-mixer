@@ -26,6 +26,7 @@ set(A3DESK_SOURCES
     Source/DeskControls.cpp
     Source/DeskInbox.cpp
     Source/DeskMeters.cpp
+    Source/EncoderTurns.cpp
     Source/DeskOsc.cpp
     Source/DeskWire.cpp
     Source/DeskState.cpp

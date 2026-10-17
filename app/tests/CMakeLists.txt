@@ -9,6 +9,7 @@ juce_add_console_app(a3-desk-tests PRODUCT_NAME "a3-desk-tests")
 target_sources(a3-desk-tests PRIVATE
     TestRunner.cpp
     DeskInboxTests.cpp
+    EncoderTurnsTests.cpp
     DeskOscTests.cpp
     DeskStateTests.cpp
     DeskWireTests.cpp
