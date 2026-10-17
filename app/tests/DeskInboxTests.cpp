@@ -173,3 +173,24 @@ TEST (DeskMeters, AnalogAndReturnMetersReadTheirOwnNames)
     EXPECT_NEAR (meters.returnAnalog (1000).bar, 0.8f, 1e-4f);
     EXPECT_FLOAT_EQ (meters.analog (1, 1000).bar, 0.f);
 }
+
+// The clip hatch's peaks, by the same names and the same louder side as the bars.
+TEST (DeskMeters, TheClipPeaksReadTheBarsNames)
+{
+    const DeskOsc osc (test::truth());
+    DeskMeters meters (osc, test::truth().meterBallistics());
+    std::vector<std::optional<float>> peaks ((size_t) test::truth().vuCount());
+    for (const auto* name : { "stem_b2", "analog3_L", "analog3_R", "stem_aux_L", "aux_R" })
+        ASSERT_GT (osc.vuNumber (name), 0) << name;
+    peaks[(size_t) osc.vuNumber ("stem_b2") - 1] = 1.2f;
+    peaks[(size_t) osc.vuNumber ("analog3_L") - 1] = 0.3f;
+    peaks[(size_t) osc.vuNumber ("analog3_R") - 1] = 1.1f;
+    peaks[(size_t) osc.vuNumber ("stem_aux_L") - 1] = 1.3f;
+    peaks[(size_t) osc.vuNumber ("aux_R") - 1] = 1.4f;
+    meters.take (peaks, 1000);
+    EXPECT_FLOAT_EQ (meters.stemPeak (5), 1.2f);
+    EXPECT_FLOAT_EQ (meters.stemPeak (0), 0.f);
+    EXPECT_FLOAT_EQ (meters.analogPeak (3), 1.1f);
+    EXPECT_FLOAT_EQ (meters.returnStemPeak(), 1.3f);
+    EXPECT_FLOAT_EQ (meters.returnAnalogPeak(), 1.4f);
+}

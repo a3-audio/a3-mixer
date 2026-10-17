@@ -345,3 +345,29 @@ TEST (DeskUi, EveryControlPaintsDisabledDimmer)
     knob.setLookAndFeel (nullptr);
     fader.setLookAndFeel (nullptr);
 }
+
+// Stale dims the whole surface (spec 4.1): the indicators too, by the same helper.
+TEST (DeskUi, EveryIndicatorPaintsDisabledDimmer)
+{
+    LedColumn leds;
+    leds.setLeds (8, 7);
+    OutputMatrix matrix;
+    for (int column = 0; column < 8; ++column)
+        matrix.setColumn (column, 31, 31);
+    OledView oled;
+    oled.setPicture (display::channelPicture (0, { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, 1, display::oledWidth,
+                                              display::oledHeight, {}, {}));
+
+    const auto dimmer = [] (juce::Component& c, int w, int h)
+    {
+        c.setEnabled (true);
+        const auto on = lightOf (snapshotOf (c, w, h));
+        c.setEnabled (false);
+        const auto off = lightOf (snapshotOf (c, w, h));
+        EXPECT_GT (on, 0.0);
+        EXPECT_LT (off, on * 0.6);
+    };
+    dimmer (leds, 20, 160);
+    dimmer (matrix, 80, 160);
+    dimmer (oled, 256, 128);
+}

@@ -74,15 +74,18 @@ DeskMeters::Reading DeskMeters::output (int column, std::int64_t now) const
     return one (column == 0 ? std::string ("main_sub") : "main_top" + std::to_string (column), now);
 }
 
-DeskMeters::Reading DeskMeters::stem (int pair, std::int64_t now) const
+std::string DeskMeters::stemName (int pair)
 {
-    return one (std::string ("stem_") + (pair < 4 ? "a" : "b") + std::to_string (pair % 4 + 1), now);
+    return std::string ("stem_") + (pair < 4 ? "a" : "b") + std::to_string (pair % 4 + 1);
 }
+
+std::string DeskMeters::analogName (int ch) { return "analog" + std::to_string (ch); }
+
+DeskMeters::Reading DeskMeters::stem (int pair, std::int64_t now) const { return one (stemName (pair), now); }
 
 DeskMeters::Reading DeskMeters::analog (int ch, std::int64_t now) const
 {
-    const auto base = "analog" + std::to_string (ch);
-    return louder (base + "_L", base + "_R", now);
+    return louder (analogName (ch) + "_L", analogName (ch) + "_R", now);
 }
 
 DeskMeters::Reading DeskMeters::returnStem (std::int64_t now) const { return louder ("stem_aux_L", "stem_aux_R", now); }
@@ -93,4 +96,14 @@ float DeskMeters::takenPeak (const std::string& name) const
     const auto found = _taken.find (name);
     return found != _taken.end() ? found->second : 0.f;
 }
+
+float DeskMeters::louderTaken (const std::string& left, const std::string& right) const
+{
+    return std::max (takenPeak (left), takenPeak (right));
+}
+
+float DeskMeters::stemPeak (int pair) const { return takenPeak (stemName (pair)); }
+float DeskMeters::analogPeak (int ch) const { return louderTaken (analogName (ch) + "_L", analogName (ch) + "_R"); }
+float DeskMeters::returnStemPeak() const { return louderTaken ("stem_aux_L", "stem_aux_R"); }
+float DeskMeters::returnAnalogPeak() const { return louderTaken ("aux_L", "aux_R"); }
 }

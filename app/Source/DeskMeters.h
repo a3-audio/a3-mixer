@@ -35,7 +35,16 @@ public:
     /** The loudest raw peak of the last take, for the clip hatch; 0 when none came. */
     float takenPeak (const std::string& name) const;
 
+    /** The clip hatch's peaks: the last take's, by the bars' own names and louder side. */
+    float stemPeak (int pair) const;   // 0-7
+    float analogPeak (int channel) const;   // 1-4
+    float returnStemPeak() const;
+    float returnAnalogPeak() const;
+
 private:
+    static std::string stemName (int pair);
+    static std::string analogName (int channel);
+    float louderTaken (const std::string& left, const std::string& right) const;
     Reading one (const std::string& name, std::int64_t nowMs) const;
     Reading louder (const std::string& left, const std::string& right, std::int64_t nowMs) const;
 

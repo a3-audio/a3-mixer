@@ -4,6 +4,7 @@
 
 #include "DeskIndicatorsUi.h"
 
+#include "DeskLook.h"
 #include "DeskTheme.h"
 #include "DisplayPaint.h"
 
@@ -37,6 +38,7 @@ void LedColumn::setLeds (int lit, int holdIndex)
 void LedColumn::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
+    const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
     const float cell = static_cast<float> (getHeight()) / leds::channelLedCount;
     const float d = juce::jmin (cell, static_cast<float> (getWidth())) * 0.6f;
     for (int i = 0; i < leds::channelLedCount; ++i)
@@ -62,6 +64,7 @@ void OutputMatrix::setColumn (int column, int bar, int hold)
 void OutputMatrix::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
+    const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
     const float cw = static_cast<float> (getWidth()) / matrixColumns, ch = static_cast<float> (getHeight()) / leds::mainLedCount;
     const float d = juce::jmin (cw, ch) * 0.7f;
     for (int c = 0; c < matrixColumns; ++c)
@@ -91,6 +94,7 @@ juce::Rectangle<float> OledView::panelArea() const
 void OledView::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
+    const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
     if (! _image.isValid())
         return;
     g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);   // pixels stay pixels
