@@ -42,8 +42,18 @@ DeskFader::DeskFader (juce::Colour c) : colour (c)
     setDoubleClickReturnValue (false, 0.0);
 }
 
+void DeskFader::resized()
+{
+    juce::Slider::resized();
+    // One pixel of drag per pixel of cap travel: the cap stays under the finger.
+    const float travel = static_cast<float> (getHeight()) - faderCap (getLocalBounds().toFloat(), 0.f).getHeight();
+    setMouseDragSensitivity (juce::jmax (1, juce::roundToInt (travel)));
+}
+
 bool DeskFader::hitTest (int x, int y)
 {
+    if (! known)
+        return false;
     return faderCap (getLocalBounds().toFloat(), static_cast<float> (valueToProportionOfLength (getValue())))
         .contains (static_cast<float> (x), static_cast<float> (y));
 }
@@ -60,7 +70,7 @@ void DeskEncoder::paint (juce::Graphics& g)
 void DeskEncoder::mouseDown (const juce::MouseEvent&)
 {
     _drag.emplace (turns::dragPerClickOfKnob * static_cast<float> (getHeight()));
-    _moved = false;
+    _turned = false;
 }
 
 void DeskEncoder::mouseDrag (const juce::MouseEvent& e)
@@ -70,14 +80,15 @@ void DeskEncoder::mouseDrag (const juce::MouseEvent& e)
     const auto clicks = _drag->feed (static_cast<float> (-e.getDistanceFromDragStartY()));
     if (clicks == 0)
         return;
-    _moved = true;
+    _turned = true;
     if (onTurn)
         onTurn (clicks);
 }
 
-void DeskEncoder::mouseUp (const juce::MouseEvent&)
+void DeskEncoder::mouseUp (const juce::MouseEvent& e)
 {
-    if (! _moved && onPush)
+    // JUCE's own threshold for "was a drag": a wobble is not a push.
+    if (! _turned && ! e.mouseWasDraggedSinceMouseDown() && onPush)
         onPush();
     _drag.reset();
 }

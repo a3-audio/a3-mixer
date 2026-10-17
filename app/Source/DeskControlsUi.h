@@ -32,6 +32,8 @@ class DeskFader : public juce::Slider
 {
 public:
     explicit DeskFader (juce::Colour colour);
+    void resized() override;
+    /** Only a drawn (known) cap can be grabbed. */
     bool hitTest (int x, int y) override;
 
     juce::Colour colour;
@@ -55,7 +57,7 @@ public:
 private:
     juce::String _caption;
     std::optional<turns::DragClicks> _drag;
-    bool _moved = false;
+    bool _turned = false;
 };
 
 /** A key: press and release go out as they happen; lit by Core's lamp. */

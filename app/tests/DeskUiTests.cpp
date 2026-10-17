@@ -98,18 +98,47 @@ TEST (DeskUi, TheRingShowsOnlyWhenMarked)
     knob.setLookAndFeel (nullptr);
 }
 
-// Without Slider::resized() the draw area stays 0 x 0 and nothing paints.
-TEST (DeskUi, AKnobHasADrawArea)
+// A full turn takes four knob heights of drag, at every size.
+TEST (DeskUi, AKnobTurnsFullyOverFourHeights)
 {
     DeskKnob knob ("TRIM", theme::channel[0], false);
     knob.setBounds (0, 0, 120, 100);
-    EXPECT_GT (knob.getRotaryParameters().endAngleRadians, knob.getRotaryParameters().startAngleRadians);
-    EXPECT_GT (knob.getMouseDragSensitivity(), 100);
+    EXPECT_EQ (knob.getMouseDragSensitivity(), 400);
+}
+
+// The cap follows the finger one to one: the value moves by the travel, not by JUCE's default 250 px.
+TEST (DeskUi, TheCapFollowsTheFinger)
+{
+    DeskLook look;
+    DeskFader fader (theme::channel[0]);
+    fader.setLookAndFeel (&look);
+    fader.known = true;
+    fader.setBounds (0, 0, 60, 400);
+    fader.setValue (0.5, juce::dontSendNotification);
+    const auto cap = faderCap (fader.getLocalBounds().toFloat(), 0.5f);
+    const juce::Point<float> down { cap.getCentreX(), cap.getCentreY() + 7.f };   // off-centre on the cap
+    const double before = fader.getPositionOfValue (fader.getValue());
+
+    fader.mouseDown (eventAt (fader, down, down, false));
+    EXPECT_DOUBLE_EQ (fader.getValue(), 0.5);   // no jump under the finger
+    fader.mouseDrag (eventAt (fader, { down.x, down.y - 60.f }, down, true));
+    EXPECT_NEAR (fader.getPositionOfValue (fader.getValue()), before - 60.0, 1.0);
+    fader.mouseUp (eventAt (fader, { down.x, down.y - 60.f }, down, true));
+    fader.setLookAndFeel (nullptr);
+}
+
+TEST (DeskUi, AnUnknownFaderCannotBeGrabbed)
+{
+    DeskFader fader (theme::channel[0]);
+    fader.setBounds (0, 0, 60, 400);
+    const auto cap = faderCap (fader.getLocalBounds().toFloat(), 0.f);
+    EXPECT_FALSE (fader.hitTest ((int) cap.getCentreX(), (int) cap.getCentreY()));
 }
 
 TEST (DeskUi, TheFaderTakesOnlyItsCap)
 {
     DeskFader fader (theme::channel[0]);
+    fader.known = true;
     fader.setBounds (0, 0, 60, 400);
     fader.setValue (0.5, juce::dontSendNotification);
     const auto cap = faderCap (fader.getLocalBounds().toFloat(), 0.5f);
@@ -193,6 +222,22 @@ TEST (DeskUi, AnEncoderTurnsOnDragAndPushesOnClick)
     ASSERT_EQ (turns.size(), 1u);
     EXPECT_EQ (turns[0], 1);
     EXPECT_EQ (pushes, 1);
+}
+
+// A wobble of the finger is not a push: a push loads something on the desk.
+TEST (DeskUi, AShortDragIsNeitherATurnNorAPush)
+{
+    DeskEncoder encoder ("INPUT");
+    encoder.setBounds (0, 0, 100, 100);
+    int pushes = 0, turns = 0;
+    encoder.onPush = [&] { ++pushes; };
+    encoder.onTurn = [&] (int) { ++turns; };
+    const juce::Point<float> start { 50.f, 50.f };
+    encoder.mouseDown (eventAt (encoder, start, start, false));
+    encoder.mouseDrag (eventAt (encoder, { 50.f, 46.f }, start, true));   // 4 px: under one click
+    encoder.mouseUp (eventAt (encoder, { 50.f, 46.f }, start, true));
+    EXPECT_EQ (pushes, 0);
+    EXPECT_EQ (turns, 0);
 }
 
 // A control with no size yet must not turn a drag into nonsense.
