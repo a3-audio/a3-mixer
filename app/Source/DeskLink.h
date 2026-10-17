@@ -28,7 +28,7 @@ bool bindExclusively (juce::DatagramSocket& socket, int port);
 class DeskLink : private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback>
 {
 public:
-    enum class Opened { ok, portTaken, vuPortTaken, noTruth };
+    enum class Opened { ok, portTaken, vuPortTaken, noSender, noTruth };
 
     DeskLink (const DeskOsc& osc, VuInbox& vu, std::function<void (const juce::OSCMessage&)> onMessage);
     ~DeskLink() override;

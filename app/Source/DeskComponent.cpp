@@ -110,7 +110,14 @@ void DeskComponent::buildStrip (int ch)
     };
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              _encoders[i].get(), _taps[i].get(), _fxKeys[i].get(), _cueKeys[i].get(), _leds[i].get(), _displays[i].get() })
-        addAndMakeVisible (c);
+        show (*c);
+}
+
+void DeskComponent::show (juce::Component& control, bool takesHands)
+{
+    addAndMakeVisible (control);
+    if (takesHands)
+        _handed.push_back (&control);
 }
 
 void DeskComponent::buildMaster()
@@ -135,8 +142,9 @@ void DeskComponent::buildMaster()
     _matrix = std::make_unique<OutputMatrix>();
     _status = std::make_unique<StatusLine>();
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             _select.get(), _returnDisplay.get(), _hpf.get(), _lpf.get(), _lock.get(), _matrix.get(), _status.get() })
-        addAndMakeVisible (c);
+             _select.get(), _returnDisplay.get(), _hpf.get(), _lpf.get(), _lock.get(), _matrix.get() })
+        show (*c);
+    show (*_status, false);   // says why the rest is dim: never dimmed itself
 }
 
 void DeskComponent::useTruth (a3::OscTruth truth)
@@ -266,20 +274,32 @@ void DeskComponent::syncControls()
 void DeskComponent::updateHands()
 {
     const bool hands = handsAccepted();
+    releaseLostGrabs (hands);
     if (hands != _handsShown)
         repaint();   // the print under the controls dims with them
     _handsShown = hands;
     for (size_t i = 0; i < _potControl.size(); ++i)
         _potControl[i]->setEnabled (hands && ! (_locked && isGuarded (allPots()[i].key)));
     // Indicators too: stale dims the whole surface (spec 4.1), each by DimWhenDisabled.
-    for (size_t i = 0; i < (size_t) numChannels; ++i)
-        for (juce::Component* c : std::initializer_list<juce::Component*> {
-                 _encoders[i].get(), _taps[i].get(), _fxKeys[i].get(), _cueKeys[i].get(), _leds[i].get(), _displays[i].get() })
-            c->setEnabled (hands);
-    for (juce::Component* c : std::initializer_list<juce::Component*> {
-             _select.get(), _hpf.get(), _lpf.get(), _matrix.get(), _returnDisplay.get() })
+    for (auto* c : _handed)
         c->setEnabled (hands);
-    _lock->setEnabled (_link == DeskLink::Opened::ok);
+}
+
+/** A slider disabled mid-drag never sends onDragEnd: without this the pot stays
+    grabbed and frozen on a stale value once the hands come back. */
+void DeskComponent::releaseLostGrabs (bool hands)
+{
+    bool released = false;
+    for (int pot = 0; pot < _state.size(); ++pot)
+    {
+        const bool keeps = hands && ! (_locked && isGuarded (allPots()[(size_t) pot].key));
+        if (keeps || ! _state.grabbed (pot))
+            continue;
+        _state.release (pot);
+        released = true;
+    }
+    if (released)
+        syncControls();
 }
 
 void DeskComponent::showLamps()
@@ -356,6 +376,8 @@ juce::String DeskComponent::statusRight() const
         return "Core silent";
     if (_ask.gaveUp (_now))
         return "Core does not answer (four desks already?)";
+    if (! _ask.joined() && _core.fingerprint() != _osc->truth().digest())
+        return "Core serves another truth";   // the desk never says hello on a stale truth
     if (! _ask.joined())
         return "waiting for Core's answer";
     const bool same = _core.fingerprint() == _osc->truth().digest();
@@ -437,18 +459,31 @@ bool DeskComponent::keyPressed (const juce::KeyPress& key)
 {
     // Minimal and safe (spec Q9): CUE 1-4 (phones only) and TAP. Nothing that changes the PA.
     const auto code = key.getKeyCode();   // KeyPress ('2') carries the code, not a text character
-    if (code >= '1' && code < '1' + numChannels)
+    const bool cue = code >= '1' && code < '1' + numChannels;
+    if (! cue && key != juce::KeyPress::spaceKey)
+        return false;
+    const auto modifiers = key.getModifiers();
+    if (modifiers.isCtrlDown() || modifiers.isAltDown() || modifiers.isCommandDown())
+        return false;
+    // A held key repeats keyPressed: only the first press acts (no CUE flicker, no TAP burst).
+    if (std::find (_keysHeld.begin(), _keysHeld.end(), code) != _keysHeld.end())
+        return true;
+    _keysHeld.push_back (code);
+    if (cue)
     {
-        const int ch = code - '0';
-        pressKey ("channel.cue", ch, true);
-        pressKey ("channel.cue", ch, false);
+        pressKey ("channel.cue", code - '0', true);
+        pressKey ("channel.cue", code - '0', false);
         return true;
     }
-    if (key == juce::KeyPress::spaceKey)
-    {
-        tap();
-        return true;
-    }
+    tap();
+    return true;
+}
+
+bool DeskComponent::keyStateChanged (bool)
+{
+    _keysHeld.erase (std::remove_if (_keysHeld.begin(), _keysHeld.end(),
+                                     [] (int code) { return ! juce::KeyPress::isKeyCurrentlyDown (code); }),
+                     _keysHeld.end());
     return false;
 }
 }

@@ -61,6 +61,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
+    bool keyStateChanged (bool isKeyDown) override;
 
 private:
     static constexpr int stepsPerSecond = 25;
@@ -75,6 +76,8 @@ private:
     void showMeters();
     void showDisplays (double dtSeconds);
     void updateHands();
+    void releaseLostGrabs (bool hands);
+    void show (juce::Component& control, bool takesHands = true);
     void showStatus();
     juce::String statusRight() const;
     void pressKey (const std::string& key, int channel, bool down);
@@ -98,6 +101,8 @@ private:
     bool _locked = false, _handsShown = false;
     double _now = 0.0, _lastStep = 0.0;
 
+    std::vector<juce::Component*> _handed;   // every control and indicator but the pots: enabled with the hands
+    std::vector<int> _keysHeld;               // key codes down: autorepeat acts once
     std::vector<juce::Slider*> _potControl;   // by pot index: a DeskKnob, or a DeskFader for channel.volume
     std::vector<std::unique_ptr<DeskKnob>> _knobs;
     std::array<std::unique_ptr<DeskFader>, numChannels> _faders;

@@ -20,10 +20,12 @@ DeskLink::DeskLink (const DeskOsc& osc, VuInbox& vu, std::function<void (const j
 
 DeskLink::~DeskLink()
 {
-    _receiver.removeListener (this);
-    _vuReceiver.removeListener (&_meters);
+    // Disconnect first: it stops the receiver threads. JUCE's realtime listeners are a
+    // LightweightListenerList, whose remove() races with the meter thread iterating it.
     _receiver.disconnect();
     _vuReceiver.disconnect();
+    _receiver.removeListener (this);
+    _vuReceiver.removeListener (&_meters);
 }
 
 DeskLink::Opened DeskLink::open()
@@ -41,7 +43,7 @@ DeskLink::Opened DeskLink::open()
     const auto clock = _osc.beatClock();
     _open = a3::connectOscSenderToSocket (_toCore, _socket, core.host, core.port)
             && a3::connectOscSender (_toBeatClock, clock.host, clock.port);
-    return Opened::ok;
+    return _open ? Opened::ok : Opened::noSender;
 }
 
 bool DeskLink::send (const Outgoing& out)
@@ -77,6 +79,7 @@ juce::String statusFor (DeskLink::Opened opened)
         case DeskLink::Opened::ok: return {};
         case DeskLink::Opened::portTaken: return "another desk runs on this machine";
         case DeskLink::Opened::vuPortTaken: return "another program holds the desk's meter port";
+        case DeskLink::Opened::noSender: return "the desk cannot send to Core or the beat clock";
         case DeskLink::Opened::noTruth: return "waiting for Core's truth";
     }
     return {};

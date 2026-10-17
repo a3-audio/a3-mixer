@@ -215,6 +215,82 @@ TEST (DeskComponent, AWindowsFocusGoesToTheDesk)
     EXPECT_EQ (traverser->getDefaultComponent (&window), &desk);
 }
 
+/** The pot's control: the pots are the desk's first children, in allPots() order. */
+juce::Slider* potControl (DeskComponent& desk, int pot)
+{
+    return dynamic_cast<juce::Slider*> (desk.getChildComponent (pot));
+}
+
+// A slider disabled mid-drag never sends onDragEnd: losing the hands must release the grab.
+TEST (DeskComponent, LosingTheHandsMidDragReleasesThePot)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    const int pot = potIndex ("channel.gain", 1);
+    auto* control = potControl (*desk, pot);
+    ASSERT_NE (control, nullptr);
+    ASSERT_TRUE (control->onDragStart != nullptr);
+    control->onDragStart();
+    ASSERT_TRUE (desk->state().grabbed (pot));
+    desk->step (7000);   // Core silent: the hands go
+    juce::OSCMessage relay (juce::OSCAddressPattern (osc().address ("channel.gain", 1)), 0.7f);
+    desk->receive (relay, 7000);
+    desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-1" }, 7100);
+    desk->step (7100);
+    ASSERT_TRUE (desk->handsAccepted());
+    EXPECT_FALSE (desk->state().grabbed (pot));
+    EXPECT_NEAR (control->getValue(), 0.7, 1e-6);
+}
+
+// Stale dims the whole surface (spec 4.1): every child but the status line, LOCK too.
+TEST (DeskComponent, CoreSilentDimsEveryControl)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->step (7000);
+    ASSERT_FALSE (desk->handsAccepted());
+    int enabled = 0;
+    for (auto* child : desk->getChildren())
+        if (child->isEnabled() && dynamic_cast<StatusLine*> (child) == nullptr)
+            ++enabled;
+    EXPECT_EQ (enabled, 0);
+}
+
+// Held keys autorepeat: only the first press acts, and Ctrl/Alt+1-4 is not a CUE.
+TEST (DeskComponent, AHeldKeyActsOnce)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->keyPressed (juce::KeyPress ('2'));
+    desk->keyPressed (juce::KeyPress ('2'));
+    desk->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
+    desk->keyPressed (juce::KeyPress (juce::KeyPress::spaceKey));
+    EXPECT_EQ (c.sent.size(), 3u);   // CUE 2 press + release, one TAP
+    desk->keyStateChanged (false);   // released (no key is down in the test)
+    c.sent.clear();
+    desk->keyPressed (juce::KeyPress ('2'));
+    EXPECT_EQ (c.sent.size(), 2u);
+    desk->keyStateChanged (false);
+    c.sent.clear();
+    desk->keyPressed (juce::KeyPress ('3', juce::ModifierKeys::ctrlModifier, 0));
+    desk->keyPressed (juce::KeyPress ('3', juce::ModifierKeys::altModifier, 0));
+    EXPECT_TRUE (c.sent.empty());
+}
+
+// A Core announcing another truth never gets a hello: the status must say why the desk waits.
+TEST (DeskComponent, TheStatusSaysCoreServesAnotherTruth)
+{
+    Captured c;
+    DeskComponent desk (c.sink());
+    desk.setSize (620, 1000);
+    desk.useTruth (test::truth());
+    desk.setLinkState (DeskLink::Opened::ok);
+    desk.announced ({ "http://core/a3-osc.json", "another-fingerprint", "boot-1" }, 0);
+    desk.step (0);
+    EXPECT_TRUE (c.sent.empty());
+    EXPECT_TRUE (desk.statusText().contains ("another truth"));
+}
+
 // Review focus 5.
 TEST (DeskLink, ASecondBindOnTheSamePortFails)
 {
@@ -228,4 +304,5 @@ TEST (DeskLink, TheStatusSaysWhyItCannotRun)
 {
     EXPECT_TRUE (statusFor (DeskLink::Opened::portTaken).contains ("another desk"));
     EXPECT_TRUE (statusFor (DeskLink::Opened::ok).isEmpty());
+    EXPECT_TRUE (statusFor (DeskLink::Opened::noSender).contains ("cannot send"));
 }
