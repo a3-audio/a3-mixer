@@ -27,11 +27,14 @@ set(A3DESK_SOURCES
     Source/DeskControlsUi.cpp
     Source/DeskIndicatorsUi.cpp
     Source/DeskLook.cpp
+    Source/DeskComponent.cpp
     Source/DeskInbox.cpp
     Source/DeskLayout.cpp
+    Source/DeskLink.cpp
     Source/DeskMeters.cpp
     Source/EncoderTurns.cpp
     Source/DeskOsc.cpp
+    Source/DeskWindow.cpp
     Source/DeskWire.cpp
     Source/DeskState.cpp
     Source/DisplayPaint.cpp
