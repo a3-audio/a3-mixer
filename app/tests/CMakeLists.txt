@@ -10,6 +10,7 @@ target_sources(a3-desk-tests PRIVATE
     TestRunner.cpp
     DeskOscTests.cpp
     DeskStateTests.cpp
+    DeskWireTests.cpp
     DisplayPictureTests.cpp
     GuardTests.cpp
     LedScaleTests.cpp

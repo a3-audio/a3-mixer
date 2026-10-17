@@ -25,10 +25,12 @@ find_package(JUCE 9.0.3 CONFIG REQUIRED)
 set(A3DESK_SOURCES
     Source/DeskControls.cpp
     Source/DeskOsc.cpp
+    Source/DeskWire.cpp
     Source/DeskState.cpp
     Source/DisplayPaint.cpp
     Source/DisplayPicture.cpp
     Source/LedScale.cpp
+    Source/StartupAsk.cpp
     Source/shared/MeterBallistics.cpp
     Source/shared/OscSendGuard.cpp
     Source/shared/OscTruth.cpp
