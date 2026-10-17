@@ -217,3 +217,18 @@ TEST (StartupAsk, JoinedThenAStaleTruthSaysNoHello)
     ask.answered();
     EXPECT_TRUE (ask.due (30000, false).empty());
 }
+
+TEST (DeskWire, ProdjLiveIsAnInt)
+{
+    const DeskOsc withWord (test::truthWithLive (true));
+    const DeskWire wire (withWord);
+    for (const bool on : { true, false })
+    {
+        const auto out = wire.prodjLive (on);
+        EXPECT_EQ (out.to, Outgoing::To::core);
+        EXPECT_EQ (out.message.getAddressPattern().toString(), "/prodj/live");
+        ASSERT_EQ (out.message.size(), 1);
+        ASSERT_TRUE (out.message[0].isInt32());
+        EXPECT_EQ (out.message[0].getInt32(), on ? 1 : 0);
+    }
+}

@@ -76,6 +76,140 @@ a3::OscTruth truthWithout (const char* key)
 }
 }
 
+namespace
+{
+/** Joined on a truth of the test's choosing (the desk's own helpers take the runner's). */
+std::unique_ptr<DeskComponent> deskJoinedOn (Captured& c, const a3::OscTruth& truth)
+{
+    auto desk = std::make_unique<DeskComponent> (c.sink(), "desk");
+    desk->setSize (620, 1000);
+    desk->useTruth (truth);
+    desk->setLinkState (DeskLink::Opened::ok);
+    desk->announced ({ "http://core/a3-osc.json", truth.digest(), "boot-1" }, 0);
+    desk->step (0);
+    juce::OSCMessage beat (juce::OSCAddressPattern (DeskOsc (truth).address ("beat")), 1, 1, 120.f);
+    desk->receive (beat, 100);
+    desk->step (100);
+    c.sent.clear();
+    return desk;
+}
+
+StatusLine* statusLineOf (DeskComponent& desk)
+{
+    for (auto* child : desk.getChildren())
+        if (auto* line = dynamic_cast<StatusLine*> (child))
+            return line;
+    return nullptr;
+}
+
+juce::Point<float> liveChipCentre (DeskComponent& desk)
+{
+    auto* line = statusLineOf (desk);
+    return line == nullptr ? juce::Point<float>() : (line->getPosition().toFloat() + line->liveChip().getCentre());
+}
+
+void liveSays (DeskComponent& desk, int value, double nowMs)
+{
+    juce::OSCMessage m (juce::OSCAddressPattern ("/prodj/live"), value);
+    desk.receive (m, nowMs);
+}
+}
+
+TEST (DeskComponent, TheLiveChipTogglesWithHands)
+{
+    Captured c;
+    const auto truth = test::truthWithLive (true);
+    auto desk = deskJoinedOn (c, truth);
+    auto* line = statusLineOf (*desk);
+    ASSERT_NE (line, nullptr);
+    ASSERT_TRUE (static_cast<bool> (line->onLiveTapped));
+    line->onLiveTapped();
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), "/prodj/live");
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
+
+    liveSays (*desk, 1, 200);   // Core says so: lit
+    desk->step (200);
+    c.sent.clear();
+    line->onLiveTapped();
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 0);
+}
+
+TEST (DeskComponent, TheLiveChipSendsNothingWithoutHands)
+{
+    Captured c;
+    const auto truth = test::truthWithLive (true);
+    auto desk = deskJoinedOn (c, truth);
+    auto* line = statusLineOf (*desk);
+    ASSERT_NE (line, nullptr);
+    desk->setHandsWithheld (true);
+    line->onLiveTapped();
+    EXPECT_TRUE (c.sent.empty());
+
+    Captured c2;
+    auto notJoined = std::make_unique<DeskComponent> (c2.sink(), "desk");
+    notJoined->setSize (620, 1000);
+    notJoined->useTruth (truth);
+    notJoined->setLinkState (DeskLink::Opened::ok);
+    notJoined->step (0);
+    c2.sent.clear();
+    ASSERT_NE (statusLineOf (*notJoined), nullptr);
+    if (statusLineOf (*notJoined)->onLiveTapped)
+        statusLineOf (*notJoined)->onLiveTapped();
+    EXPECT_TRUE (c2.sent.empty());
+}
+
+TEST (DeskComponent, TheDeskNeverSendsLiveOnItsOwn)
+{
+    Captured c;
+    auto desk = deskJoinedOn (c, test::truthWithLive (true));
+    liveSays (*desk, 1, 200);
+    for (double t = 300; t < 40000; t += 1000)
+        desk->step (t);
+    for (const auto& address : c.addresses())
+        EXPECT_NE (address, "/prodj/live");
+}
+
+TEST (DeskComponent, ATruthWithoutLiveHasNoChipAndSendsNothing)
+{
+    Captured c;
+    auto desk = deskJoinedOn (c, test::truthWithLive (false));
+    auto* line = statusLineOf (*desk);
+    ASSERT_NE (line, nullptr);
+    EXPECT_TRUE (line->liveChip().isEmpty());
+    if (line->onLiveTapped)
+        line->onLiveTapped();
+    EXPECT_TRUE (c.sent.empty());
+}
+
+TEST (DeskComponent, TheChipLightsWhileLiveAndGoesDarkWhenTheLeaseRunsOut)
+{
+    Captured c;
+    auto desk = deskJoinedOn (c, test::truthWithLive (true));
+    auto* line = statusLineOf (*desk);
+    ASSERT_NE (line, nullptr);
+    const auto chip = line->liveChip().toNearestInt();
+    ASSERT_FALSE (chip.isEmpty());
+    const auto shot = [&] { return line->createComponentSnapshot (chip, false, 1.f); };
+    const auto light = [] (const juce::Image& image) {
+        double sum = 0.0;
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x)
+                sum += static_cast<double> (image.getPixelAt (x, y).getPerceivedBrightness());
+        return sum;
+    };
+    const auto before = light (shot());
+    liveSays (*desk, 1, 200);
+    desk->step (200);
+    const auto lit = light (shot());
+    EXPECT_GT (lit, before);
+    for (double t = 3000; t <= 12000; t += 3000)   // Core is still there, only the LIVE repeat is not
+        desk->announced ({ "http://core/a3-osc.json", test::truthWithLive (true).digest(), "boot-1" }, t);
+    desk->step (12300);   // the lease is out
+    EXPECT_DOUBLE_EQ (light (shot()), before);
+}
+
 TEST (DeskComponent, HelloCarriesTheDeviceName)
 {
     Captured c;
@@ -611,4 +745,23 @@ TEST (DeskComponent, TheEncoderHangsUnderItsDisplay)
         EXPECT_NEAR (encoder->getBounds().getCentreX(), display->getBounds().getCentreX(), 1.0);
         EXPECT_LE (std::abs (encoder->getY() - display->getBottom()), 1);
     }
+}
+
+// One finger arrives as touch#0 and X's emulated mouse#0: the chip acts once.
+TEST (DeskComponent, OneTapOnTheLiveChipArrivingTwiceSendsOnce)
+{
+    Captured c;
+    auto desk = deskJoinedOn (c, test::truthWithLive (true));
+    test::PeerHost window;
+    window.setBounds (desk->getLocalBounds());
+    window.addAndMakeVisible (*desk);
+    window.addToDesktop (0);
+    window.setVisible (true);
+    auto* peer = window.getPeer();
+    ASSERT_NE (peer, nullptr);
+    c.sent.clear();
+    tapTwiceDelivered (*peer, liveChipCentre (*desk), 10000);
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
+    window.removeChildComponent (desk.get());
 }

@@ -20,6 +20,27 @@ inline const a3::OscTruth& truth()
     return loaded;
 }
 
+// The truth with pro-DJ LIVE in it, or without: the word is optional for the desk, so its tests
+// run the same against a Core's truth that has it and one that does not.
+inline a3::OscTruth truthWithLive (bool with)
+{
+    auto data = juce::JSON::parse (juce::File (juce::SystemStats::getEnvironmentVariable ("A3_OSC_TRUTH", {}))
+                                       .loadFileAsString());
+    auto* addresses = data["addresses"].getDynamicObject();
+    if (addresses == nullptr)
+        return a3::parseOscTruth (juce::JSON::toString (data));
+    if (! with)
+        addresses->removeProperty ("prodj.live");
+    else if (! addresses->hasProperty ("prodj.live"))
+    {
+        auto* word = new juce::DynamicObject();
+        word->setProperty ("pattern", "/prodj/live");
+        word->setProperty ("args", "i");
+        addresses->setProperty ("prodj.live", juce::var (word));
+    }
+    return a3::parseOscTruth (juce::JSON::toString (data));
+}
+
 // The cases software/tests/fixtures/make_desk_cases.py writes from the Python desk.
 inline const juce::var& fixture()
 {

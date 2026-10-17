@@ -91,6 +91,8 @@ private:
     void releaseLostGrabs (bool hands);
     void show (juce::Component& control, bool takesHands = true);
     void showStatus();
+    bool liveOffered() const;
+    void liveTapped();
     juce::String statusRight() const;
     void pressKey (const std::string& key, int channel, bool down);
     void pressFilter (bool highPass, bool down);

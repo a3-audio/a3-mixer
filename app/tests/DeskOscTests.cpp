@@ -157,3 +157,13 @@ TEST (DeskControls, MasterBoothAndPhonesHaveNoRest)
     for (const auto* key : { "master.volume", "master.booth", "master.phones-volume" })
         EXPECT_FALSE (restPosition (key).has_value()) << key;
 }
+
+TEST (DeskOsc, ProdjLiveIsOptional)
+{
+    const auto without = test::truthWithLive (false);
+    EXPECT_EQ (DeskOsc::missing (without).joinIntoString (", "), "");
+    EXPECT_FALSE (DeskOsc (without).hasOptional ("prodj.live"));
+    const auto with = test::truthWithLive (true);
+    EXPECT_EQ (DeskOsc::missing (with).joinIntoString (", "), "");
+    EXPECT_TRUE (DeskOsc (with).hasOptional ("prodj.live"));
+}

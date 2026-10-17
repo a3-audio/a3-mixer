@@ -147,6 +147,7 @@ void DeskComponent::buildMaster()
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              _select.get(), _returnDisplay.get(), _hpf.get(), _lpf.get(), _lock.get(), _matrix.get() })
         show (*c);
+    _status->onLiveTapped = [this] { liveTapped(); };
     show (*_status, false);   // says why the rest is dim: never dimmed itself
 }
 
@@ -208,6 +209,8 @@ void DeskComponent::step (double nowMs)
     if (_wire != nullptr && _link == DeskLink::Opened::ok)
         for (const auto due : _ask.due (nowMs, _core.fingerprint() == _osc->truth().digest()))
             send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest(), _device) : _wire->recall());
+    if (_inbox != nullptr)
+        _inbox->step (nowMs);
     updateHands();
     showLamps();
     showMeters();
@@ -420,8 +423,22 @@ juce::String DeskComponent::statusRight() const
     return right;
 }
 
+bool DeskComponent::liveOffered() const
+{
+    return _osc != nullptr && _wire != nullptr && _osc->hasOptional ("prodj.live");
+}
+
+void DeskComponent::liveTapped()
+{
+    // Only a human tap sends it, and only with hands; Core answers with the state, the chip never guesses.
+    if (! liveOffered() || ! handsAccepted())
+        return;
+    send (_wire->prodjLive (! _ind.prodjLive));
+}
+
 void DeskComponent::showStatus()
 {
+    _status->setLive ({ liveOffered(), _ind.prodjLive, handsAccepted() });
     _statusText = statusRight();
     _status->setText ("A3 DESK" + juce::String (_locked ? "  master locked" : ""), _statusText);
 }

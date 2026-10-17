@@ -45,6 +45,8 @@ public:
     Endpoint beatClock() const;
     int ownPort() const;
     int vuPort() const;
+    /** A word an older Core's truth may lack: its absence is no missing key, the feature just is not offered. */
+    bool hasOptional (const std::string& key) const;
     int vuNumber (const char* meterName) const { return _truth.vuNumber (meterName); }
 
 private:

@@ -79,6 +79,13 @@ Outgoing DeskWire::hello (const juce::String& truthDigest, const juce::String& d
     return { Outgoing::To::core, m };
 }
 
+Outgoing DeskWire::prodjLive (bool on) const
+{
+    auto m = to ("prodj.live");
+    m.addInt32 (on ? 1 : 0);
+    return { Outgoing::To::core, m };
+}
+
 Outgoing DeskWire::recall() const
 {
     auto m = to ("state.recall");
