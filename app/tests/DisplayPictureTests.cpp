@@ -55,13 +55,15 @@ TEST (DisplayPicture, ChannelPicturesAreThePythons)
 {
     const auto* cases = desk::test::fixture()["channel_pictures"].getArray();
     ASSERT_NE (cases, nullptr);
-    ASSERT_EQ (cases->size(), 45);
+    ASSERT_EQ (cases->size(), 80);
     for (const auto& c : *cases)
     {
-        const auto picture = channelPicture (c["cursor"], arrayOf<9, double> (c["levels"]), c["mask"],
-                                             c["width"], c["height"], arrayOf<9, bool> (c["clips"]),
-                                             arrayOf<9, double> (c["holds"]));
-        expectSamePicture (picture, c["picture"], "cursor " + c["cursor"].toString() + " mask " + c["mask"].toString());
+        const auto picture = channelPicture (c["channel"], c["cursor"], arrayOf<3, double> (c["levels"]), c["mask"],
+                                             c["width"], c["height"], arrayOf<3, bool> (c["clips"]),
+                                             arrayOf<3, double> (c["holds"]));
+        expectSamePicture (picture, c["picture"],
+                           "channel " + c["channel"].toString() + " cursor " + c["cursor"].toString()
+                               + " mask " + c["mask"].toString());
     }
 }
 
@@ -91,10 +93,9 @@ TEST (ClipHold, AnOverLightsItForOneSecond)
 
 TEST (DisplayPaint, PaintsTheBarWhiteAndTheHatchDark)
 {
-    const auto picture = channelPicture (0, { 1, 0, 0, 0, 0, 0, 0, 0, 0 }, 1, oledWidth, oledHeight,
-                                         { true, false, false, false, false, false, false, false, false }, {});
+    const auto picture = channelPicture (0, 0, { 1, 0, 0 }, 1, oledWidth, oledHeight, { true, false, false }, {});
     const auto image = paintPicture (picture, oledWidth, oledHeight);
-    ASSERT_EQ (picture.meters.size(), 9u);   // an empty picture must fail, not crash the runner
+    ASSERT_EQ (picture.meters.size(), 3u);   // an empty picture must fail, not crash the runner
     const auto& bar = picture.meters[0].box;
     int white = 0, dark = 0;
     for (int x = bar.x0; x <= bar.x1; ++x)
@@ -106,9 +107,12 @@ TEST (DisplayPaint, PaintsTheBarWhiteAndTheHatchDark)
 
 TEST (DisplayPaint, TheArrowPointsDownAtTheCursor)
 {
-    const auto picture = channelPicture (8, {}, 0, oledWidth, oledHeight, {}, {});
+    const auto picture = channelPicture (0, 8, {}, 0, oledWidth, oledHeight, {}, {});
     const auto image = paintPicture (picture, oledWidth, oledHeight);
     const auto& a = picture.cursor;
     EXPECT_GT (image.getPixelAt (a.x0, a.y0).getBrightness(), 0.5f);              // top row full width
     EXPECT_LT (image.getPixelAt (a.x0, a.y1).getBrightness(), 0.5f);              // narrower below
+    ASSERT_EQ (picture.meters.size(), 3u);
+    const auto& analog = picture.meters[2].box;                                    // a cursor of 8 is A
+    EXPECT_LE (std::abs ((a.x0 + a.x1) - (analog.x0 + analog.x1)), 1);
 }

@@ -130,7 +130,7 @@ def pictures(level, hold=0.0):
     """Every display drawn with all meters at `level` and `hold`."""
     from display_panel import STEM_MODE, channel_picture, return_picture
     return {
-        "channel": channel_picture(0, (level,) * 9, 0, W, H, holds=(hold,) * 9),
+        "channel": channel_picture(0, 0, (level,) * 3, 0, W, H, holds=(hold,) * 3),
         "return": return_picture(STEM_MODE, STEM_MODE, False, (level,) * 2, W, H,
                                  holds=(hold,) * 2),
     }

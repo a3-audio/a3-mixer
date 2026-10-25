@@ -15,6 +15,7 @@ namespace desk::display
 {
 inline constexpr int oledWidth = 128, oledHeight = 64;
 inline constexpr int pairs = 8, analogInput = 8, cueCursor = 2, analogMode = 0, stemMode = 1;
+inline constexpr int stemsPerDeck = 4, channelMeters = 3;
 
 struct Box
 {
@@ -59,10 +60,18 @@ struct Picture
     std::vector<Box> marks;
 };
 
-/** The eight stems under D1 | D2 and the analog input under A; levels, clips
-    and holds in that order. `mask` = what plays (lowest bit), 0 = A. */
-Picture channelPicture (int cursor, const std::array<double, 9>& levels, int mask, int width, int height,
-                        const std::array<bool, 9>& clips, const std::array<double, 9>& holds);
+/** Channel `channel`'s cursors, left to right: D1's stem n, D2's stem n, A (stem n plays only on channel n). */
+std::array<int, channelMeters> channelRing (int channel);
+/** The meter (0 D1, 1 D2, 2 A) under the cursor; a cursor off the ring is A. */
+int channelSlot (int channel, int cursor);
+/** The meter that plays: D1 if its bit is set, else D2 if its bit is set, else A (a foreign bit is A). */
+int playingSlot (int channel, int mask);
+
+/** Channel `channel` (0-3): D1's stem n, D2's stem n and the analog input, one meter each under
+    D1 | D2 | A; levels, clips and holds in that order. */
+Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
+                        int height, const std::array<bool, channelMeters>& clips,
+                        const std::array<double, channelMeters>& holds);
 /** STEM and ANALOG (in that order), the CUE field, the cursor over one of three. */
 Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
                        const std::array<bool, 2>& clips, const std::array<double, 2>& holds);

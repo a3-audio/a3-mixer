@@ -24,7 +24,8 @@ import display_panel as panel  # noqa: E402
 FIXTURE = Path(__file__).with_name("desk-cases.json")
 #: The OLEDs are 128 x 64 (spec §2); the virtual desk paints at that size and scales.
 WIDTH, HEIGHT = 128, 64
-LEVELS = [0.0, 0.125, 0.25, 0.5, 0.625, 0.75, 0.875, 1.0, 0.375]
+#: A channel's three meters: D1's stem n, D2's stem n, A.
+LEVELS = [0.5, 0.875, 0.375]
 
 
 def _sweep(low, high, step):
@@ -57,13 +58,23 @@ def _picture(picture):
             "marks": [list(m) for m in picture.marks]}
 
 
+def _channel_masks(index):
+    """None, D1's, D2's, both (an older Core) and a foreign stem only."""
+    d1, d2 = 1 << index, 1 << (panel.STEMS_PER_DECK + index)
+    return (0, d1, d2, d1 | d2, 1 << ((index + 1) % panel.CHANNEL_COUNT))
+
+
 def channel_cases():
-    clips = [i % 4 == 0 for i in range(9)]
+    clips = [True, False, True]
     holds = [min(1.0, level + 0.25) for level in LEVELS]
-    return [{"cursor": cursor, "mask": mask, "levels": LEVELS, "clips": clips, "holds": holds,
-             "width": WIDTH, "height": HEIGHT,
-             "picture": _picture(panel.channel_picture(cursor, LEVELS, mask, WIDTH, HEIGHT, clips, holds))}
-            for cursor in range(9) for mask in (0, 1, 0b100, 0b10010000, 0xFF)]
+    return [{"channel": index, "cursor": cursor, "mask": mask, "levels": LEVELS, "clips": clips,
+             "holds": holds, "width": WIDTH, "height": HEIGHT,
+             "picture": _picture(panel.channel_picture(index, cursor, LEVELS, mask, WIDTH, HEIGHT,
+                                                       clips, holds))}
+            for index in range(panel.CHANNEL_COUNT)
+            # The ring, then a cursor off it (an older Core's): A.
+            for cursor in (*panel.channel_ring(index), (index + 1) % panel.CHANNEL_COUNT)
+            for mask in _channel_masks(index)]
 
 
 def return_cases():

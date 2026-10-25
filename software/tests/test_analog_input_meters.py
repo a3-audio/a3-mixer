@@ -127,7 +127,7 @@ class AIsTheAnalogInputWhateverPlays(unittest.TestCase):
     def a_level(self, label):
         from display_panel import PANELS
         panel = next(p for p in PANELS if p.label == label)
-        return self.displays._picture_for(panel)(128, 64).meters[8].level
+        return self.displays._picture_for(panel)(128, 64).meters[2].level
 
     def step(self):
         from display_panel import METER_STEPS_PER_SECOND
@@ -136,7 +136,7 @@ class AIsTheAnalogInputWhateverPlays(unittest.TestCase):
         self.displays.drain()
 
     def test_a_lights_from_analog2_l_while_channel_2_plays_a_stem(self):
-        self.displays.show_channel(1, stem(3))
+        self.displays.show_channel(1, stem(2))          # D1's stem 2
         self.displays.note_analog(1, 0, 1.0)
         self.step()
         self.assertEqual(self.a_level("Deck 2"), 1.0)

@@ -376,22 +376,25 @@ void DeskComponent::showDisplays (double dt)
     const auto now = wholeMs (_now);
     for (int ch = 1; ch <= numChannels; ++ch)
     {
-        std::array<double, 9> levels {}, holds {};
-        std::array<bool, 9> clips {};
+        // D1's stem n, D2's stem n, A: stem n plays only on channel n.
+        std::array<double, display::channelMeters> levels {}, holds {};
+        std::array<bool, display::channelMeters> clips {};
         auto& clipHolds = _channelClips[(size_t) ch - 1];
-        for (int pair = 0; pair < display::pairs; ++pair)
+        const auto ring = display::channelRing (ch - 1);
+        for (size_t deck = 0; deck < 2; ++deck)
         {
+            const int pair = ring[deck];
             const auto r = _meters->stem (pair, now);
-            levels[(size_t) pair] = fraction (r.bar);
-            holds[(size_t) pair] = fraction (r.hold);
-            clips[(size_t) pair] = clipHolds[(size_t) pair].feed (_meters->stemPeak (pair), dt);
+            levels[deck] = fraction (r.bar);
+            holds[deck] = fraction (r.hold);
+            clips[deck] = clipHolds[deck].feed (_meters->stemPeak (pair), dt);
         }
         const auto a = _meters->analog (ch, now);
-        levels[display::analogInput] = fraction (a.bar);
-        holds[display::analogInput] = fraction (a.hold);
-        clips[display::analogInput] = clipHolds[display::analogInput].feed (_meters->analogPeak (ch), dt);
+        levels[2] = fraction (a.bar);
+        holds[2] = fraction (a.hold);
+        clips[2] = clipHolds[2].feed (_meters->analogPeak (ch), dt);
         _displays[(size_t) ch - 1]->setPicture (display::channelPicture (
-            _ind.cursor[(size_t) ch - 1], levels, _ind.stemMask[(size_t) ch - 1], display::oledWidth,
+            ch - 1, _ind.cursor[(size_t) ch - 1], levels, _ind.stemMask[(size_t) ch - 1], display::oledWidth,
             display::oledHeight, clips, holds));
     }
     const auto stem = _meters->returnStem (now), analog = _meters->returnAnalog (now);

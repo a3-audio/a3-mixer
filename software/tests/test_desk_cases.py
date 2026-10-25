@@ -32,6 +32,8 @@ class TheFixture(unittest.TestCase):
     def test_covers_every_cursor_and_the_return(self):
         cases = make_desk_cases.cases()
         self.assertEqual({c["cursor"] for c in cases["channel_pictures"]}, set(range(9)))
+        self.assertEqual(len(cases["channel_pictures"]), 80)
+        self.assertEqual({c["channel"] for c in cases["channel_pictures"]}, set(range(4)))
         self.assertEqual({(c["cursor"], c["mode"], c["cue"]) for c in cases["return_pictures"]},
                          {(c, m, q) for c in (0, 1, 2) for m in (0, 1) for q in (False, True)})
 

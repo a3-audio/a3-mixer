@@ -294,7 +294,7 @@ TEST (DeskUi, TheOutputMatrixIgnoresAColumnItDoesNotHave)
 TEST (DeskUi, TheOledShowsThePicture)
 {
     OledView oled;
-    oled.setPicture (display::channelPicture (0, { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, 1, display::oledWidth,
+    oled.setPicture (display::channelPicture (0, 0, { 1, 1, 1 }, 1, display::oledWidth,
                                               display::oledHeight, {}, {}));
     EXPECT_GT (countNear (snapshotOf (oled, 256, 128), juce::Colours::white, 30), 500);
 }
@@ -302,7 +302,7 @@ TEST (DeskUi, TheOledShowsThePicture)
 TEST (DeskUi, ATapOnTheOledNamesTheSlot)
 {
     OledView oled;
-    const auto picture = display::channelPicture (0, { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, 1, display::oledWidth,
+    const auto picture = display::channelPicture (0, 0, { 1, 1, 1 }, 1, display::oledWidth,
                                                   display::oledHeight, {}, {});
     ASSERT_FALSE (picture.meters.empty());
     oled.setPicture (picture);
@@ -410,21 +410,24 @@ TEST (DeskUi, EveryIndicatorPaintsDisabledDimmer)
     for (int column = 0; column < 8; ++column)
         matrix.setColumn (column, 31, 31);
     OledView oled;
-    oled.setPicture (display::channelPicture (0, { 1, 1, 1, 1, 1, 1, 1, 1, 1 }, 1, display::oledWidth,
+    oled.setPicture (display::channelPicture (0, 0, { 1, 1, 1 }, 1, display::oledWidth,
                                               display::oledHeight, {}, {}));
 
-    const auto dimmer = [] (juce::Component& c, int w, int h)
+    // `floor`: the light a control paints with nothing on it. The OLED's surround is the desk's background,
+    // never dimmed, and with three meters a channel's picture no longer outweighs it.
+    const auto dimmer = [] (juce::Component& c, int w, int h, double floor)
     {
         c.setEnabled (true);
-        const auto on = lightOf (snapshotOf (c, w, h));
+        const auto on = lightOf (snapshotOf (c, w, h)) - floor;
         c.setEnabled (false);
-        const auto off = lightOf (snapshotOf (c, w, h));
+        const auto off = lightOf (snapshotOf (c, w, h)) - floor;
         EXPECT_GT (on, 0.0);
         EXPECT_LT (off, on * 0.6);
     };
-    dimmer (leds, 20, 160);
-    dimmer (matrix, 80, 160);
-    dimmer (oled, 256, 128);
+    OledView blank;
+    dimmer (leds, 20, 160, 0.0);
+    dimmer (matrix, 80, 160, 0.0);
+    dimmer (oled, 256, 128, lightOf (snapshotOf (blank, 256, 128)));
 }
 
 namespace

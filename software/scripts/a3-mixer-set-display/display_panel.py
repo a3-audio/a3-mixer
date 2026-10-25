@@ -146,15 +146,42 @@ def return_announcement(args):
     return args[0], tuple(bool(flag) for flag in args[1:])
 
 
-#: A channel's selector: positions 0-7 the stem pairs 1-8, then A, the
-#: channel's analog input -- a3_core_stems' numbers. Core's position 8 is
-#: its stem on/off switch (2026-10-04); the display shows it as A with the
-#: analog input's meter under it again (maintainer, 2026-10-07), in place
-#: of the STEM toggle field.
+#: A channel's selector, in a3_core_stems' numbers: 0-7 the stem pairs 1-8
+#: (D1's four, then D2's), 8 A, the channel's analog input (2026-10-07).
 ANALOG_INPUT = PAIRS
+#: Stems a deck has: D1 is pairs 1-4, D2 pairs 5-8.
+STEMS_PER_DECK = 4
 #: Headings over the channel's meters: the name, the first and the last
-#: slot. A heads the ninth slot alone.
+#: slot of the grid (_channel_columns) it spans. A heads the ninth slot.
 CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", ANALOG_INPUT, ANALOG_INPUT))
+
+
+def channel_ring(index):
+    """The cursors channel `index` (0-3) can take, left to right on its
+    display: D1's stem n, D2's stem n, A. Stem n plays only on channel n
+    (2026-10-25), so Core's selector there is a ring of these three."""
+    return (index, STEMS_PER_DECK + index, ANALOG_INPUT)
+
+
+def channel_slot(index, cursor):
+    """The meter (0 D1, 1 D2, 2 A) under channel `index`'s cursor. A cursor
+    outside the ring -- stored by an older Core -- is A, as Core takes it
+    back."""
+    ring = channel_ring(index)
+    return ring.index(cursor) if cursor in ring else len(ring) - 1
+
+
+def playing_slot(index, mask):
+    """The meter (0 D1, 1 D2, 2 A) that plays on channel `index` with stem
+    `mask`. D1 when the mask carries both of the channel's stems, and A when
+    it carries neither: a foreign bit, from an older Core, is not this
+    channel's."""
+    d1, d2, _ = channel_ring(index)
+    if mask & (1 << d1):
+        return 0
+    if mask & (1 << d2):
+        return 1
+    return 2
 
 #: The aux return's modes -- a3_core_stems' numbers -- left to right on its
 #: display, each a mono meter under its name and nothing between them: an
@@ -345,9 +372,10 @@ EDGE = 1
 
 
 def _channel_columns(width):
-    """(x0, x1) of the eight stem meters and the ninth slot: the meters as
-    wide as PAIRS + LAST_SLOT_METERS equal slots make them, the ninth slot
-    the rest."""
+    """(x0, x1) of the grid's eight stem slots and its ninth slot: the stem
+    slots as wide as PAIRS + LAST_SLOT_METERS equal slots make them, the
+    ninth slot the rest. A channel's headings and dividers stand on it, and
+    the return's CUE field takes its ninth slot."""
     groups = len(CHANNEL_GROUPS) - 1
     gaps = EDGE + (groups * (GROUP_GAP - INNER_GAP)) + PAIRS * INNER_GAP
     meter = (width - gaps) // (PAIRS + LAST_SLOT_METERS)
@@ -401,14 +429,6 @@ def _bracket(meter):
     return (x0 - 1, y0 - 1, x1 + 1, y0 + BRACKET_ROWS - 2)
 
 
-def playing_stem(mask):
-    """The stem (0-7) that plays on a channel with stem `mask` -- its lowest
-    bit, as Core plays it -- or None when none does."""
-    if not mask:
-        return None
-    return (mask & -mask).bit_length() - 1
-
-
 def _divider(left, right, rows):
     """A vertical line in the middle of the gap between two columns, the
     meters' height: below the headings."""
@@ -431,25 +451,28 @@ def _centred(slot, width):
     return (x0, x0 + width - 1)
 
 
-def channel_picture(cursor, levels, mask, width, height, clips=(), holds=()):
-    """A channel: the eight stems as bars under D1 | D2 and the analog
-    input's bar under A -- `levels`, `clips` and `holds` in that order, nine each,
-    hatched where one clips --, the cursor as the arrow over one of them,
-    and the active bracket over what plays: the stem `mask` plays, or A
-    when it plays none. Pure layout; the painter draws it."""
+def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=()):
+    """Channel `index` (0-3): its stem of D1, its stem of D2 and its analog
+    input, one bar each under D1 | D2 | A -- `levels`, `clips` and `holds`
+    in that order, three each, hatched where one clips --, the cursor as the
+    arrow over one of them (channel_slot), and the active bracket over what
+    plays (playing_slot). Each bar is a stem's width, centred under its
+    heading; the headings and dividers keep the grid of eight stems and A,
+    so the return panel beside it reads the same. Pure layout; the painter
+    draws it."""
     slots = _channel_columns(width)
     stem_width = slots[0][1] - slots[0][0] + 1
-    columns = slots[:PAIRS] + [_centred(slots[ANALOG_INPUT], stem_width)]
+    spans = [(slots[first][0], slots[last][1]) for _, first, last in CHANNEL_GROUPS]
+    columns = [_centred(span, stem_width) for span in spans]
     (h0, h1), arrow, (m0, m1) = _bands(height)
-    headings = tuple(Heading((slots[first][0], h0, slots[last][1], h1), name)
-                     for name, first, last in CHANNEL_GROUPS)
+    headings = tuple(Heading((x0, h0, x1, h1), name)
+                     for (name, _, _), (x0, x1) in zip(CHANNEL_GROUPS, spans))
     meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns], levels, clips, holds)
-    playing = playing_stem(mask)
     dividers = tuple(_divider(slots[first - 1], slots[first], (m0, m1))
                      for _, first, _ in CHANNEL_GROUPS[1:])
-    active = _bracket(meters[ANALOG_INPUT if playing is None else playing].box)
-    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None, active,
-                   _marks(meters, CHANNEL_MARK_LENGTH))
+    active = _bracket(meters[playing_slot(index, mask)].box)
+    return Picture(headings, meters, _arrow(columns[channel_slot(index, cursor)], arrow),
+                   dividers, None, active, _marks(meters, CHANNEL_MARK_LENGTH))
 
 
 #: The return's heading over each meter as a share of the panel's width --

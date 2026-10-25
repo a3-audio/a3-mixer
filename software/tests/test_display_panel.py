@@ -131,78 +131,106 @@ def stem(pair):
 
 
 class ChannelSelector(unittest.TestCase):
-    """A channel's display is an input selector: eight stem meters under
-    D1 | D2 and, in the ninth slot, A -- the channel's analog input, a meter
-    under its letter (maintainer, 2026-10-07: "where STEM stands, A for
-    analog again, below it the VU meter of the analog input"; it replaces
-    the STEM toggle of 2026-10-04). It shows what is selected -- the cursor
-    -- and what plays: the active bracket, over a stem or over A."""
+    """A channel's display is an input selector: channel n's stem of D1, its
+    stem of D2, and A -- the channel's analog input --, one meter each under
+    D1 | D2 | A (2026-10-25: stem n plays only on channel n). It shows what is
+    selected -- the cursor -- and what plays: the active bracket, over D1,
+    D2 or A."""
 
-    def picture(self, cursor=8, levels=(0.5,) * 9, mask=0, width=W, height=H):
+    def picture(self, index=0, cursor=8, levels=(0.5,) * 3, mask=0, width=W, height=H):
         from display_panel import channel_picture
-        return channel_picture(cursor, levels, mask, width, height)
+        return channel_picture(index, cursor, levels, mask, width, height)
+
+    def test_the_ring_of_a_channel(self):
+        from display_panel import ANALOG_INPUT, STEMS_PER_DECK, channel_ring
+        self.assertEqual(STEMS_PER_DECK, 4)
+        self.assertEqual(ANALOG_INPUT, 8)
+        self.assertEqual([channel_ring(i) for i in range(4)],
+                         [(0, 4, 8), (1, 5, 8), (2, 6, 8), (3, 7, 8)])
+
+    def test_the_slot_of_a_cursor(self):
+        from display_panel import channel_slot
+        self.assertEqual([channel_slot(2, c) for c in (2, 6, 8)], [0, 1, 2])
+        for off_ring in (0, 1, 3, 4, 5, 7):
+            self.assertEqual(channel_slot(2, off_ring), 2, off_ring)
+
+    def test_the_slot_that_plays(self):
+        from display_panel import playing_slot
+        self.assertEqual(playing_slot(2, 0), 2)
+        self.assertEqual(playing_slot(2, stem(3)), 0)
+        self.assertEqual(playing_slot(2, stem(7)), 1)
+        self.assertEqual(playing_slot(2, stem(3) | stem(7)), 0)
+        self.assertEqual(playing_slot(2, stem(1)), 2)
+        self.assertEqual(playing_slot(2, stem(1) | stem(7)), 1)
 
     def test_three_headings_over_their_meters(self):
         p = self.picture()
         self.assertEqual([h.text for h in p.headings], ["D1", "D2", "A"])
-        meters = p.meters
-        for heading, (first, last) in zip(p.headings[:2], ((0, 3), (4, 7))):
-            self.assertEqual(heading.box[0], meters[first].box[0])
-            self.assertEqual(heading.box[2], meters[last].box[2])
-            self.assertLess(heading.box[3], meters[first].box[1])
+        for heading, meter in zip(p.headings, p.meters):
+            self.assertLess(heading.box[3], meter.box[1])
+
+    def test_each_meter_is_centred_under_its_heading(self):
+        p = self.picture()
+        for heading, meter in zip(p.headings, p.meters):
+            h, m = heading.box, meter.box
+            self.assertLessEqual(h[0], m[0])
+            self.assertGreaterEqual(h[2], m[2])
+            self.assertLessEqual(abs((h[0] + h[2]) - (m[0] + m[2])), 1)
+
+    def test_the_headings_span_the_old_grid(self):
+        """The grid is unchanged: D1 and D2 head four stem slots each, as
+        before, so the return panel beside it does not move."""
+        from display_panel import _channel_columns
+        slots = _channel_columns(W)
+        p = self.picture()
+        spans = [(slots[0][0], slots[3][1]), (slots[4][0], slots[7][1]), slots[8]]
+        self.assertEqual([(h.box[0], h.box[2]) for h in p.headings], spans)
 
     def test_a_stands_over_the_analog_meter(self):
         p = self.picture()
-        a, analog = p.headings[2].box, p.meters[8].box
-        self.assertLessEqual(a[0], analog[0])
-        self.assertGreaterEqual(a[2], analog[2])
-        self.assertLessEqual(abs((a[0] + a[2]) - (analog[0] + analog[2])), 1)
-        self.assertLess(a[3], analog[1])
-        self.assertEqual(a[1], p.headings[0].box[1])
+        self.assertEqual(p.headings[2].box[1], p.headings[0].box[1])
 
-    def test_nine_meters_the_ninth_analog(self):
-        from display_panel import ANALOG_INPUT
-        self.assertEqual(ANALOG_INPUT, 8)
-        boxes = [m.box for m in self.picture().meters]
-        self.assertEqual(len(boxes), 9)
+    def test_three_meters_d1_d2_a(self):
+        p = self.picture()
+        boxes = [m.box for m in p.meters]
+        self.assertEqual(len(boxes), 3)
+        for box, heading in zip(boxes, p.headings):
+            self.assertTrue(heading.box[0] <= box[0] <= heading.box[2], heading.text)
         for (x0, y0, x1, y1), following in zip(boxes, boxes[1:] + [None]):
             self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H)
             if following:
                 self.assertLess(x1, following[0])
 
-    def test_the_analog_meter_is_a_stems_size_and_height(self):
-        p = self.picture()
-        stem_box, analog = p.meters[0].box, p.meters[8].box
-        self.assertEqual(analog[2] - analog[0], stem_box[2] - stem_box[0])
-        self.assertEqual((analog[1], analog[3]), (stem_box[1], stem_box[3]))
+    def test_every_meter_is_a_stems_size_and_height(self):
+        boxes = [m.box for m in self.picture().meters]
+        for box in boxes[1:]:
+            self.assertEqual(box[2] - box[0], boxes[0][2] - boxes[0][0])
+            self.assertEqual((box[1], box[3]), (boxes[0][1], boxes[0][3]))
 
     def test_no_toggle_any_more(self):
         self.assertIsNone(self.picture().toggle)
-        self.assertIsNone(self.picture(mask=stem(3)).toggle)
-
-    def test_the_groups_stand_apart(self):
-        p = self.picture()
-        boxes = [m.box for m in p.meters]
-        inner = boxes[1][0] - boxes[0][2]
-        self.assertGreater(boxes[4][0] - boxes[3][2], inner)
-        self.assertGreater(boxes[8][0] - boxes[7][2], inner)
+        self.assertIsNone(self.picture(mask=stem(1)).toggle)
 
     def test_the_groups_are_divided_by_lines(self):
-        """D1 | D2 | A stand apart: a vertical line in each gap, below the
-        headings, the meters' height."""
+        """D1 | D2 | A stand apart: a vertical line between each two
+        meters, below the headings, the meters' height."""
         p = self.picture()
-        slots = [m.box for m in p.meters]
+        boxes = [m.box for m in p.meters]
         self.assertEqual(len(p.dividers), 2)
-        for (x0, y0, x1, y1), (left, right) in zip(p.dividers, ((3, 4), (7, 8))):
+        for (x0, y0, x1, y1), (left, right) in zip(p.dividers, ((0, 1), (1, 2))):
             self.assertEqual(x0, x1)
-            self.assertGreaterEqual(x0 - slots[left][2], 3)
-            self.assertGreaterEqual(slots[right][0] - x0, 3)
+            self.assertGreaterEqual(x0 - boxes[left][2], 3)
+            self.assertGreaterEqual(boxes[right][0] - x0, 3)
             self.assertGreater(y0, p.headings[0].box[3])
-            self.assertEqual((y0, y1), (slots[0][1], slots[0][3]))
+            self.assertEqual((y0, y1), (boxes[0][1], boxes[0][3]))
 
     def test_the_meters_keep_their_width(self):
-        boxes = [m.box for m in self.picture().meters]
-        self.assertTrue(all(x1 - x0 + 1 >= 9 for x0, _, x1, _ in boxes))
+        """A stem's width: as wide as the grid's stem slot."""
+        from display_panel import _channel_columns
+        x0, x1 = _channel_columns(W)[0]
+        for box in [m.box for m in self.picture().meters]:
+            self.assertEqual(box[2] - box[0], x1 - x0)
+            self.assertGreaterEqual(box[2] - box[0] + 1, 9)
 
     def test_a_meter_is_its_level_clip_and_hold(self):
         """No assignment travels with a meter; whether it clips does
@@ -211,7 +239,7 @@ class ChannelSelector(unittest.TestCase):
         self.assertEqual(Meter._fields, ("box", "level", "clip", "hold"))
 
     def test_the_levels_are_the_meters(self):
-        levels = tuple(i / 9 for i in range(9))
+        levels = (0.25, 0.5, 0.75)
         self.assertEqual([m.level for m in self.picture(levels=levels).meters], list(levels))
 
     def assert_arrow_over(self, p, slot):
@@ -224,9 +252,19 @@ class ChannelSelector(unittest.TestCase):
 
     def test_the_cursor_is_an_arrow_above_its_meter(self):
         """Maintainer, 2026-10-04: a "^" turned over, a small triangle
-        pointing down at the selected meter -- the inverted column went."""
-        p = self.picture(cursor=4)
-        self.assert_arrow_over(p, p.meters[4].box)
+        pointing down at the selected meter."""
+        p = self.picture(index=2, cursor=2)
+        self.assert_arrow_over(p, p.meters[0].box)
+
+    def test_the_cursor_on_d2_points_at_the_middle_meter(self):
+        p = self.picture(index=1, cursor=5)
+        self.assert_arrow_over(p, p.meters[1].box)
+
+    def test_a_cursor_off_the_ring_shows_a(self):
+        """A stored cursor outside channel n's ring (an older Core) is A,
+        as Core takes it back."""
+        p = self.picture(index=1, cursor=0)
+        self.assert_arrow_over(p, p.meters[2].box)
 
     def test_the_arrow_is_as_wide_as_a_meter_and_a_few_rows_tall(self):
         p = self.picture(cursor=0)
@@ -237,7 +275,7 @@ class ChannelSelector(unittest.TestCase):
 
     def test_the_cursor_on_a_is_the_same_arrow_above_its_meter(self):
         p = self.picture(cursor=8)
-        self.assert_arrow_over(p, p.meters[8].box)
+        self.assert_arrow_over(p, p.meters[2].box)
         on_a_stem = self.picture(cursor=0).cursor
         self.assertEqual((p.cursor[2] - p.cursor[0], p.cursor[1], p.cursor[3]),
                          (on_a_stem[2] - on_a_stem[0], on_a_stem[1], on_a_stem[3]))
@@ -275,66 +313,74 @@ def assert_bracket_over(case, p, meter):
 
 
 class ActiveBracket(unittest.TestCase):
-    """Maintainer, 2026-10-04: the stem that plays on the channel -- the
-    lowest bit of its mask -- carries a bracket open at the bottom, the
-    same mark as the return's active mode. No stem playing is the analog
-    input playing: A carries it (2026-10-07)."""
+    """Maintainer, 2026-10-04: what plays on the channel carries a bracket
+    open at the bottom, the same mark as the return's active mode. On
+    channel n that is D1's stem n, D2's stem n, or A when neither plays
+    (2026-10-25). D1 wins when a mask carries both, and a foreign stem --
+    only an older Core announces one -- is not this channel's: A."""
 
-    def picture(self, mask, cursor=2):
+    def picture(self, mask, index=2, cursor=8):
         from display_panel import channel_picture
-        return channel_picture(cursor, (0.5,) * 9, mask, W, H)
+        return channel_picture(index, cursor, (0.5,) * 3, mask, W, H)
 
-    def test_the_playing_stem_carries_the_bracket(self):
-        p = self.picture(stem(6))
-        assert_bracket_over(self, p, p.meters[5].box)
+    def test_d1_plays_carries_the_bracket(self):
+        p = self.picture(1 << 2)
+        assert_bracket_over(self, p, p.meters[0].box)
 
-    def test_the_lowest_stem_is_the_one_that_plays(self):
-        p = self.picture(stem(3) | stem(6))
+    def test_d2_plays_carries_the_bracket(self):
+        p = self.picture(1 << 6)
+        assert_bracket_over(self, p, p.meters[1].box)
+
+    def test_both_own_stems_bracket_d1(self):
+        p = self.picture((1 << 2) | (1 << 6))
+        assert_bracket_over(self, p, p.meters[0].box)
+
+    def test_a_foreign_stem_shows_a(self):
+        p = self.picture(1 << 0)
         assert_bracket_over(self, p, p.meters[2].box)
 
     def test_no_stem_the_analog_input_carries_it(self):
         p = self.picture(0)
-        assert_bracket_over(self, p, p.meters[8].box)
-
-    def test_the_bracket_and_the_cursor_on_one_stem(self):
-        p = self.picture(stem(3), cursor=2)
         assert_bracket_over(self, p, p.meters[2].box)
 
+    def test_the_bracket_and_the_cursor_on_one_stem(self):
+        p = self.picture(1 << 2, cursor=2)
+        assert_bracket_over(self, p, p.meters[0].box)
+
     def every_bracket(self):
-        for pair in range(1, 9):
-            yield pair, self.picture(stem(pair))
-        yield "A", self.picture(0)
+        for index in range(4):
+            for mask in (0, 1 << index, 1 << (4 + index)):
+                yield (index, mask), self.picture(mask, index=index)
 
     def test_a_stem_playing_leaves_a_unmarked(self):
-        for pair in range(1, 9):
-            p = self.picture(stem(pair))
-            self.assertLess(p.active[2], p.meters[8].box[0], pair)
+        for index in range(4):
+            for mask in (1 << index, 1 << (4 + index)):
+                p = self.picture(mask, index=index)
+                self.assertLess(p.active[2], p.meters[2].box[0], (index, mask))
 
     def test_it_stays_on_the_panel(self):
-        for pair, p in self.every_bracket():
+        for case, p in self.every_bracket():
             x0, y0, x1, y1 = p.active
-            self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H, pair)
+            self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H, case)
 
     def test_its_legs_stand_in_the_gaps(self):
         """The legs never cover a meter's own columns, its own or a
         neighbour's: the meters stay whole under the bracket."""
-        for pair, p in self.every_bracket():
+        for case, p in self.every_bracket():
             for leg in (p.active[0], p.active[2]):
                 for meter in p.meters:
-                    self.assertFalse(meter.box[0] <= leg <= meter.box[2], (pair, leg))
+                    self.assertFalse(meter.box[0] <= leg <= meter.box[2], (case, leg))
 
     def test_it_never_touches_a_divider(self):
-        """At least one dark column between a leg and a divider line --
-        stem 4 and 5 stand beside D1 | D2, stem 8 and A beside A's."""
-        for pair, p in self.every_bracket():
+        for case, p in self.every_bracket():
             for divider in p.dividers:
                 self.assertTrue(divider[0] < p.active[0] - 1 or divider[0] > p.active[2] + 1,
-                                (pair, divider))
+                                (case, divider))
 
     def test_the_arrow_stays_above_it(self):
-        for pair, p in self.every_bracket():
-            self.assertGreater(p.active[1], p.cursor[3], pair)
-            self.assertGreater(p.active[1], max(h.box[3] for h in p.headings), pair)
+        for case, p in self.every_bracket():
+            self.assertGreater(p.active[1], p.cursor[3], case)
+            self.assertGreater(p.active[1], max(h.box[3] for h in p.headings), case)
 
 
 class ReturnMeter(unittest.TestCase):
@@ -396,7 +442,7 @@ class ReturnMeter(unittest.TestCase):
 
     def test_the_return_arrow_reads_like_the_channels(self):
         from display_panel import channel_picture
-        channel = channel_picture(0, (0.0,) * 9, False, W, H).cursor
+        channel = channel_picture(0, 0, (0.0,) * 3, 0, W, H).cursor
         ret = self.picture().cursor
         self.assertEqual((ret[1], ret[3]), (channel[1], channel[3]))
         self.assertGreaterEqual(ret[2] - ret[0], channel[2] - channel[0])
@@ -423,7 +469,7 @@ class ReturnCue(unittest.TestCase):
 
     def channel(self, cursor=0):
         from display_panel import channel_picture
-        return channel_picture(cursor, (0.5,) * 9, 0, W, H)
+        return channel_picture(0, cursor, (0.5,) * 3, 0, W, H)
 
     def test_the_cue_field_reads_cue(self):
         self.assertEqual(self.picture().toggle.text, "CUE")
@@ -436,7 +482,7 @@ class ReturnCue(unittest.TestCase):
         """Its size is the slot a channel's A heading spans, not a pixel
         number of its own: the two displays sit side by side on the desk."""
         x0, _, x1, _ = self.channel().headings[2].box
-        _, y0, _, y1 = self.channel().meters[8].box
+        _, y0, _, y1 = self.channel().meters[2].box
         self.assertEqual(self.picture().toggle.box, (x0, y0, x1, y1))
 
     def test_a_divider_sets_it_apart_where_the_channels_does(self):
@@ -546,10 +592,10 @@ class TheHoldLine(unittest.TestCase):
 
     def test_a_channel_carries_a_hold_per_meter(self):
         from display_panel import channel_picture
-        holds = (0.9,) + (0.0,) * 8
-        p = channel_picture(8, (0.1,) * 9, 0, W, H, holds=holds)
+        holds = (0.9, 0.0, 0.0)
+        p = channel_picture(0, 8, (0.1,) * 3, 0, W, H, holds=holds)
         self.assertIsNotNone(p.meters[0].hold_row())
-        self.assertEqual([m.hold_row() for m in p.meters[1:]], [None] * 8)
+        self.assertEqual([m.hold_row() for m in p.meters[1:]], [None] * 2)
 
     def test_the_return_carries_a_hold_per_meter(self):
         from display_panel import return_picture
@@ -559,8 +605,8 @@ class TheHoldLine(unittest.TestCase):
 
     def test_a_moved_hold_is_a_new_picture(self):
         from display_panel import channel_picture, pixel_key
-        one = channel_picture(8, (0.1,) * 9, 0, W, H, holds=(0.9,) + (0.0,) * 8)
-        two = channel_picture(8, (0.1,) * 9, 0, W, H, holds=(0.6,) + (0.0,) * 8)
+        one = channel_picture(0, 8, (0.1,) * 3, 0, W, H, holds=(0.9, 0.0, 0.0))
+        two = channel_picture(0, 8, (0.1,) * 3, 0, W, H, holds=(0.6, 0.0, 0.0))
         self.assertNotEqual(pixel_key(one), pixel_key(two))
 
 
@@ -570,7 +616,7 @@ class InPixels(unittest.TestCase):
 
     def channel(self, cursor=8, level=0.0, mask=0):
         from display_panel import channel_picture
-        return channel_picture(cursor, (level,) * 9, mask, W, H)
+        return channel_picture(0, cursor, (level,) * 3, mask, W, H)
 
     def test_a_channel_meter_is_its_bar(self):
         p = self.channel(level=0.6)
@@ -584,12 +630,12 @@ class InPixels(unittest.TestCase):
         self.assertNotEqual(pixel_key(one), pixel_key(three))
 
     def test_a_silent_input_paints_nothing(self):
-        self.assertEqual([m.pixels() for m in self.channel(cursor=0).meters], [0] * 9)
+        self.assertEqual([m.pixels() for m in self.channel(cursor=0).meters], [0] * 3)
 
     def test_the_cursor_is_part_of_the_picture(self):
         from display_panel import pixel_key
         self.assertNotEqual(pixel_key(self.channel(cursor=0)), pixel_key(self.channel(cursor=1)))
-        self.assertNotEqual(pixel_key(self.channel(cursor=7)), pixel_key(self.channel(cursor=8)))
+        self.assertNotEqual(pixel_key(self.channel(cursor=4)), pixel_key(self.channel(cursor=8)))
 
     def test_stem_or_analog_playing_is_part_of_the_picture(self):
         from display_panel import pixel_key
@@ -598,13 +644,13 @@ class InPixels(unittest.TestCase):
 
     def test_the_active_stem_is_part_of_the_picture(self):
         from display_panel import pixel_key
-        self.assertNotEqual(pixel_key(self.channel(mask=stem(3))),
+        self.assertNotEqual(pixel_key(self.channel(mask=stem(1))),
                             pixel_key(self.channel(mask=stem(5))))
 
-    def test_a_second_stem_above_the_playing_one_is_the_same_picture(self):
+    def test_d2_beside_a_playing_d1_is_the_same_picture(self):
         from display_panel import pixel_key
-        self.assertEqual(pixel_key(self.channel(mask=stem(5))),
-                         pixel_key(self.channel(mask=stem(5) | stem(6))))
+        self.assertEqual(pixel_key(self.channel(mask=stem(1))),
+                         pixel_key(self.channel(mask=stem(1) | stem(5))))
 
     def test_the_playing_mode_is_part_of_the_picture(self):
         from display_panel import ANALOG_MODE, STEM_MODE, pixel_key, return_picture
@@ -684,15 +730,15 @@ class ClipIndication(unittest.TestCase):
     def test_a_meter_does_not_clip_unless_told(self):
         from display_panel import ANALOG_MODE, Meter, channel_picture, return_picture
         self.assertFalse(Meter((0, 0, 9, 9), 1.0).clip)
-        pictures = (channel_picture(8, (1.0,) * 9, 0, W, H),
+        pictures = (channel_picture(0, 8, (1.0,) * 3, 0, W, H),
                     return_picture(ANALOG_MODE, ANALOG_MODE, False, (1.0, 1.0), W, H))
         for picture in pictures:
             self.assertEqual([m.clip for m in picture.meters], [False] * len(picture.meters))
 
     def test_a_channel_carries_each_stems_clip(self):
         from display_panel import channel_picture
-        clips = (False, True, False, False, True, False, False, False, True)
-        p = channel_picture(8, (1.0,) * 9, 0, W, H, clips=clips)
+        clips = (False, True, True)
+        p = channel_picture(0, 8, (1.0,) * 3, 0, W, H, clips=clips)
         self.assertEqual(tuple(m.clip for m in p.meters), clips)
 
     def test_the_return_carries_stem_and_analogs_clip(self):
@@ -710,8 +756,8 @@ class ClipIndication(unittest.TestCase):
     def test_a_clip_is_part_of_the_picture(self):
         """A clip lighting or going out is one redraw, nothing more."""
         from display_panel import STEM_MODE, channel_picture, pixel_key, return_picture
-        clean = channel_picture(8, (1.0,) * 9, 0, W, H)
-        over = channel_picture(8, (1.0,) * 9, 0, W, H, clips=(True,) + (False,) * 8)
+        clean = channel_picture(0, 8, (1.0,) * 3, 0, W, H)
+        over = channel_picture(0, 8, (1.0,) * 3, 0, W, H, clips=(True, False, False))
         self.assertNotEqual(pixel_key(clean), pixel_key(over))
         self.assertNotEqual(
             pixel_key(return_picture(STEM_MODE, STEM_MODE, False, (1.0, 0.0), W, H)),
