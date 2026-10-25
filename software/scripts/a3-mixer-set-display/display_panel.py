@@ -451,6 +451,17 @@ def _centred(slot, width):
     return (x0, x0 + width - 1)
 
 
+def _channel_layout(width, height):
+    """What both channel pictures stand on: the spans of the three headings,
+    the three bar columns, and the heading, arrow and meter bands."""
+    slots = _channel_columns(width)
+    stem_width = slots[0][1] - slots[0][0] + 1
+    spans = [(slots[first][0], slots[last][1]) for _, first, last in CHANNEL_GROUPS]
+    columns = [_centred(span, stem_width) for span in spans]
+    dividers = [(slots[first - 1], slots[first]) for _, first, _ in CHANNEL_GROUPS[1:]]
+    return spans, columns, dividers, _bands(height)
+
+
 def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=()):
     """Channel `index` (0-3): its stem of D1, its stem of D2 and its analog
     input, one bar each under D1 | D2 | A -- `levels`, `clips` and `holds`
@@ -460,19 +471,46 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
     heading; the headings and dividers keep the grid of eight stems and A,
     so the return panel beside it reads the same. Pure layout; the painter
     draws it."""
-    slots = _channel_columns(width)
-    stem_width = slots[0][1] - slots[0][0] + 1
-    spans = [(slots[first][0], slots[last][1]) for _, first, last in CHANNEL_GROUPS]
-    columns = [_centred(span, stem_width) for span in spans]
-    (h0, h1), arrow, (m0, m1) = _bands(height)
+    spans, columns, gaps, ((h0, h1), arrow, (m0, m1)) = _channel_layout(width, height)
     headings = tuple(Heading((x0, h0, x1, h1), name)
                      for (name, _, _), (x0, x1) in zip(CHANNEL_GROUPS, spans))
     meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns], levels, clips, holds)
-    dividers = tuple(_divider(slots[first - 1], slots[first], (m0, m1))
-                     for _, first, _ in CHANNEL_GROUPS[1:])
+    dividers = tuple(_divider(left, right, (m0, m1)) for left, right in gaps)
     active = _bracket(meters[playing_slot(index, mask)].box)
     return Picture(headings, meters, _arrow(columns[channel_slot(index, cursor)], arrow),
                    dividers, None, active, _marks(meters, CHANNEL_MARK_LENGTH))
+
+
+#: The ring in engine mode (Core's a3_core_decks), left to right: the analog
+#: input, deck A, deck B -- the numbers `channel.source` carries, 0 and 1-2.
+#: Analog is "AN" because the deck letters are A and B; a deck that is not
+#: there reads ABSENT_NAME and has no bar.
+ENGINE_RING = ("AN", "A", "B")
+DECKS = len(ENGINE_RING) - 1
+ABSENT_NAME = "-"
+#: The interim's levels are (D1, D2, A); the engine ring's are (A, D1, D2).
+ENGINE_LEVEL_ORDER = (2, 0, 1)
+
+
+def engine_channel_picture(source, cursor, present, levels, width, height,
+                           clips=(), holds=()):
+    """A channel in engine mode: AN | A | B, `source` (0-2) under the active
+    bracket, `cursor` (0-2) under the arrow. `levels`, `clips` and `holds`
+    are in ring order; `present` says per deck (A, B) whether it is there --
+    an absent deck is a dash over an empty slot, no bar and no scale marks."""
+    spans, columns, gaps, ((h0, h1), arrow, (m0, m1)) = _channel_layout(width, height)
+    there = (True,) + tuple(bool(on) for on in present)
+    names = [name if on else ABSENT_NAME for name, on in zip(ENGINE_RING, there)]
+    headings = tuple(Heading((x0, h0, x1, h1), name)
+                     for name, (x0, x1) in zip(names, spans))
+    shown = lambda values, empty: [v if on else empty for v, on in zip(values, there)]  # noqa: E731
+    meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns],
+                     shown(levels, 0.0), shown(clips or (False,) * 3, False),
+                     shown(holds or (0.0,) * 3, 0.0))
+    dividers = tuple(_divider(left, right, (m0, m1)) for left, right in gaps)
+    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None,
+                   _bracket(meters[source].box),
+                   _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
 
 #: The return's heading over each meter as a share of the panel's width --
@@ -521,6 +559,22 @@ def cursor_announcement(args):
     if len(args) != 1 or not _is_count(args[0], ANALOG_INPUT):
         return None
     return args[0]
+
+
+def source_announcement(args):
+    """The ring place (0 = analog, k = deck k) out of `/channel/{ch}/source`
+    or `/channel/{ch}/source/cursor`, or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], DECKS):
+        return None
+    return args[0]
+
+
+def present_announcement(args):
+    """Whether the deck is there, out of `/stemdeck/{deck}/present` (1 or 0),
+    or None if damaged."""
+    if len(args) != 1 or not _is_count(args[0], 1):
+        return None
+    return args[0] == 1
 
 
 def cue_announcement(args):

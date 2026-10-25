@@ -32,7 +32,7 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
-                               cursor_announcement, mode_announcement, open_displays,
+                               cursor_announcement, source_announcement, present_announcement, mode_announcement, open_displays,
                                return_announcement)
 from a3_mixer_meters import (MeterBallistics, StereoInputs, channel_vu_line,
                              main_vu_line, peak_db)
@@ -551,6 +551,34 @@ if __name__ == '__main__':
         mode = mode_announcement(args)
         if mode is not None:
             displays.show_return_mode(mode)
+
+    # Engine mode (Plan 4e): Core reports each channel's source, its ring
+    # cursor and which decks are there; the first source report puts a
+    # channel's display on the deck ring. Without them the displays are the
+    # interim's. A damaged value is ignored.
+    def source_handler(address, *args):
+        ch = osc.channel_of("channel.source", address)
+        source = source_announcement(args)
+        if ch is not None and source is not None and 1 <= ch <= num_channel:
+            displays.show_source(ch - 1, source)
+
+    def source_cursor_handler(address, *args):
+        ch = osc.channel_of("channel.source.cursor", address)
+        cursor = source_announcement(args)
+        if ch is not None and cursor is not None and 1 <= ch <= num_channel:
+            displays.show_source_cursor(ch - 1, cursor)
+
+    def deck_present_handler(address, *args):
+        deck = osc.deck_of("stemdeck.present", address)
+        present = present_announcement(args)
+        if deck is not None and present is not None:
+            displays.show_deck_present(deck - 1, present)
+
+    engine_handlers = {"channel.source": source_handler,
+                       "channel.source.cursor": source_cursor_handler,
+                       "stemdeck.present": deck_present_handler}
+    for key in osc.engine_keys():
+        dispatcher.map(osc.subscription(key), engine_handlers[key])
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
