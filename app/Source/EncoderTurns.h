@@ -24,6 +24,7 @@ private:
     int _sent = 0;
 };
 
-int channelTurnsTo (int cursor, int target);
+/** Turns from the channel's cursor to meter `slot` (0 D1, 1 D2, 2 A) in the channel's ring of three. */
+int channelTurnsTo (int channel, int cursor, int slot);
 int returnTurnsTo (int cursor, int target);
 }

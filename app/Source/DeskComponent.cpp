@@ -107,7 +107,7 @@ void DeskComponent::buildStrip (int ch)
     _leds[i] = std::make_unique<LedColumn>();
     _displays[i] = std::make_unique<OledView>();
     _displays[i]->onSlot = [this, ch] (int slot) {
-        const auto turns = turns::channelTurnsTo (_ind.cursor[(size_t) ch - 1], slot);
+        const auto turns = turns::channelTurnsTo (ch - 1, _ind.cursor[(size_t) ch - 1], slot);
         if (turns != 0 && handsAccepted())
             send (_wire->channelTurn (ch, turns));   // never a push: switching an input stays on the encoder
     };
