@@ -4,17 +4,20 @@
 
 """The five OLED displays, drawn by the main process: what Core announces.
 
-Each channel's display is an input selector (2026-10-04): eight plain bars
-under D1 | D2, one per stem pair, and in the ninth slot A, the channel's
-analog input, with its own bar (2026-10-07; the STEM toggle field that
-stood there from 2026-10-04 is gone). What plays carries the active
-bracket: the stem that plays -- the lowest bit of the channel's mask -- or
-A when none does; a "]" turned 90 degrees counter-clockwise, a top line in
-the dark row over the meter with a short leg down either side, standing in
-the gaps beside the meter so the bar stays whole. The cursor is a small
-solid triangle pointing down -- a "^" turned over -- between the headings
-and the meters, centred over the selected slot, right above the bracket
-when both mark one input; nothing else marks a meter.
+Each channel's display is an input selector (2026-10-04). Since 2026-10-25
+stem n plays only on channel n, so channel n shows D1 | D2 | A, one plain
+bar each: D1's stem n, D2's stem n, and A, the channel's analog input
+(2026-10-07) -- display_panel.channel_ring. What plays carries the active
+bracket: D1 when the channel's mask carries D1's stem n (also beside D2's,
+from an older Core), else D2 when it carries D2's, else A -- a foreign
+stem in the mask is not this channel's; a "]" turned 90 degrees
+counter-clockwise, a top line in the dark row over the meter with a short
+leg down either side, standing in the gaps beside the meter so the bar
+stays whole. The cursor is a small solid triangle pointing down -- a "^"
+turned over -- between the headings and the meters, centred over the
+selected meter, right above the bracket when both mark one input; a cursor
+outside the channel's ring (an older Core's) points at A. Nothing else
+marks a meter.
 
 A's bar is the channel's analog input (analog<N>_L/R, the louder side),
 whatever plays on the channel: with a stem playing, the DJ still sees there
@@ -94,8 +97,8 @@ from display_panel import (channel_announcement, return_announcement,  # noqa: E
                            cursor_announcement, mode_announcement, cue_announcement,
                            channel_picture,
                            return_picture, panel_for_channel, return_panel,
-                           pixel_key, playing_stem, ClipHold, ANALOG_INPUT,
-                           STEM_MODE,
+                           pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
+                           STEM_MODE, STEMS_PER_DECK,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
@@ -453,7 +456,7 @@ class Displays:
                 else:
                     index = PANELS.index(panel)
                     analog = self._move(("analog", index), self._analog_peak(index), dt)
-                    levels_and_clips = stems + [analog]
+                    levels_and_clips = [stems[index], stems[STEMS_PER_DECK + index], analog]
                 self._levels[panel] = tuple(level for level, _, _ in levels_and_clips)
                 self._holds[panel] = tuple(hold for _, hold, _ in levels_and_clips)
                 self._clips[panel] = tuple(clip for _, _, clip in levels_and_clips)
@@ -522,14 +525,14 @@ class Displays:
         threading.Thread(target=self._run, name="displays", daemon=True).start()
 
     def show_channel(self, index, mask):
-        """What plays on a channel. Its display shows the stem that plays --
-        the mask's lowest bit, under the active bracket -- or A, so only a
-        change of that stem, or between A and a stem, is drawn: a stem
-        added above it moves no pixel."""
+        """What plays on a channel. Its display shows D1, D2 or A under the
+        active bracket (display_panel.playing_slot), so only a change of
+        that is drawn: D2 beside a playing D1, or a foreign stem, moves no
+        pixel."""
         with self._wake:
-            was = playing_stem(self._channel_masks[index])
+            was = playing_slot(index, self._channel_masks[index])
             self._channel_masks[index] = mask
-        if playing_stem(mask) != was:
+        if playing_slot(index, mask) != was:
             self._post(panel_for_channel(index))
 
     def show_cursor(self, index, cursor):
@@ -591,10 +594,10 @@ class Displays:
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
-            levels = self._levels[panel] or (0.0,) * (PAIRS + 1)
+            levels = self._levels[panel] or (0.0,) * 3
             clips, holds = self._clips[panel], self._holds[panel]
-        return lambda width, height: channel_picture(cursor, levels, mask, width, height,
-                                                     clips, holds)
+        return lambda width, height: channel_picture(index, cursor, levels, mask,
+                                                     width, height, clips, holds)
 
     def _post(self, panel):
         with self._wake:

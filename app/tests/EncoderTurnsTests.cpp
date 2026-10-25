@@ -24,15 +24,17 @@ TEST (DragClicks, JitterAroundTheStartIsNoClick)
     EXPECT_EQ (drag.feed (-3.f), 0);
 }
 
-// The truth: the channel's cursor moves "in a ring: left from the first stem
-// is A, right from A the first stem". A slot tap sends the turns that get there.
-TEST (SlotTurns, AChannelTakesTheShortWayRound)
+// The truth: on channel n the cursor takes only n-1, 4+n-1 and 8 (D1, D2, A),
+// "in a ring". A slot tap (meter 0-2) sends the turns that get there; a cursor
+// off the ring counts as A.
+TEST (SlotTurns, AChannelRingIsD1D2A)
 {
-    EXPECT_EQ (channelTurnsTo (0, 0), 0);
-    EXPECT_EQ (channelTurnsTo (0, 4), 4);
-    EXPECT_EQ (channelTurnsTo (0, 5), -4);
-    EXPECT_EQ (channelTurnsTo (0, 8), -1);
-    EXPECT_EQ (channelTurnsTo (8, 0), 1);
+    EXPECT_EQ (channelTurnsTo (1, 1, 1), 1);
+    EXPECT_EQ (channelTurnsTo (1, 5, 2), 1);
+    EXPECT_EQ (channelTurnsTo (1, 8, 0), 1);
+    EXPECT_EQ (channelTurnsTo (1, 1, 2), -1);
+    EXPECT_EQ (channelTurnsTo (1, 1, 0), 0);
+    EXPECT_EQ (channelTurnsTo (1, 0, 0), 1);
 }
 
 TEST (SlotTurns, TheReturnRingIsStemAnalogCue)

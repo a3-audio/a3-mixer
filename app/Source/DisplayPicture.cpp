@@ -71,16 +71,6 @@ Box arrowBox (Span slot, Rows rows)
 
 Box bracket (const Box& m) { return { m.x0 - 1, m.y0 - 1, m.x1 + 1, m.y0 + bracketRows - 2 }; }
 
-std::optional<int> playingStem (int mask)
-{
-    if (mask == 0)
-        return std::nullopt;
-    int bit = 0;
-    while ((mask & (1 << bit)) == 0)
-        ++bit;
-    return bit;
-}
-
 Box divider (Span left, Span right, Rows rows)
 {
     const int x = floorDiv (left.x1 + right.x0, 2);
@@ -131,27 +121,49 @@ std::optional<int> Meter::holdRow() const
     return box.y1 - rows + 1;
 }
 
-Picture channelPicture (int cursor, const std::array<double, 9>& levels, int mask, int width, int height,
-                        const std::array<bool, 9>& clips, const std::array<double, 9>& holds)
+std::array<int, channelMeters> channelRing (int channel) { return { channel, stemsPerDeck + channel, analogInput }; }
+
+int channelSlot (int channel, int cursor)
+{
+    const auto ring = channelRing (channel);
+    const auto at = std::find (ring.begin(), ring.end(), cursor);
+    return at == ring.end() ? channelMeters - 1 : static_cast<int> (at - ring.begin());
+}
+
+int playingSlot (int channel, int mask)
+{
+    const auto ring = channelRing (channel);
+    if ((mask & (1 << ring[0])) != 0)
+        return 0;
+    if ((mask & (1 << ring[1])) != 0)
+        return 1;
+    return 2;
+}
+
+Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
+                        int height, const std::array<bool, channelMeters>& clips,
+                        const std::array<double, channelMeters>& holds)
 {
     const auto slots = channelColumns (width);
     const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
-    std::vector<Span> columns (slots.begin(), slots.begin() + pairs);
-    columns.push_back (centred (slots[analogInput], stemWidth));
     const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
 
     Picture p;
+    std::vector<Span> columns;
     for (const auto& g : channelGroups)
-        p.headings.push_back ({ { slots[(size_t) g.first].x0, headingRows.top, slots[(size_t) g.last].x1, headingRows.bottom }, g.name });
+    {
+        const Span span { slots[(size_t) g.first].x0, slots[(size_t) g.last].x1 };
+        p.headings.push_back ({ { span.x0, headingRows.top, span.x1, headingRows.bottom }, g.name });
+        columns.push_back (centred (span, stemWidth));
+    }
     std::vector<Box> boxes;
     for (const auto& c : columns)
         boxes.push_back ({ c.x0, meterRows.top, c.x1, meterRows.bottom });
     p.meters = metersFor (boxes, levels, clips, holds);
     for (size_t g = 1; g < channelGroups.size(); ++g)
         p.dividers.push_back (divider (slots[(size_t) channelGroups[g].first - 1], slots[(size_t) channelGroups[g].first], meterRows));
-    const auto playing = playingStem (mask);
-    p.active = bracket (p.meters[(size_t) (playing ? *playing : analogInput)].box);
-    p.cursor = arrowBox (columns[(size_t) cursor], arrowRowsBand);
+    p.active = bracket (p.meters[(size_t) playingSlot (channel, mask)].box);
+    p.cursor = arrowBox (columns[(size_t) channelSlot (channel, cursor)], arrowRowsBand);
     addMarks (p.marks, p.meters, channelMarkLength);
     return p;
 }

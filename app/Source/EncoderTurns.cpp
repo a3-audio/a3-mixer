@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "EncoderTurns.h"
+#include "DisplayPicture.h"
 
 #include <array>
 #include <cmath>
@@ -28,10 +29,9 @@ int shortestInRing (int from, int to, int size)
 }
 }
 
-int channelTurnsTo (int cursor, int target)
+int channelTurnsTo (int channel, int cursor, int slot)
 {
-    constexpr int positions = 9;   // eight stems, then A
-    return shortestInRing (cursor, target, positions);
+    return shortestInRing (display::channelSlot (channel, cursor), slot, display::channelMeters);
 }
 
 int returnTurnsTo (int cursor, int target)

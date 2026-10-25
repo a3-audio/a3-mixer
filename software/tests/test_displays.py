@@ -107,21 +107,21 @@ class LatestWins(unittest.TestCase):
     def test_a_fast_spin_is_one_draw_of_where_it_ended(self):
         rig = Rig()
         displays = rig.displays()
-        for pair in (1, 2, 3, 4):
-            displays.show_cursor(0, pair - 1)
+        for cursor in (8, 0, 4):                        # A, D1, D2
+            displays.show_cursor(0, cursor)
         displays.drain()
         self.assertEqual(1, len(rig.drawn))
-        self.assertEqual(cursor_of(rig.drawn[0][1]), 3)
+        self.assertEqual(cursor_of(rig.drawn[0][1]), 1)
 
     def test_each_panel_keeps_its_own_latest(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_cursor(0, 1)
+        displays.show_cursor(0, 0)
         displays.show_return(1, (True,) * 8)
-        displays.show_cursor(0, 2)
+        displays.show_cursor(0, 4)
         displays.drain()
         self.assertEqual(2, len(rig.drawn))   # each panel once, with its latest
-        self.assertEqual(cursor_of(rig.drawn[0][1]), 2)
+        self.assertEqual(cursor_of(rig.drawn[0][1]), 1)
 
     def test_the_thread_draws_what_is_posted(self):
         rig = Rig()
@@ -244,26 +244,26 @@ class TryingAgain(unittest.TestCase):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_cursor(0, 2)
+        displays.show_cursor(0, 4)                      # D2
         displays.drain()
         self.assertEqual(1, len(scheduled))
         rig.fail_draw = False
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual(cursor_of(rig.drawn[-1][1]), 2)
+        self.assertEqual(cursor_of(rig.drawn[-1][1]), 1)
 
     def test_the_retry_draws_what_was_posted_since(self):
         rig, scheduled = Rig(), []
         displays = rig.displays(later=lambda seconds, then: scheduled.append((seconds, then)))
         rig.fail_draw = True
-        displays.show_cursor(0, 2)
+        displays.show_cursor(0, 0)                      # D1
         displays.drain()
         rig.fail_draw = False
-        displays.show_cursor(0, 4)
+        displays.show_cursor(0, 4)                      # D2
         displays.drain()
         scheduled[0][1]()
         displays.drain()
-        self.assertEqual(cursor_of(rig.drawn[-1][1]), 4)
+        self.assertEqual(cursor_of(rig.drawn[-1][1]), 1)
 
     def test_a_good_draw_schedules_nothing(self):
         rig, scheduled = Rig(), []
@@ -325,12 +325,12 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(3, 2.0)                 # held: the loudest of the step
         self.displays.note_peak(3, 0.5)
         self.step()
-        self.assertEqual(self.clips("Deck 1"), [False, False, True] + [False] * 6)
+        self.assertEqual(self.clips("Deck 3"), [True, False, False])
 
     def test_full_scale_lights_no_clip(self):
         self.displays.note_peak(3, 1.0)
         self.step()
-        self.assertEqual(self.clips("Deck 1"), [False] * 9)
+        self.assertEqual(self.clips("Deck 3"), [False] * 3)
 
     def test_the_clip_holds_a_second_then_goes_out(self):
         self.displays.note_peak(3, 2.0)
@@ -339,21 +339,21 @@ class Meters(unittest.TestCase):
         for _ in range(10):
             self.displays.note_peak(3, 0.5)
             self.step()
-            lit.append(self.clips("Deck 1")[2])
+            lit.append(self.clips("Deck 3")[0])
         self.assertEqual(lit, [True] * 9 + [False])
 
     def test_the_clip_going_out_is_one_redraw(self):
-        """The level rests at 0.5; only the clip changes, and every channel
-        panel is drawn once for it."""
+        """The level rests at 0.5; only the clip changes, and the panel of
+        the stem's channel is drawn once for it."""
         self.displays.note_peak(3, 2.0)
         self.step()
         for _ in range(40):                             # long enough to rest at 0.5
             self.displays.note_peak(3, 0.5)
             self.rig.drawn.clear()
             self.step()
-            if self.clips("Deck 1")[2] is False:
+            if self.clips("Deck 3")[0] is False:
                 break
-        self.assertEqual(4, len(self.rig.drawn))
+        self.assertEqual(1, len(self.rig.drawn))
         self.rig.drawn.clear()
         self.displays.note_peak(3, 0.5)
         self.step()
@@ -382,27 +382,41 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(3, 2.0)
         self.now = 5.0
         self.step()
-        self.assertEqual(self.clips("Deck 1")[2], False)
+        self.assertEqual(self.clips("Deck 3")[0], False)
 
-    def test_a_channel_meters_every_stem_and_its_analog_input(self):
-        """Since 2026-10-07 the ninth meter is A again, the channel's analog
-        input: eight stems, then A."""
+    def test_a_channel_meters_its_stem_of_each_deck_and_its_analog_input(self):
+        """Since 2026-10-25 stem n plays only on channel n: channel n's
+        meters are D1's stem n, D2's stem n, then A."""
+        from display_panel import panel_for_channel
         self.displays.note_peak(3, 1.0)
+        self.displays.note_peak(7, 10 ** (-12 / 20))
+        self.displays.note_analog(2, 0, 10 ** (-24 / 20))
         self.step()
-        self.assertEqual(self.levels("Deck 2"), [0, 0, 1.0, 0, 0, 0, 0, 0, 0])
+        levels = self.displays._levels[panel_for_channel(2)]
+        self.assertEqual(len(levels), 3)
+        self.assertEqual(levels[0], 1.0)
+        self.assertAlmostEqual(levels[1], 0.5)
+        self.assertAlmostEqual(levels[2], 0.25)
+
+    def test_a_stem_is_metered_on_its_own_channel_only(self):
+        self.displays.note_peak(3, 1.0)
+        self.displays.note_peak(7, 1.0)
+        self.step()
+        for label in ("Deck 1", "Deck 2", "Deck 4"):
+            self.assertEqual(self.levels(label), [0.0] * 3, label)
 
     def test_a_is_the_louder_side_of_the_channels_analog_input(self):
         self.displays.note_analog(1, 0, 10 ** (-24 / 20))
         self.displays.note_analog(1, 1, 10 ** (-12 / 20))
         self.step()
-        self.assertAlmostEqual(self.levels("Deck 2")[8], 0.5)       # −12: 4 of 8 LEDs
+        self.assertAlmostEqual(self.levels("Deck 2")[2], 0.5)       # −12: 4 of 8 LEDs
 
     def test_a_channels_input_is_its_own_a_only(self):
         self.displays.note_analog(1, 0, 1.0)
         self.step()
         for label in ("Deck 1", "Deck 3", "Deck 4"):
-            self.assertEqual(self.levels(label)[8], 0.0, label)
-        self.assertEqual(self.levels("Deck 2")[8], 1.0)
+            self.assertEqual(self.levels(label)[2], 0.0, label)
+        self.assertEqual(self.levels("Deck 2")[2], 1.0)
 
     def test_while_a_stem_plays_a_shows_the_analog_input(self):
         """Since 2026-10-07 A meters the analog input itself (analog<N>_L/R),
@@ -411,18 +425,18 @@ class Meters(unittest.TestCase):
         self.displays.show_channel(1, stem(2))
         self.displays.note_analog(1, 0, 1.0)
         self.step()
-        self.assertEqual(self.levels("Deck 2")[8], 1.0)
+        self.assertEqual(self.levels("Deck 2")[2], 1.0)
 
     def test_an_over_on_the_input_lights_as_clip(self):
         self.displays.note_analog(0, 1, 2.0)
         self.step()
-        self.assertEqual(self.clips("Deck 1"), [False] * 8 + [True])
+        self.assertEqual(self.clips("Deck 1"), [False, False, True])
 
     def test_a_stopped_input_is_silence(self):
         self.displays.note_analog(0, 0, 1.0)
         self.now = 5.0
         self.step()
-        self.assertEqual(self.levels("Deck 1")[8], 0.0)
+        self.assertEqual(self.levels("Deck 1")[2], 0.0)
 
     def test_an_input_peak_draws_its_panel_on_the_step(self):
         self.displays.note_analog(3, 0, 1.0)
@@ -467,9 +481,15 @@ class Meters(unittest.TestCase):
         self.assertEqual(self.levels("Aux Return")[0], 0.0)
 
     def test_a_step_redraws_every_panel_whose_meters_moved(self):
-        self.displays.note_peak(1, 1.0)                 # on every channel's meters
+        for pair in (1, 2, 3, 4):                       # D1's stem of each channel
+            self.displays.note_peak(pair, 1.0)
         self.step()
         self.assertEqual(4, len(self.rig.drawn))
+
+    def test_a_stem_redraws_its_own_channel_only(self):
+        self.displays.note_peak(6, 1.0)                 # D2 stem 2: channel 2
+        self.step()
+        self.assertEqual(1, len(self.rig.drawn))
 
     def test_unmoved_meters_are_not_redrawn(self):
         self.step()
@@ -542,7 +562,7 @@ class Meters(unittest.TestCase):
             self.step()
         self.rig.drawn.clear()
         self.step()
-        self.assertEqual(4, len(self.rig.drawn))
+        self.assertEqual(1, len(self.rig.drawn))
 
     def test_a_move_inside_one_led_posts_nothing(self):
         """The bus carries ~17 draws a second (measured 2026-10-04): a level
@@ -572,7 +592,7 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(8, 1.0)
         self.now = 5.0
         self.step()
-        self.assertEqual(self.levels("Deck 1")[7], 0.0)
+        self.assertEqual(self.levels("Deck 4")[1], 0.0)
 
     def test_noting_a_peak_draws_nothing(self):
         self.displays.note_peak(1, 1.0)
@@ -584,7 +604,7 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(1, 1.0)
         self.displays.tick()
         self.displays.drain()
-        self.assertEqual(4, len(self.rig.drawn))
+        self.assertEqual(1, len(self.rig.drawn))
         self.rig.drawn.clear()
         self.now = 0.5 / METER_STEPS_PER_SECOND
         self.displays.note_peak(1, 0.5)
@@ -595,12 +615,13 @@ class Meters(unittest.TestCase):
         self.displays.note_peak(1, 0.001)
         self.displays.tick()
         self.displays.drain()
-        self.assertEqual(4, len(self.rig.drawn))        # the fall moved a row
+        self.assertEqual(1, len(self.rig.drawn))        # the fall moved a row
 
     def test_a_turn_during_a_step_goes_first(self):
         """A step redraws every moved panel (~85 ms on the desk); a turn
         arriving meanwhile is drawn next, not after the batch."""
-        self.displays.note_peak(1, 1.0)
+        for pair in (1, 2, 3, 4):
+            self.displays.note_peak(pair, 1.0)
         order = []
         labels = {id(device): name for name, device in self.rig.built}
         draw = self.rig.draw
@@ -616,14 +637,14 @@ class Meters(unittest.TestCase):
         self.assertEqual(order, ["Deck 1", "Deck 4", "Deck 2", "Deck 3"])
 
     def test_a_turn_keeps_the_levels(self):
-        self.displays.note_peak(8, 1.0)
+        self.displays.note_peak(5, 1.0)
         self.step()
         self.rig.drawn.clear()
-        self.displays.show_cursor(0, 2)
+        self.displays.show_cursor(0, 4)
         self.displays.drain()
         _, picture = self.rig.drawn[0]
-        self.assertEqual(cursor_of(picture), 2)
-        self.assertEqual(picture.meters[7].level, 1.0)
+        self.assertEqual(cursor_of(picture), 1)
+        self.assertEqual(picture.meters[1].level, 1.0)
 
 
 class WhatPlaysWhere(unittest.TestCase):
@@ -648,7 +669,7 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertIsNone(self.picture_of(1).toggle)
 
     def test_until_core_speaks_a_plays(self):
-        self.assertEqual(self.active_of(self.picture_of(0)), 8)
+        self.assertEqual(self.active_of(self.picture_of(0)), 2)
 
     def active_of(self, picture):
         """The meter under the active bracket, or None."""
@@ -660,7 +681,7 @@ class WhatPlaysWhere(unittest.TestCase):
     def test_the_playing_stem_carries_the_bracket(self):
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
-        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 2)
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 0)
 
     def test_another_stem_moves_the_bracket(self):
         """Since 2026-10-04 the display shows which stem plays: another
@@ -668,20 +689,28 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.show_channel(2, stem(3))
         self.displays.drain()
         self.rig.drawn.clear()
-        self.displays.show_channel(2, stem(5))
+        self.displays.show_channel(2, stem(7))
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 4)
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 1)
 
-    def test_a_second_stem_above_the_playing_one_draws_nothing(self):
-        """The lowest stem is the one that plays: a stem added above it
-        moves no pixel and posts nothing."""
-        self.displays.show_channel(2, stem(5))
+    def test_d2_beside_a_playing_d1_draws_nothing(self):
+        """A mask with both of the channel's stems (an older Core) shows D1:
+        D2 added beside it moves no pixel and posts nothing."""
+        self.displays.show_channel(2, stem(3))
         self.displays.drain()
         self.rig.drawn.clear()
-        self.displays.show_channel(2, stem(5) | stem(6))
+        self.displays.show_channel(2, stem(3) | stem(7))
         self.displays.drain()
         self.assertEqual([], self.rig.drawn)
+
+    def test_a_foreign_stem_is_a(self):
+        """A stem of another channel (an older Core) is not this channel's:
+        A stays under the bracket, and nothing is drawn."""
+        self.displays.show_channel(2, stem(1))
+        self.displays.drain()
+        self.assertEqual([], self.rig.drawn)
+        self.assertEqual(self.active_of(self.picture_of(2)), 2)
 
     def test_no_stem_moves_the_bracket_to_a(self):
         self.displays.show_channel(2, stem(3))
@@ -690,7 +719,7 @@ class WhatPlaysWhere(unittest.TestCase):
         self.displays.show_channel(2, 0)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 8)
+        self.assertEqual(self.active_of(self.rig.drawn[0][1]), 2)
 
     def test_silence_again_draws_nothing(self):
         self.displays.show_channel(2, 0)
@@ -698,15 +727,15 @@ class WhatPlaysWhere(unittest.TestCase):
         self.assertEqual([], self.rig.drawn)
 
     def test_a_cursor_redraws_its_own_display(self):
-        self.displays.show_cursor(1, 6)
+        self.displays.show_cursor(1, 5)
         self.displays.drain()
         self.assertEqual(1, len(self.rig.drawn))
-        self.assertEqual(cursor_of(self.rig.drawn[0][1]), 6)
+        self.assertEqual(cursor_of(self.rig.drawn[0][1]), 1)
 
     def test_the_cursor_starts_on_a(self):
         from display_panel import panel_for_channel
         picture = self.displays._picture_for(panel_for_channel(0))(128, 64)
-        self.assertEqual(cursor_of(picture), 8)
+        self.assertEqual(cursor_of(picture), 2)
 
     def test_there_is_no_wave_or_menu_any_more(self):
         for gone in ("show_menu", "step_waves", "show_cue"):
@@ -745,31 +774,32 @@ class Painting(unittest.TestCase):
     def states(self):
         from display_panel import (ANALOG_MODE, CUE_CURSOR, STEM_MODE, channel_picture,
                                    return_picture)
-        music = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.0, 0.6, 0.0)
-        analog = (0.0,) * 8 + (0.7,)
-        full = (1.0,) * 9
-        over = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 1.0, 0.6, 0.0)
-        held = (0.2, 0.9, 0.0, 0.5, 1.0, 0.3, 0.62, 0.6, 0.0)
-        clip_5 = (False,) * 4 + (True,) + (False,) * 4
-        clip_7 = (False,) * 6 + (True, False, False)
-        clip_a = (False,) * 8 + (True,)
-        hold_music = (0.5, 1.0, 0.25, 0.75, 1.0, 0.6, 0.1, 0.8, 0.0)
+        # Channel 3 (index 2): D1 is stem 3, D2 stem 7.
+        music = (0.5, 0.9, 0.0)
+        analog = (0.0, 0.0, 0.7)
+        full = (1.0,) * 3
+        over = (0.5, 1.0, 0.0)
+        held = (0.5, 0.62, 0.0)
+        clip_d2 = (False, True, False)
+        clip_a = (False, False, True)
+        hold_music = (0.8, 1.0, 0.0)
         return {
-            "channel-music-cursor-on-a-stem": channel_picture(2, music, stem(6), 128, 64),
-            "channel-cursor-on-the-playing-stem": channel_picture(5, music, stem(6), 128, 64),
-            "channel-cursor-on-a-stem-plays": channel_picture(8, music, stem(1), 128, 64),
+            "channel-music-cursor-on-a-stem": channel_picture(2, 2, music, stem(7), 128, 64),
+            "channel-cursor-on-the-playing-stem": channel_picture(2, 6, music, stem(7), 128, 64),
+            "channel-cursor-on-a-stem-plays": channel_picture(2, 8, music, stem(3), 128, 64),
             "channel-stem-plays-analog-has-a-level": channel_picture(
-                2, music[:8] + (0.7,), stem(1), 128, 64),
-            "channel-cursor-on-a-analog-plays": channel_picture(8, analog, 0, 128, 64),
-            "channel-analog-clips": channel_picture(8, (0.0,) * 8 + (1.0,), 0, 128, 64,
+                2, 2, music[:2] + (0.7,), stem(3), 128, 64),
+            "channel-cursor-on-a-analog-plays": channel_picture(2, 8, analog, 0, 128, 64),
+            "channel-analog-clips": channel_picture(2, 8, (0.0, 0.0, 1.0), 0, 128, 64,
                                                     clips=clip_a),
-            "channel-silent-cursor-on-stem-1": channel_picture(0, (0.0,) * 9, 0, 128, 64),
-            "channel-cursor-on-a-full-meter": channel_picture(4, music, 0, 128, 64),
-            "channel-playing-stem-4-beside-the-divider": channel_picture(2, music, stem(4),
-                                                                         128, 64),
-            "channel-playing-stem-8-beside-a": channel_picture(2, music, stem(8),
-                                                                        128, 64),
-            "channel-playing-stem-1-at-the-edge": channel_picture(0, full, stem(1), 128, 64),
+            "channel-a-foreign-stem-plays": channel_picture(2, 8, music, stem(1), 128, 64),
+            "channel-silent-cursor-on-stem-1": channel_picture(0, 0, (0.0,) * 3, 0, 128, 64),
+            "channel-cursor-on-a-full-meter": channel_picture(2, 6, (0.5, 1.0, 0.0), 0,
+                                                              128, 64),
+            "channel-playing-d2-between-the-dividers": channel_picture(3, 3, music, stem(8),
+                                                                       128, 64),
+            "channel-playing-d2-beside-a": channel_picture(1, 1, music, stem(6), 128, 64),
+            "channel-playing-d1-at-the-edge": channel_picture(0, 0, full, stem(1), 128, 64),
             "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE, False,
                                                               (0.8, 0.3), 128, 64),
             "return-stem-mode-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
@@ -780,20 +810,20 @@ class Painting(unittest.TestCase):
                                                                   (0.2, 0.7), 128, 64),
             "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
                                                              (0.0, 0.0), 128, 64),
-            "channel-clip-on-the-playing-stem": channel_picture(2, over, stem(5), 128, 64,
-                                                                clips=clip_5),
-            "channel-cursor-on-a-clipping-stem": channel_picture(6, held, stem(5), 128, 64,
-                                                                 clips=clip_7),
+            "channel-clip-on-the-playing-stem": channel_picture(2, 2, over, stem(7), 128, 64,
+                                                                clips=clip_d2),
+            "channel-cursor-on-a-clipping-stem": channel_picture(2, 6, held, stem(3), 128, 64,
+                                                                 clips=clip_d2),
             "return-stem-clipping-in-stem-mode": return_picture(STEM_MODE, STEM_MODE, False,
                                                                 (1.0, 0.4), 128, 64,
                                                                 clips=(True, False)),
             "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE, False,
                                                       (0.3, 0.6), 128, 64,
                                                       clips=(False, True)),
-            "channel-hold-lines": channel_picture(2, music, stem(6), 128, 64,
+            "channel-hold-lines": channel_picture(2, 2, music, stem(7), 128, 64,
                                                   holds=hold_music),
-            "channel-hold-over-a-silent-a": channel_picture(8, (0.0,) * 9, 0, 128, 64,
-                                                            holds=(0.0,) * 8 + (0.8,)),
+            "channel-hold-over-a-silent-a": channel_picture(2, 8, (0.0,) * 3, 0, 128, 64,
+                                                            holds=(0.0, 0.0, 0.8)),
             "return-hold-lines": return_picture(STEM_MODE, STEM_MODE, False, (0.5, 0.2),
                                                 128, 64, holds=(0.8, 0.6)),
             "return-cue-on-cursor-on-cue": return_picture(CUE_CURSOR, STEM_MODE, True,
@@ -926,7 +956,7 @@ class Painting(unittest.TestCase):
         name = "channel-cursor-on-a-analog-plays"
         picture = self.states()[name]
         image = self.paint_state(name, picture)
-        heading, meter = picture.headings[2], picture.meters[8]
+        heading, meter = picture.headings[2], picture.meters[2]
         self.assertEqual(heading.text, "A")
         self.assertTrue(self.lit(image, heading.box))
         self.assertGreater(meter.pixels(), 0)
@@ -941,7 +971,7 @@ class Painting(unittest.TestCase):
         name = "channel-stem-plays-analog-has-a-level"
         picture = self.states()[name]
         image = self.paint_state(name, picture)
-        meter = picture.meters[8]
+        meter = picture.meters[2]
         self.assertGreater(meter.pixels(), 0)
         self.assertTrue(self.all_lit(image, self.bar_pixels(meter)))
 
@@ -949,7 +979,7 @@ class Painting(unittest.TestCase):
         name = "channel-cursor-on-a-stem-plays"
         picture = self.states()[name]
         image = self.paint_state(name, picture)
-        self.assertEqual(self.lit(image, picture.meters[8].box), [])
+        self.assertEqual(self.lit(image, picture.meters[2].box), [])
         self.assertTrue(self.lit(image, picture.headings[2].box))
 
     def test_the_cue_field_on_is_a_filled_box_with_dark_letters(self):
@@ -1004,7 +1034,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 26)
+        self.assertEqual(len(self.with_brackets()), 27)
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -1069,9 +1099,9 @@ class Painting(unittest.TestCase):
         """The lines are fixed to the panel: a falling bar uncovers no
         crawling pattern, the rows that stay look as they did."""
         from display_panel import channel_picture
-        clip = (True,) + (False,) * 8
-        high = channel_picture(8, (0.9,) + (0.0,) * 8, 0, 128, 64, clips=clip)
-        low = channel_picture(8, (0.6,) + (0.0,) * 8, 0, 128, 64, clips=clip)
+        clip = (True, False, False)
+        high = channel_picture(0, 8, (0.9, 0.0, 0.0), 0, 128, 64, clips=clip)
+        low = channel_picture(0, 8, (0.6, 0.0, 0.0), 0, 128, 64, clips=clip)
         one, two = self.paint_state("hatch-high", high), self.paint_state("hatch-low", low)
         for pixel in self.bar_pixels(low.meters[0]):
             self.assertEqual(one.getpixel(pixel), two.getpixel(pixel))
