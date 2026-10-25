@@ -382,10 +382,10 @@ class Displays:
         self._cursors = [ANALOG_INPUT] * (len(PANELS) - 1)
         # Engine mode (Plan 4e), once Core has reported a channel's source:
         # each channel's source and cursor in the ring AN | A | B, and which
-        # decks are there. None until then -- the interim's D1 | D2 | A.
+        # decks are there (absent until Core reports them). None until then -- the interim's D1 | D2 | A.
         self._sources = [None] * (len(PANELS) - 1)
         self._source_cursors = [0] * (len(PANELS) - 1)
-        self._decks_present = [True] * DECKS
+        self._decks_present = [False] * DECKS
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
         self._return_cue = False
@@ -564,6 +564,16 @@ class Displays:
             self._source_cursors[index] = cursor
         self._post(panel_for_channel(index))
 
+    def forget_engine(self):
+        """A new Core: engine mode ends until it reports a source again --
+        it may have come up as REAPER's, which sends none."""
+        with self._wake:
+            self._sources = [None] * len(self._sources)
+            self._source_cursors = [0] * len(self._source_cursors)
+            self._decks_present = [False] * DECKS
+        for index in range(len(PANELS) - 1):
+            self._post(panel_for_channel(index))
+
     def show_deck_present(self, deck, present):
         """Whether deck `deck` (0 = A, 1 = B) is there: every channel draws it."""
         with self._wake:
@@ -636,8 +646,10 @@ class Displays:
         # Called under self._wake: the state is read here, drawn later.
         cursor = self._source_cursors[index]
         present = tuple(self._decks_present)
-        ring = lambda values: tuple(values[i] for i in ENGINE_LEVEL_ORDER) if values else ()  # noqa: E731
-        levels, clips, holds = ring(levels), ring(clips), ring(holds)
+        def in_ring_order(values):
+            return tuple(values[i] for i in ENGINE_LEVEL_ORDER) if values else ()
+
+        levels, clips, holds = in_ring_order(levels), in_ring_order(clips), in_ring_order(holds)
         return lambda width, height: engine_channel_picture(
             source, cursor, present, levels, width, height, clips, holds)
 
@@ -725,6 +737,9 @@ class NoDisplays:
         pass
 
     def show_source_cursor(self, index, cursor):
+        pass
+
+    def forget_engine(self):
         pass
 
     def show_deck_present(self, deck, present):

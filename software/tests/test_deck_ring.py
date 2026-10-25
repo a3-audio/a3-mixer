@@ -40,7 +40,12 @@ class DeckRing(unittest.TestCase):
         return next(i for i, m in enumerate(picture.meters)
                     if m.box[0] - 1 == picture.active[0])
 
+    def both_decks_there(self):
+        self.displays.show_deck_present(0, True)
+        self.displays.show_deck_present(1, True)
+
     def test_engine_mode_ring_shows_analog_and_deck_letters(self):
+        self.both_decks_there()
         self.displays.show_source(1, 2)
         self.displays.show_source_cursor(1, 1)
         self.displays.drain()
@@ -61,6 +66,7 @@ class DeckRing(unittest.TestCase):
         self.assertEqual(cursor_of(self.picture_of(0)), 1)
 
     def test_a_deck_meter_is_its_stem_and_an_is_the_input(self):
+        self.both_decks_there()
         self.displays.show_source(0, 0)
         self.displays.note_peak(1, 1.0)         # stem pair 1: deck A's stem on channel 1
         self.displays.step_meters()
@@ -69,8 +75,46 @@ class DeckRing(unittest.TestCase):
         self.assertGreater(levels[1], 0.0)      # A: the stem
         self.assertEqual(levels[2], 0.0)        # B
 
+    def test_decks_are_absent_until_core_reports_them(self):
+        self.displays.show_source(0, 0)
+        self.assertEqual(self.names(self.picture_of(0)), ["AN", "-", "-"])
+        self.displays.show_deck_present(0, True)
+        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "-"])
+
+    def test_an_absent_deck_keeps_its_cursor_and_bracket(self):
+        self.displays.show_source(0, 2)
+        self.displays.show_source_cursor(0, 1)
+        picture = self.picture_of(0)
+        self.assertEqual(self.active_of(picture), 2)
+        self.assertEqual(cursor_of(picture), 1)
+        self.assertEqual(self.names(picture), ["AN", "-", "-"])
+
+    def test_a_new_core_puts_the_interim_ring_back(self):
+        self.both_decks_there()
+        self.displays.show_source(0, 1)
+        self.displays.show_source_cursor(0, 2)
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.displays.forget_engine()
+        self.displays.drain()
+        self.assertEqual(len(self.rig.drawn), 4)
+        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
+        self.displays.show_source(0, 0)     # engine again: decks unreported, cursor home
+        self.assertEqual(self.names(self.picture_of(0)), ["AN", "-", "-"])
+        self.assertEqual(cursor_of(self.picture_of(0)), 0)
+
+    def test_a_second_channels_report_posts_only_its_own_panel(self):
+        self.displays.show_source(0, 0)
+        self.displays.drain()
+        self.rig.drawn.clear()
+        self.displays.show_source(1, 1)
+        self.displays.drain()
+        self.assertEqual(len(self.rig.drawn), 1)
+
     def test_absent_deck_is_drawn_absent(self):
         self.displays.show_source(0, 0)
+        self.displays.show_deck_present(0, True)
+        self.displays.show_deck_present(1, True)
         self.displays.note_peak(1, 1.0)
         self.displays.step_meters()
         marks_present = len(self.picture_of(0).marks)

@@ -32,7 +32,8 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
-                               cursor_announcement, source_announcement, present_announcement, mode_announcement, open_displays,
+                               cursor_announcement, mode_announcement, open_displays,
+                               present_announcement, source_announcement,
                                return_announcement)
 from a3_mixer_meters import (MeterBallistics, StereoInputs, channel_vu_line,
                              main_vu_line, peak_db)
@@ -526,6 +527,24 @@ if __name__ == '__main__':
     # display is reported inside Displays and never reaches this server.
     displays = open_displays(osc.meters())
     displays.blank_all()
+
+    # A new Core ends engine mode until it reports a source again: it may
+    # have come up as REAPER's. The socket is this thread's own -- the truth
+    # keeper reads announce_socket.
+    def forget_engine_on_new_core():
+        listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("", ANNOUNCE_PORT))
+        arrival = CoreArrival()
+
+        def on_here(boot_id):
+            if arrival.heard(time.monotonic(), boot_id):
+                displays.forget_engine()
+
+        threading.Thread(target=hear, daemon=True, name="engine mode",
+                         args=(listener, on_here, lambda: True)).start()
+
+    forget_engine_on_new_core()
 
     # A damaged announcement is ignored: nothing may raise into the server.
     def stem_handler_channel(address, *args):

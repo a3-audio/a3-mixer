@@ -503,7 +503,10 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
     names = [name if on else ABSENT_NAME for name, on in zip(ENGINE_RING, there)]
     headings = tuple(Heading((x0, h0, x1, h1), name)
                      for name, (x0, x1) in zip(names, spans))
-    shown = lambda values, empty: [v if on else empty for v, on in zip(values, there)]  # noqa: E731
+
+    def shown(values, empty):
+        return [value if on else empty for value, on in zip(values, there)]
+
     meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns],
                      shown(levels, 0.0), shown(clips or (False,) * 3, False),
                      shown(holds or (0.0,) * 3, 0.0))
