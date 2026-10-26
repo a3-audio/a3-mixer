@@ -87,15 +87,16 @@ def return_cases():
 
 
 def engine_channel_cases():
-    """The engine-mode ring AN | A | B: levels, clips and holds in ring order."""
-    levels = [0.5, 0.875, 0.375]
-    clips, holds = [False, True, False], [0.75, 1.0, 0.5]
+    """The engine-mode ring D1 D2 D3 D4 A: levels, clips and holds in that order."""
+    levels = [0.5, 0.875, 0.375, 0.625, 0.25]
+    clips, holds = [False, True, False, False, True], [0.75, 1.0, 0.5, 0.875, 0.5]
+    presences = ((True,) * 4, (True, False, True, False), (False, True, False, True),
+                 (False,) * 4)
     return [{"source": source, "cursor": cursor, "present": list(present), "levels": levels,
              "clips": clips, "holds": holds, "width": WIDTH, "height": HEIGHT,
              "picture": _picture(panel.engine_channel_picture(source, cursor, present, levels,
                                                               WIDTH, HEIGHT, clips, holds))}
-            for source in range(3) for cursor in range(3)
-            for present in ((True, True), (True, False), (False, True), (False, False))]
+            for source in range(5) for cursor in range(5) for present in presences]
 
 
 def cases():

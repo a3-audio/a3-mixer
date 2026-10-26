@@ -481,51 +481,72 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
                    dividers, None, active, _marks(meters, CHANNEL_MARK_LENGTH))
 
 
-#: The ring in engine mode (Core's a3_core_decks), left to right: the analog
-#: input, deck A, deck B -- the numbers `channel.source` carries, 0 and 1-2.
-#: Analog is "AN" because the deck letters are A and B; a deck that is not
-#: there reads ABSENT_NAME and has no bar.
-ENGINE_RING = ("AN", "A", "B")
-DECKS = len(ENGINE_RING) - 1
-#: Core numbers decks 1-4 (A-D); the ring offers two, C and D are only
-#: shown as the letter of a channel that plays them.
+#: The ring in engine mode (Core's a3_core_decks), left to right: decks 1-4,
+#: then the analog input -- analog last (maintainer, 2026-10-26). Each entry
+#: is the heading, the number `channel.source` carries (0 analog, k deck k)
+#: and the first and last slot of the grid (_channel_columns) it spans: a
+#: deck two stem slots, A the ninth slot as in the interim. A deck that is
+#: not there reads ABSENT_NAME and has no bar.
+ANALOG_SOURCE = 0
+ENGINE_GROUPS = (("D1", 1, 0, 1), ("D2", 2, 2, 3), ("D3", 3, 4, 5), ("D4", 4, 6, 7),
+                 ("A", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
+ENGINE_SOURCES = tuple(source for _, source, _, _ in ENGINE_GROUPS)
+#: Core numbers decks 1-4.
 CORE_DECKS = 4
-DECK_LETTERS = "ABCD"
+DECKS = CORE_DECKS
 #: What an arrow box with no rows draws: nothing.
 NO_ARROW = (0, 0, -1, -1)
 ABSENT_NAME = "-"
-#: The interim's levels are (D1, D2, A); the engine ring's are (A, D1, D2).
-ENGINE_LEVEL_ORDER = (2, 0, 1)
+
+
+def engine_slot(source):
+    """The display slot (0-4) of a ring place (0 analog, k deck k)."""
+    return ENGINE_SOURCES.index(source)
+
+
+def engine_levels(values, empty):
+    """The interim's (D1, D2, A) values in the engine ring's order
+    D1 D2 D3 D4 A: decks 3 and 4 have no meter, they read `empty`."""
+    if not values:
+        return ()
+    d1, d2, analog = values
+    return (d1, d2, empty, empty, analog)
+
+
+def _engine_layout(width, height):
+    slots = _channel_columns(width)
+    stem_width = slots[0][1] - slots[0][0] + 1
+    spans = [(slots[first][0], slots[last][1]) for _, _, first, last in ENGINE_GROUPS]
+    columns = [_centred(span, stem_width) for span in spans]
+    # One divider, between the decks and A: two stem slots leave no room
+    # for one between neighbouring decks.
+    divider = (slots[ANALOG_INPUT - 1], slots[ANALOG_INPUT])
+    return spans, columns, divider, _bands(height)
 
 
 def engine_channel_picture(source, cursor, present, levels, width, height,
                            clips=(), holds=()):
-    """A channel in engine mode: AN | A | B, `source` (0-2) under the active
-    bracket, `cursor` (0-2) under the arrow. `levels`, `clips` and `holds`
-    are in ring order; `present` says per deck (A, B) whether it is there --
-    an absent deck is a dash over an empty slot, no bar and no scale marks."""
-    spans, columns, gaps, ((h0, h1), arrow, (m0, m1)) = _channel_layout(width, height)
-    if source > DECKS:
-        # Deck C or D plays: the ring has no place for it, so the deck's
-        # letter fills the display -- no bars, no bracket, no arrow.
-        letter = Heading((0, h0, width - 1, m1), DECK_LETTERS[source - 1])
-        return Picture((letter,), (), NO_ARROW, (), None, None, ())
-    there = (True,) + tuple(bool(on) for on in present)
-    names = [name if on else ABSENT_NAME for name, on in zip(ENGINE_RING, there)]
+    """A channel in engine mode: D1 D2 D3 D4 A, `source` (0 analog, k deck
+    k) under the active bracket, `cursor` (the same numbers) under the arrow.
+    `levels`, `clips` and `holds` are in display order, five each; `present`
+    says per deck (1-4) whether it is there -- an absent deck is a dash over
+    an empty slot, no bar and no scale marks."""
+    spans, columns, divider, ((h0, h1), arrow, (m0, m1)) = _engine_layout(width, height)
+    there = tuple(bool(on) for on in present) + (True,)
+    names = [name if on else ABSENT_NAME
+             for (name, _, _, _), on in zip(ENGINE_GROUPS, there)]
     headings = tuple(Heading((x0, h0, x1, h1), name)
                      for name, (x0, x1) in zip(names, spans))
 
     def shown(values, empty):
+        values = values or (empty,) * len(there)
         return [value if on else empty for value, on in zip(values, there)]
 
     meters = _meters([(x0, m0, x1, m1) for x0, x1 in columns],
-                     shown(levels, 0.0), shown(clips or (False,) * 3, False),
-                     shown(holds or (0.0,) * 3, 0.0))
-    dividers = tuple(_divider(left, right, (m0, m1)) for left, right in gaps)
-    # A cursor on deck C or D selects no ring slot: no arrow.
-    pointer = _arrow(columns[cursor], arrow) if cursor <= DECKS else NO_ARROW
-    return Picture(headings, meters, pointer, dividers, None,
-                   _bracket(meters[source].box),
+                     shown(levels, 0.0), shown(clips, False), shown(holds, 0.0))
+    return Picture(headings, meters, _arrow(columns[engine_slot(cursor)], arrow),
+                   (_divider(*divider, (m0, m1)),), None,
+                   _bracket(meters[engine_slot(source)].box),
                    _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
 

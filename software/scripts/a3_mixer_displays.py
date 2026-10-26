@@ -95,7 +95,7 @@ from a3_mixer_meters import (DEFAULT_METER_TIMING, MeterBallistics,  # noqa: E40
 
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, cue_announcement,
-                           channel_picture, engine_channel_picture, ENGINE_LEVEL_ORDER, DECKS,
+                           channel_picture, engine_channel_picture, engine_levels, DECKS,
                            return_picture, panel_for_channel, return_panel,
                            pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
                            STEM_MODE, STEMS_PER_DECK,
@@ -575,9 +575,10 @@ class Displays:
             self._post(panel_for_channel(index))
 
     def show_deck_present(self, deck, present):
-        """Whether deck `deck` (0 = A, 1 = B) is there: every channel draws it."""
-        if deck >= DECKS:
-            return      # Core's decks C and D: the ring has no place for them
+        """Whether deck `deck` (0-3 for decks 1-4) is there: every channel
+        draws it."""
+        if not 0 <= deck < DECKS:
+            return
         with self._wake:
             self._decks_present[deck] = bool(present)
         for index in range(len(PANELS) - 1):
@@ -648,10 +649,8 @@ class Displays:
         # Called under self._wake: the state is read here, drawn later.
         cursor = self._source_cursors[index]
         present = tuple(self._decks_present)
-        def in_ring_order(values):
-            return tuple(values[i] for i in ENGINE_LEVEL_ORDER) if values else ()
-
-        levels, clips, holds = in_ring_order(levels), in_ring_order(clips), in_ring_order(holds)
+        levels = engine_levels(levels, 0.0)
+        clips, holds = engine_levels(clips, False), engine_levels(holds, 0.0)
         return lambda width, height: engine_channel_picture(
             source, cursor, present, levels, width, height, clips, holds)
 

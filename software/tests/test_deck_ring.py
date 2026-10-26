@@ -5,7 +5,8 @@
 """The deck ring (Plan 4e): in engine mode Core reports each channel's source
 (`channel.source`, 0 = analog, k = deck k), its cursor
 (`channel.source.cursor`) and which decks are there (`stemdeck.present`); the
-channel's display then shows AN | A | B instead of the interim's D1 | D2 | A.
+channel's display then shows D1 D2 D3 D4 A (decks 1-4, analog last) instead of
+the interim's D1 | D2 | A.
 Without such a report the desk is the interim's."""
 
 import sys
@@ -40,57 +41,81 @@ class DeckRing(unittest.TestCase):
         return next(i for i, m in enumerate(picture.meters)
                     if m.box[0] - 1 == picture.active[0])
 
-    def both_decks_there(self):
-        self.displays.show_deck_present(0, True)
-        self.displays.show_deck_present(1, True)
+    def decks_there(self, *decks):
+        for deck in decks or (0, 1, 2, 3):
+            self.displays.show_deck_present(deck, True)
 
-    def test_engine_mode_ring_shows_analog_and_deck_letters(self):
-        self.both_decks_there()
+    def test_engine_mode_ring_shows_the_decks_then_analog(self):
+        # D1 D2 D3 D4 A, analog last (maintainer, 2026-10-26).
+        self.decks_there()
         self.displays.show_source(1, 2)
         self.displays.show_source_cursor(1, 1)
         self.displays.drain()
         drawn = self.picture_of(1)
-        self.assertEqual(self.names(drawn), ["AN", "A", "B"])
-        self.assertEqual(self.active_of(drawn), 2)      # deck B plays
-        self.assertEqual(cursor_of(drawn), 1)           # the cursor is on deck A
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "B"])
+        self.assertEqual(self.names(drawn), ["D1", "D2", "D3", "D4", "A"])
+        self.assertEqual(self.active_of(drawn), 1)      # deck 2 plays
+        self.assertEqual(cursor_of(drawn), 0)           # the cursor is on deck 1
+        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "D3", "D4", "A"])
+
+    def test_analog_is_the_last_slot(self):
+        self.decks_there()
+        self.displays.show_source(0, 0)
+        self.displays.show_source_cursor(0, 0)
+        drawn = self.picture_of(0)
+        self.assertEqual(self.active_of(drawn), 4)
+        self.assertEqual(cursor_of(drawn), 4)
+
+    def test_decks_three_and_four_have_their_slots(self):
+        self.decks_there()
+        self.displays.show_source(0, 4)
+        self.displays.show_source_cursor(0, 3)
+        drawn = self.picture_of(0)
+        self.assertEqual(self.active_of(drawn), 3)
+        self.assertEqual(cursor_of(drawn), 2)
+
+    def test_the_cursor_follows_cores_report(self):
+        # A turn is Core's: its channel.source.cursor moves the arrow.
+        self.decks_there()
+        self.displays.show_source(0, 0)
+        for cursor, slot in ((1, 0), (2, 1), (3, 2), (4, 3), (0, 4)):
+            self.displays.show_source_cursor(0, cursor)
+            self.assertEqual(cursor_of(self.picture_of(0)), slot)
 
     def test_the_source_is_analog_until_it_is_reported(self):
         self.displays.show_source(1, 2)
-        self.assertEqual(self.active_of(self.picture_of(0)), 0)
-        self.assertEqual(cursor_of(self.picture_of(0)), 0)
+        self.assertEqual(self.active_of(self.picture_of(0)), 4)
+        self.assertEqual(cursor_of(self.picture_of(0)), 4)
 
     def test_reaper_mode_ring_is_unchanged(self):
         self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
         self.displays.show_cursor(0, 4)
         self.assertEqual(cursor_of(self.picture_of(0)), 1)
 
-    def test_a_deck_meter_is_its_stem_and_an_is_the_input(self):
-        self.both_decks_there()
+    def test_deck_meters_are_their_stems_and_a_is_the_input(self):
+        self.decks_there()
         self.displays.show_source(0, 0)
-        self.displays.note_peak(1, 1.0)         # stem pair 1: deck A's stem on channel 1
+        self.displays.note_peak(1, 1.0)         # stem pair 1: deck 1's stem on channel 1
         self.displays.step_meters()
         levels = [m.level for m in self.picture_of(0).meters]
-        self.assertEqual(levels[0], 0.0)        # AN: no input heard
-        self.assertGreater(levels[1], 0.0)      # A: the stem
-        self.assertEqual(levels[2], 0.0)        # B
+        self.assertGreater(levels[0], 0.0)      # D1: the stem
+        self.assertEqual(levels[1:], [0.0] * 4)
 
     def test_decks_are_absent_until_core_reports_them(self):
         self.displays.show_source(0, 0)
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "-", "-"])
-        self.displays.show_deck_present(0, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "-"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+        self.displays.show_deck_present(2, True)
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "D3", "-", "A"])
 
     def test_an_absent_deck_keeps_its_cursor_and_bracket(self):
         self.displays.show_source(0, 2)
         self.displays.show_source_cursor(0, 1)
         picture = self.picture_of(0)
-        self.assertEqual(self.active_of(picture), 2)
-        self.assertEqual(cursor_of(picture), 1)
-        self.assertEqual(self.names(picture), ["AN", "-", "-"])
+        self.assertEqual(self.active_of(picture), 1)
+        self.assertEqual(cursor_of(picture), 0)
+        self.assertEqual(self.names(picture), ["-", "-", "-", "-", "A"])
 
     def test_a_new_core_puts_the_interim_ring_back(self):
-        self.both_decks_there()
+        self.decks_there()
         self.displays.show_source(0, 1)
         self.displays.show_source_cursor(0, 2)
         self.displays.drain()
@@ -100,8 +125,8 @@ class DeckRing(unittest.TestCase):
         self.assertEqual(len(self.rig.drawn), 4)
         self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
         self.displays.show_source(0, 0)     # engine again: decks unreported, cursor home
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "-", "-"])
-        self.assertEqual(cursor_of(self.picture_of(0)), 0)
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+        self.assertEqual(cursor_of(self.picture_of(0)), 4)
 
     def test_a_second_channels_report_posts_only_its_own_panel(self):
         self.displays.show_source(0, 0)
@@ -113,30 +138,34 @@ class DeckRing(unittest.TestCase):
 
     def test_absent_deck_is_drawn_absent(self):
         self.displays.show_source(0, 0)
-        self.displays.show_deck_present(0, True)
-        self.displays.show_deck_present(1, True)
+        self.decks_there()
         self.displays.note_peak(1, 1.0)
         self.displays.step_meters()
         marks_present = len(self.picture_of(0).marks)
         self.displays.show_deck_present(0, False)
         picture = self.picture_of(0)
-        self.assertEqual(self.names(picture), ["AN", "-", "B"])
-        self.assertEqual(picture.meters[1].level, 0.0)
+        self.assertEqual(self.names(picture), ["-", "D2", "D3", "D4", "A"])
+        self.assertEqual(picture.meters[0].level, 0.0)
         self.assertEqual(len(picture.marks), marks_present - 2)
         self.displays.show_deck_present(0, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "B"])
+        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "D3", "D4", "A"])
 
     def test_a_deck_report_redraws_every_channel(self):
         self.displays.show_source(0, 0)
         self.displays.drain()
         self.rig.drawn.clear()
-        self.displays.show_deck_present(1, False)
+        self.displays.show_deck_present(3, False)
         self.displays.drain()
         self.assertEqual(len(self.rig.drawn), 4)
 
+    def test_a_deck_past_four_changes_nothing(self):
+        self.displays.show_source(0, 0)
+        self.displays.show_deck_present(4, True)
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+
     def test_announcements(self):
         self.assertEqual(source_announcement([2]), 2)
-        self.assertEqual(source_announcement([4]), 4)   # decks C and D
+        self.assertEqual(source_announcement([4]), 4)
         for damaged in ([], [5], [-1], [1.0], ["1"], [1, 2]):
             self.assertIsNone(source_announcement(damaged))
         self.assertIs(present_announcement([1]), True)
@@ -144,56 +173,31 @@ class DeckRing(unittest.TestCase):
         for damaged in ([], [2], [True], [1, 0]):
             self.assertIsNone(present_announcement(damaged))
 
-    # Core's decks C and D (3, 4): the ring keeps AN | A | B, nothing indexes past it.
-    def test_a_channel_on_deck_c_or_d_is_drawn_as_that_letter(self):
-        self.both_decks_there()
-        for source, letter in ((3, "C"), (4, "D")):
-            self.displays.show_source(0, source)
-            drawn = self.picture_of(0)
-            self.assertEqual(self.names(drawn), [letter])
-            self.assertIsNone(drawn.active)
-
-    def test_a_cursor_on_deck_c_or_d_selects_no_ring_slot(self):
-        self.both_decks_there()
-        self.displays.show_source(0, 1)
-        for cursor in (3, 4):
-            self.displays.show_source_cursor(0, cursor)
-            drawn = self.picture_of(0)
-            self.assertEqual(self.names(drawn), ["AN", "A", "B"])
-            x0, y0, x1, y1 = drawn.cursor
-            self.assertLess(y1, y0)                     # no arrow
-            self.assertEqual(self.active_of(drawn), 1)  # the bracket is Core's source
-
-    def test_decks_c_and_d_presence_changes_nothing(self):
-        self.both_decks_there()
-        for deck in (2, 3):
-            self.displays.show_deck_present(deck, True)
-            self.displays.show_deck_present(deck, False)
-        self.displays.show_source(0, 0)
-        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "B"])
-
-    def test_the_letter_picture_and_the_empty_arrow_paint(self):
-        from PIL import Image
-        from a3_mixer_displays import paint
-        from display_panel import engine_channel_picture
-        for source, cursor in ((3, 0), (4, 4), (1, 3)):
-            image = Image.new("1", (128, 64))
-            paint(image, engine_channel_picture(source, cursor, (True, True), (0.5, 0.9, 0.7), 128, 64))
-            self.assertTrue([p for p in image.getdata() if p])
-
 
 class Painting(unittest.TestCase):
     def test_an_engine_channel_with_an_absent_deck_paints(self):
         from PIL import Image
         from a3_mixer_displays import paint
         from display_panel import engine_channel_picture
+        levels = (0.5, 0.9, 0.7, 0.6, 0.8)
         lit = {}
-        for present in ((True, True), (False, True)):
+        for present in ((True,) * 4, (False, True, True, True)):
             image = Image.new("1", (128, 64))
-            paint(image, engine_channel_picture(1, 2, present, (0.5, 0.9, 0.7), 128, 64))
+            paint(image, engine_channel_picture(1, 2, present, levels, 128, 64))
             lit[present] = [p for p in image.getdata() if p]
-        self.assertTrue(lit[(True, True)])
-        self.assertLess(len(lit[(False, True)]), len(lit[(True, True)]))
+        self.assertTrue(lit[(True,) * 4])
+        self.assertLess(len(lit[(False, True, True, True)]), len(lit[(True,) * 4]))
+
+    def test_every_source_and_cursor_paints(self):
+        from PIL import Image
+        from a3_mixer_displays import paint
+        from display_panel import engine_channel_picture
+        for source in range(5):
+            for cursor in range(5):
+                image = Image.new("1", (128, 64))
+                paint(image, engine_channel_picture(source, cursor, (True,) * 4,
+                                                    (0.5,) * 5, 128, 64))
+                self.assertTrue([p for p in image.getdata() if p])
 
 
 class TheTruth(unittest.TestCase):
