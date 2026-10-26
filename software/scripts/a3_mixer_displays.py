@@ -95,6 +95,7 @@ from a3_mixer_meters import (DEFAULT_METER_TIMING, MeterBallistics,  # noqa: E40
 
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, cue_announcement,
+                           present_announcement, source_announcement,
                            channel_picture, engine_channel_picture, engine_levels, DECKS,
                            return_picture, panel_for_channel, return_panel,
                            pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
