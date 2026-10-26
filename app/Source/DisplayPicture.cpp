@@ -140,31 +140,100 @@ int playingSlot (int channel, int mask)
     return 2;
 }
 
+namespace
+{
+// What both channel pictures stand on: the three heading spans, the three bar columns, the dividers'
+// slots and the bands.
+struct ChannelLayout
+{
+    std::array<Span, 3> spans, columns;
+    std::array<Rows, 3> bands;
+    std::vector<Span> slots;
+};
+
+ChannelLayout channelLayout (int width, int height)
+{
+    ChannelLayout layout;
+    layout.slots = channelColumns (width);
+    const int stemWidth = layout.slots[0].x1 - layout.slots[0].x0 + 1;
+    for (size_t g = 0; g < channelGroups.size(); ++g)
+    {
+        layout.spans[g] = { layout.slots[(size_t) channelGroups[g].first].x0, layout.slots[(size_t) channelGroups[g].last].x1 };
+        layout.columns[g] = centred (layout.spans[g], stemWidth);
+    }
+    layout.bands = bands (height);
+    return layout;
+}
+
+std::vector<Box> dividersOf (const ChannelLayout& layout)
+{
+    std::vector<Box> out;
+    for (size_t g = 1; g < channelGroups.size(); ++g)
+        out.push_back (divider (layout.slots[(size_t) channelGroups[g].first - 1],
+                                layout.slots[(size_t) channelGroups[g].first], layout.bands[2]));
+    return out;
+}
+
+std::vector<Box> meterBoxes (const ChannelLayout& layout)
+{
+    std::vector<Box> boxes;
+    for (const auto& c : layout.columns)
+        boxes.push_back ({ c.x0, layout.bands[2].top, c.x1, layout.bands[2].bottom });
+    return boxes;
+}
+}
+
 Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
                         int height, const std::array<bool, channelMeters>& clips,
                         const std::array<double, channelMeters>& holds)
 {
-    const auto slots = channelColumns (width);
-    const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
-    const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
-
+    const auto layout = channelLayout (width, height);
     Picture p;
-    std::vector<Span> columns;
-    for (const auto& g : channelGroups)
-    {
-        const Span span { slots[(size_t) g.first].x0, slots[(size_t) g.last].x1 };
-        p.headings.push_back ({ { span.x0, headingRows.top, span.x1, headingRows.bottom }, g.name });
-        columns.push_back (centred (span, stemWidth));
-    }
-    std::vector<Box> boxes;
-    for (const auto& c : columns)
-        boxes.push_back ({ c.x0, meterRows.top, c.x1, meterRows.bottom });
-    p.meters = metersFor (boxes, levels, clips, holds);
-    for (size_t g = 1; g < channelGroups.size(); ++g)
-        p.dividers.push_back (divider (slots[(size_t) channelGroups[g].first - 1], slots[(size_t) channelGroups[g].first], meterRows));
+    for (size_t g = 0; g < channelGroups.size(); ++g)
+        p.headings.push_back ({ { layout.spans[g].x0, layout.bands[0].top, layout.spans[g].x1, layout.bands[0].bottom },
+                                channelGroups[g].name });
+    p.meters = metersFor (meterBoxes (layout), levels, clips, holds);
+    p.dividers = dividersOf (layout);
     p.active = bracket (p.meters[(size_t) playingSlot (channel, mask)].box);
-    p.cursor = arrowBox (columns[(size_t) channelSlot (channel, cursor)], arrowRowsBand);
+    p.cursor = arrowBox (layout.columns[(size_t) channelSlot (channel, cursor)], layout.bands[1]);
     addMarks (p.marks, p.meters, channelMarkLength);
+    return p;
+}
+
+Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
+                       const std::array<double, channelMeters>& levels, int width, int height,
+                       const std::array<bool, channelMeters>& clips, const std::array<double, channelMeters>& holds)
+{
+    // ENGINE_RING = AN, A, B; the analog input is always there.
+    constexpr std::array<const char*, channelMeters> names { "AN", "A", "B" };
+    constexpr const char* absentName = "-";
+    const std::array<bool, channelMeters> there { true, present[0], present[1] };
+    const auto layout = channelLayout (width, height);
+
+    auto shownLevels = levels;
+    auto shownClips = clips;
+    auto shownHolds = holds;
+    Picture p;
+    for (size_t i = 0; i < channelMeters; ++i)
+    {
+        p.headings.push_back ({ { layout.spans[i].x0, layout.bands[0].top, layout.spans[i].x1, layout.bands[0].bottom },
+                                there[i] ? names[i] : absentName });
+        if (! there[i])
+        {
+            shownLevels[i] = 0.0;
+            shownClips[i] = false;
+            shownHolds[i] = 0.0;
+        }
+    }
+    p.meters = metersFor (meterBoxes (layout), shownLevels, shownClips, shownHolds);
+    p.dividers = dividersOf (layout);
+    p.active = bracket (p.meters[(size_t) source].box);
+    p.cursor = arrowBox (layout.columns[(size_t) cursor], layout.bands[1]);
+    std::vector<Meter> shown;
+    for (size_t i = 0; i < channelMeters; ++i)
+        if (there[i])
+            shown.push_back (p.meters[i]);
+    addMarks (p.marks, shown, channelMarkLength);
     return p;
 }
 

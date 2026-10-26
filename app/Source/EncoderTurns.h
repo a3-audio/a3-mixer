@@ -26,5 +26,7 @@ private:
 
 /** Turns from the channel's cursor to meter `slot` (0 D1, 1 D2, 2 A) in the channel's ring of three. */
 int channelTurnsTo (int channel, int cursor, int slot);
+/** Engine mode: turns from the cursor to place `slot` in the ring AN | A | B (Core's numbers). */
+int engineTurnsTo (int cursor, int slot);
 int returnTurnsTo (int cursor, int target);
 }

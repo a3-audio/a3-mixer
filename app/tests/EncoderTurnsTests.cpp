@@ -52,3 +52,12 @@ TEST (DragClicks, ANonPositiveStepIsOnePixel)
     EXPECT_EQ (DragClicks (0.f).feed (5.f), 5);
     EXPECT_EQ (DragClicks (-3.f).feed (-4.f), -4);
 }
+
+// Engine mode: the ring is AN | A | B by Core's numbers, the same shortest way round.
+TEST (DeskRing, TheEngineRingTurnsTheShortestWay)
+{
+    EXPECT_EQ (engineTurnsTo (0, 1), 1);
+    EXPECT_EQ (engineTurnsTo (2, 0), 1);    // B -> AN wraps
+    EXPECT_EQ (engineTurnsTo (0, 2), -1);
+    EXPECT_EQ (engineTurnsTo (1, 1), 0);
+}

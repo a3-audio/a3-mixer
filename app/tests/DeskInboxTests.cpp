@@ -253,3 +253,45 @@ TEST (DeskInbox, ALiveOfTheWrongTypeOrNotFiniteIsDropped)
     d.inbox.step (12001.0);
     EXPECT_FALSE (d.ind.prodjLive);
 }
+
+// Engine mode (Plan 4e): the three words of Core's deck selector. Absent until reported.
+TEST (DeskRing, EngineModeLabels)
+{
+    Desk d;
+    EXPECT_FALSE (d.ind.engine);
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { false, false }));
+    d.hear ("channel.source", 2, 1);
+    d.hear ("channel.source.cursor", 2, 2);
+    d.hear ("stemdeck.present", 1, 1);
+    EXPECT_TRUE (d.ind.engine);
+    EXPECT_EQ (d.ind.source[1], 1);
+    EXPECT_EQ (d.ind.sourceCursor[1], 2);
+    EXPECT_EQ (d.ind.source[0], 0);   // a channel not yet reported plays analog
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { true, false }));
+    d.hear ("stemdeck.present", 1, 0);
+    EXPECT_FALSE (d.ind.deckPresent[0]);
+}
+
+TEST (DeskRing, DamagedEngineWordsChangeNothing)
+{
+    Desk d;
+    d.hear ("channel.source", 1, 3);
+    d.hear ("channel.source.cursor", 1, juce::String ("x"));
+    d.hear ("stemdeck.present", 2, 2);
+    EXPECT_FALSE (d.ind.engine);
+    EXPECT_EQ (d.ind.sourceCursor[0], 0);
+    EXPECT_FALSE (d.ind.deckPresent[1]);
+}
+
+TEST (DeskRing, ANewCoreClearsEngineMode)
+{
+    Desk d;
+    d.hear ("channel.source", 3, 2);
+    d.hear ("channel.source.cursor", 3, 1);
+    d.hear ("stemdeck.present", 2, 1);
+    d.ind.forgetEngine();
+    EXPECT_FALSE (d.ind.engine);
+    EXPECT_EQ (d.ind.source[2], 0);
+    EXPECT_EQ (d.ind.sourceCursor[2], 0);
+    EXPECT_FALSE (d.ind.deckPresent[1]);
+}

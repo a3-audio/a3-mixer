@@ -41,8 +41,10 @@ std::vector<std::string> heardKeys (const a3::OscTruth& truth)
     for (const auto* key : { "filter.led", "channel.stem", "channel.stem.cursor", "aux-return.stem",
                              "aux-return.stem.mode", "aux-return.cue.led", "beat" })
         keys.emplace_back (key);
-    if (truth.hasAddress ("prodj.live"))   // optional: an older Core's truth lacks it
-        keys.emplace_back ("prodj.live");
+    // optional: an older Core's truth lacks them
+    for (const auto* key : { "prodj.live", "channel.source", "channel.source.cursor", "stemdeck.present" })
+        if (truth.hasAddress (key))
+            keys.emplace_back (key);
     return keys;
 }
 }
@@ -78,7 +80,7 @@ bool DeskOsc::hasOptional (const std::string& key) const { return _truth.hasAddr
 
 juce::String DeskOsc::address (const std::string& key, int number) const
 {
-    return _truth.pattern (key).replace ("{ch}", juce::String (number)).replace ("{n}", juce::String (number));
+    return _truth.pattern (key).replace ("{ch}", juce::String (number)).replace ("{n}", juce::String (number)).replace ("{deck}", juce::String (number));
 }
 
 std::optional<Match> DeskOsc::match (const juce::String& address) const

@@ -765,3 +765,52 @@ TEST (DeskComponent, OneTapOnTheLiveChipArrivingTwiceSendsOnce)
     EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
     window.removeChildComponent (desk.get());
 }
+
+namespace
+{
+juce::Image displayShot (DeskComponent& desk, int channelIndex)
+{
+    return nthChild<OledView> (desk, channelIndex)->createComponentSnapshot (
+        nthChild<OledView> (desk, channelIndex)->getLocalBounds());
+}
+
+bool samePixels (const juce::Image& a, const juce::Image& b)
+{
+    if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight())
+        return false;
+    for (int y = 0; y < a.getHeight(); ++y)
+        for (int x = 0; x < a.getWidth(); ++x)
+            if (a.getPixelAt (x, y) != b.getPixelAt (x, y))
+                return false;
+    return true;
+}
+
+void hearEngine (DeskComponent& desk, const char* key, int number, int value, double t)
+{
+    desk.receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (key, number)), value), t);
+}
+}
+
+// Without Core's source reports (REAPER mode) the display is the interim's, whatever else arrives; a new
+// Core takes the desk out of engine mode again.
+TEST (DeskRing, ReaperModeUnchanged)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->step (140);
+    const auto reaper = displayShot (*desk, 0);
+    hearEngine (*desk, "stemdeck.present", 1, 1, 150);   // a deck report alone is no engine mode
+    hearEngine (*desk, "channel.source.cursor", 1, 2, 150);
+    desk->step (180);
+    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 0)));
+
+    hearEngine (*desk, "channel.source", 1, 1, 200);
+    desk->step (220);
+    EXPECT_FALSE (samePixels (reaper, displayShot (*desk, 0)));   // engine mode paints its own ring
+
+    desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-2" }, 9000);
+    desk->step (9020);
+    answer (*desk, 9100);   // the surface dims until the new Core answers
+    desk->step (9120);
+    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 0)));
+}

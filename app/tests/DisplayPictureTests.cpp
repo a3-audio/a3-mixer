@@ -116,3 +116,56 @@ TEST (DisplayPaint, TheArrowPointsDownAtTheCursor)
     const auto& analog = picture.meters[2].box;                                    // a cursor of 8 is A
     EXPECT_LE (std::abs ((a.x0 + a.x1) - (analog.x0 + analog.x1)), 1);
 }
+
+// The engine-mode ring is the Python desk's, case for case (every source, cursor and presence).
+TEST (DisplayPicture, DeckChannelSnapshot)
+{
+    const auto* cases = desk::test::fixture()["engine_channel_pictures"].getArray();
+    ASSERT_NE (cases, nullptr);
+    ASSERT_EQ (cases->size(), 36);
+    for (const auto& c : *cases)
+    {
+        const auto picture = enginePicture (c["source"], c["cursor"],
+                                            { static_cast<bool> (c["present"][0]), static_cast<bool> (c["present"][1]) },
+                                            arrayOf<3, double> (c["levels"]), c["width"], c["height"],
+                                            arrayOf<3, bool> (c["clips"]), arrayOf<3, double> (c["holds"]));
+        expectSamePicture (picture, c["picture"], "source " + c["source"].toString() + " cursor " + c["cursor"].toString()
+                                                      + " present " + juce::JSON::toString (c["present"], true));
+    }
+}
+
+// A page test must paint: an absent deck is a dash over an empty slot, a present one a bar.
+TEST (DisplayPicture, DeckChannelSnapshotPaintsAbsentDeckEmpty)
+{
+    const auto picture = enginePicture (0, 0, { true, false }, { 1, 1, 1 }, oledWidth, oledHeight, {}, {});
+    const auto image = paintPicture (picture, oledWidth, oledHeight);
+    ASSERT_EQ (picture.meters.size(), 3u);
+    const auto lit = [&] (const Box& b) {
+        int n = 0;
+        for (int x = b.x0; x <= b.x1; ++x)
+            for (int y = b.y0; y <= b.y1; ++y)
+                n += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
+        return n;
+    };
+    EXPECT_GT (lit (picture.meters[0].box), 0);   // AN
+    EXPECT_GT (lit (picture.meters[1].box), 0);   // deck A
+    EXPECT_EQ (lit (picture.meters[2].box), 0);   // deck B absent: no bar
+    EXPECT_EQ (picture.headings[2].text, "-");
+}
+
+TEST (DeskRing, EngineModeLabelsOnThePicture)
+{
+    const auto both = enginePicture (1, 2, { true, true }, {}, oledWidth, oledHeight, {}, {});
+    ASSERT_EQ (both.headings.size(), 3u);
+    EXPECT_EQ (both.headings[0].text, "AN");
+    EXPECT_EQ (both.headings[1].text, "A");
+    EXPECT_EQ (both.headings[2].text, "B");
+    const auto centre = [] (const Box& b) { return b.x0 + b.x1; };
+    EXPECT_LE (std::abs (centre (both.cursor) - centre (both.meters[2].box)), 1);   // arrow over B
+    EXPECT_EQ (both.active.x0, both.meters[1].box.x0 - 1);                          // bracket round A
+    // An absent deck keeps cursor and bracket (they are Core's) and is only drawn "-".
+    const auto absent = enginePicture (2, 2, { true, false }, {}, oledWidth, oledHeight, {}, {});
+    EXPECT_EQ (absent.headings[2].text, "-");
+    EXPECT_EQ (absent.active.x0, absent.meters[2].box.x0 - 1);
+    EXPECT_LE (std::abs (centre (absent.cursor) - centre (absent.meters[2].box)), 1);
+}

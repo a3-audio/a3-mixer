@@ -107,7 +107,9 @@ void DeskComponent::buildStrip (int ch)
     _leds[i] = std::make_unique<LedColumn>();
     _displays[i] = std::make_unique<OledView>();
     _displays[i]->onSlot = [this, ch] (int slot) {
-        const auto turns = turns::channelTurnsTo (ch - 1, _ind.cursor[(size_t) ch - 1], slot);
+        // The slots are the pictures' left to right: D1 | D2 | A, or AN | A | B in engine mode.
+        const auto turns = _ind.engine ? turns::engineTurnsTo (_ind.sourceCursor[(size_t) ch - 1], slot)
+                                       : turns::channelTurnsTo (ch - 1, _ind.cursor[(size_t) ch - 1], slot);
         if (turns != 0 && handsAccepted())
             send (_wire->channelTurn (ch, turns));   // never a push: switching an input stays on the encoder
     };
@@ -189,7 +191,10 @@ void DeskComponent::announced (const a3::Announcement& a, double nowMs)
 {
     JUCE_ASSERT_MESSAGE_THREAD
     if (_core.heard (a.fingerprint, a.bootId, nowMs))
+    {
         _ask.coreRestarted (nowMs);
+        _ind.forgetEngine();
+    }
 }
 
 void DeskComponent::receive (const juce::OSCMessage& message, double nowMs)
@@ -393,6 +398,23 @@ void DeskComponent::showDisplays (double dt)
         levels[2] = fraction (a.bar);
         holds[2] = fraction (a.hold);
         clips[2] = clipHolds[2].feed (_meters->analogPeak (ch), dt);
+        if (_ind.engine)
+        {
+            // Ring order AN | A | B; the interim's levels are D1 | D2 | A.
+            constexpr std::array<size_t, display::channelMeters> ringOrder { 2, 0, 1 };
+            std::array<double, display::channelMeters> ringLevels {}, ringHolds {};
+            std::array<bool, display::channelMeters> ringClips {};
+            for (size_t i = 0; i < ringOrder.size(); ++i)
+            {
+                ringLevels[i] = levels[ringOrder[i]];
+                ringHolds[i] = holds[ringOrder[i]];
+                ringClips[i] = clips[ringOrder[i]];
+            }
+            _displays[(size_t) ch - 1]->setPicture (display::enginePicture (
+                _ind.source[(size_t) ch - 1], _ind.sourceCursor[(size_t) ch - 1], _ind.deckPresent, ringLevels,
+                display::oledWidth, display::oledHeight, ringClips, ringHolds));
+            continue;
+        }
         _displays[(size_t) ch - 1]->setPicture (display::channelPicture (
             ch - 1, _ind.cursor[(size_t) ch - 1], levels, _ind.stemMask[(size_t) ch - 1], display::oledWidth,
             display::oledHeight, clips, holds));

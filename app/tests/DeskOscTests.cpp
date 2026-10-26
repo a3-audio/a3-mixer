@@ -167,3 +167,24 @@ TEST (DeskOsc, ProdjLiveIsOptional)
     EXPECT_EQ (DeskOsc::missing (with).joinIntoString (", "), "");
     EXPECT_TRUE (DeskOsc (with).hasOptional ("prodj.live"));
 }
+
+TEST (DeskRing, EngineWordsAreHeardAndNumbered)
+{
+    const DeskOsc osc (test::truth());
+    for (int ch = 1; ch <= numChannels; ++ch)
+        for (const auto* key : { "channel.source", "channel.source.cursor" })
+        {
+            const auto found = osc.match (osc.address (key, ch));
+            ASSERT_TRUE (found.has_value()) << key << ch;
+            EXPECT_EQ (found->key, key);
+            EXPECT_EQ (found->number, ch);
+        }
+    for (int deck = 1; deck <= 2; ++deck)
+    {
+        const auto found = osc.match (osc.address ("stemdeck.present", deck));
+        ASSERT_TRUE (found.has_value()) << deck;
+        EXPECT_EQ (found->key, "stemdeck.present");
+        EXPECT_EQ (found->number, deck);
+    }
+    EXPECT_FALSE (osc.match (osc.address ("stemdeck.present", 3)).has_value());
+}
