@@ -15,7 +15,7 @@ namespace desk::display
 {
 inline constexpr int oledWidth = 128, oledHeight = 64;
 inline constexpr int pairs = 8, analogInput = 8, cueCursor = 2, analogMode = 0, stemMode = 1;
-inline constexpr int stemsPerDeck = 4, channelMeters = 3, engineDecks = 2;
+inline constexpr int stemsPerDeck = 4, channelMeters = 3, engineDecks = 2, coreDecks = 4;
 
 struct Box
 {
@@ -75,7 +75,8 @@ Picture channelPicture (int channel, int cursor, const std::array<double, channe
 /** A channel in engine mode: AN | A | B (Core's numbers 0, 1, 2), `source` under the active bracket,
     `cursor` under the arrow. `levels`, `clips` and `holds` are in ring order; `present` says per deck (A, B)
     whether it is there: an absent deck is a dash over an empty slot, no bar and no scale marks, and keeps
-    its bracket and cursor (they are Core's). */
+    its bracket and cursor (they are Core's). Core also numbers decks C and D (3, 4): a `source` there is drawn
+    as that letter alone (no ring, no bracket, no arrow); a `cursor` there selects no ring slot (no arrow). */
 Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
                        const std::array<double, channelMeters>& levels, int width, int height,
                        const std::array<bool, channelMeters>& clips, const std::array<double, channelMeters>& holds);

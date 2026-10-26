@@ -61,3 +61,10 @@ TEST (DeskRing, TheEngineRingTurnsTheShortestWay)
     EXPECT_EQ (engineTurnsTo (0, 2), -1);
     EXPECT_EQ (engineTurnsTo (1, 1), 0);
 }
+
+// A cursor on deck C or D (3, 4) is off the ring: a tap sends no turns rather than a guess.
+TEST (DeskRing, AnEngineCursorOffTheRingTurnsNothing)
+{
+    EXPECT_EQ (engineTurnsTo (3, 1), 0);
+    EXPECT_EQ (engineTurnsTo (4, 2), 0);
+}

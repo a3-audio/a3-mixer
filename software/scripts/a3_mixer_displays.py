@@ -576,6 +576,8 @@ class Displays:
 
     def show_deck_present(self, deck, present):
         """Whether deck `deck` (0 = A, 1 = B) is there: every channel draws it."""
+        if deck >= DECKS:
+            return      # Core's decks C and D: the ring has no place for them
         with self._wake:
             self._decks_present[deck] = bool(present)
         for index in range(len(PANELS) - 1):

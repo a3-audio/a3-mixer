@@ -275,12 +275,26 @@ TEST (DeskRing, EngineModeLabels)
 TEST (DeskRing, DamagedEngineWordsChangeNothing)
 {
     Desk d;
-    d.hear ("channel.source", 1, 3);
+    d.hear ("channel.source", 1, 5);
     d.hear ("channel.source.cursor", 1, juce::String ("x"));
     d.hear ("stemdeck.present", 2, 2);
     EXPECT_FALSE (d.ind.engine);
     EXPECT_EQ (d.ind.sourceCursor[0], 0);
     EXPECT_FALSE (d.ind.deckPresent[1]);
+}
+
+// Core numbers decks 1-4. The ring offers AN | A | B; decks C and D are heard and kept, never indexed.
+TEST (DeskRing, DecksCAndDFromCoreAreHeardWithoutIndexingTheRing)
+{
+    Desk d;
+    d.hear ("channel.source", 1, 3);
+    d.hear ("channel.source.cursor", 1, 4);
+    d.hear ("stemdeck.present", 3, 1);
+    d.hear ("stemdeck.present", 4, 1);
+    EXPECT_TRUE (d.ind.engine);
+    EXPECT_EQ (d.ind.source[0], 3);
+    EXPECT_EQ (d.ind.sourceCursor[0], 4);
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { false, false }));   // C and D have no ring place
 }
 
 TEST (DeskRing, ANewCoreClearsEngineMode)

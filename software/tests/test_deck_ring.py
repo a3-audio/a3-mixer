@@ -136,12 +136,50 @@ class DeckRing(unittest.TestCase):
 
     def test_announcements(self):
         self.assertEqual(source_announcement([2]), 2)
-        for damaged in ([], [3], [-1], [1.0], ["1"], [1, 2]):
+        self.assertEqual(source_announcement([4]), 4)   # decks C and D
+        for damaged in ([], [5], [-1], [1.0], ["1"], [1, 2]):
             self.assertIsNone(source_announcement(damaged))
         self.assertIs(present_announcement([1]), True)
         self.assertIs(present_announcement([0]), False)
         for damaged in ([], [2], [True], [1, 0]):
             self.assertIsNone(present_announcement(damaged))
+
+    # Core's decks C and D (3, 4): the ring keeps AN | A | B, nothing indexes past it.
+    def test_a_channel_on_deck_c_or_d_is_drawn_as_that_letter(self):
+        self.both_decks_there()
+        for source, letter in ((3, "C"), (4, "D")):
+            self.displays.show_source(0, source)
+            drawn = self.picture_of(0)
+            self.assertEqual(self.names(drawn), [letter])
+            self.assertIsNone(drawn.active)
+
+    def test_a_cursor_on_deck_c_or_d_selects_no_ring_slot(self):
+        self.both_decks_there()
+        self.displays.show_source(0, 1)
+        for cursor in (3, 4):
+            self.displays.show_source_cursor(0, cursor)
+            drawn = self.picture_of(0)
+            self.assertEqual(self.names(drawn), ["AN", "A", "B"])
+            x0, y0, x1, y1 = drawn.cursor
+            self.assertLess(y1, y0)                     # no arrow
+            self.assertEqual(self.active_of(drawn), 1)  # the bracket is Core's source
+
+    def test_decks_c_and_d_presence_changes_nothing(self):
+        self.both_decks_there()
+        for deck in (2, 3):
+            self.displays.show_deck_present(deck, True)
+            self.displays.show_deck_present(deck, False)
+        self.displays.show_source(0, 0)
+        self.assertEqual(self.names(self.picture_of(0)), ["AN", "A", "B"])
+
+    def test_the_letter_picture_and_the_empty_arrow_paint(self):
+        from PIL import Image
+        from a3_mixer_displays import paint
+        from display_panel import engine_channel_picture
+        for source, cursor in ((3, 0), (4, 4), (1, 3)):
+            image = Image.new("1", (128, 64))
+            paint(image, engine_channel_picture(source, cursor, (True, True), (0.5, 0.9, 0.7), 128, 64))
+            self.assertTrue([p for p in image.getdata() if p])
 
 
 class Painting(unittest.TestCase):
@@ -169,7 +207,8 @@ class TheTruth(unittest.TestCase):
 
     def test_a_deck_is_read_off_its_address(self):
         self.assertEqual(self.osc.deck_of("stemdeck.present", "/stemdeck/2/present"), 2)
-        self.assertIsNone(self.osc.deck_of("stemdeck.present", "/stemdeck/3/present"))
+        self.assertEqual(self.osc.deck_of("stemdeck.present", "/stemdeck/4/present"), 4)
+        self.assertIsNone(self.osc.deck_of("stemdeck.present", "/stemdeck/5/present"))
         self.assertEqual(self.osc.channel_of("channel.source", "/channel/3/source"), 3)
         self.assertEqual(self.osc.channel_of("channel.source.cursor",
                                              "/channel/3/source/cursor"), 3)

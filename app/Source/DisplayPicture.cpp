@@ -209,7 +209,18 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     constexpr const char* absentName = "-";
     const std::array<bool, channelMeters> there { true, present[0], present[1] };
     const auto layout = channelLayout (width, height);
+    constexpr Box nothing { 0, 0, -1, -1 };   // paints nothing
 
+    if (source > engineDecks)
+    {
+        // Deck C or D plays: the ring has no place for it, so its letter fills the display.
+        Picture letter;
+        letter.headings.push_back ({ { 0, layout.bands[0].top, width - 1, layout.bands[2].bottom },
+                                     std::string (1, (char) ('A' + source - 1)) });
+        letter.cursor = nothing;
+        letter.active = nothing;
+        return letter;
+    }
     auto shownLevels = levels;
     auto shownClips = clips;
     auto shownHolds = holds;
@@ -228,7 +239,7 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     p.meters = metersFor (meterBoxes (layout), shownLevels, shownClips, shownHolds);
     p.dividers = dividersOf (layout);
     p.active = bracket (p.meters[(size_t) source].box);
-    p.cursor = arrowBox (layout.columns[(size_t) cursor], layout.bands[1]);
+    p.cursor = cursor <= engineDecks ? arrowBox (layout.columns[(size_t) cursor], layout.bands[1]) : nothing;
     std::vector<Meter> shown;
     for (size_t i = 0; i < channelMeters; ++i)
         if (there[i])

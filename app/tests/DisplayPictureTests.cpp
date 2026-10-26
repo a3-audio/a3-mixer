@@ -169,3 +169,35 @@ TEST (DeskRing, EngineModeLabelsOnThePicture)
     EXPECT_EQ (absent.active.x0, absent.meters[2].box.x0 - 1);
     EXPECT_LE (std::abs (centre (absent.cursor) - centre (absent.meters[2].box)), 1);
 }
+
+// Core's decks C and D (3, 4): the ring is AN | A | B, so a channel on one shows the letter alone;
+// a cursor on one selects no ring slot (no arrow). Nothing indexes past the ring.
+TEST (DeskRing, AChannelOnDeckCOrDShowsThatLetter)
+{
+    for (const auto [source, letter] : { std::pair { 3, "C" }, std::pair { 4, "D" } })
+    {
+        const auto p = enginePicture (source, 0, { true, true }, {}, oledWidth, oledHeight, {}, {});
+        ASSERT_EQ (p.headings.size(), 1u);
+        EXPECT_EQ (p.headings[0].text, letter);
+        EXPECT_TRUE (p.meters.empty());
+        EXPECT_LT (p.active.x1, p.active.x0);   // no bracket
+        EXPECT_LT (p.cursor.y1, p.cursor.y0);   // no arrow
+        const auto image = paintPicture (p, oledWidth, oledHeight);
+        int lit = 0;
+        for (int x = 0; x < oledWidth; ++x)
+            for (int y = 0; y < oledHeight; ++y)
+                lit += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
+        EXPECT_GT (lit, 40);                    // the letter is drawn, and nothing else
+    }
+}
+
+TEST (DeskRing, ACursorOnDeckCOrDSelectsNoRingSlot)
+{
+    for (const int cursor : { 3, 4 })
+    {
+        const auto p = enginePicture (1, cursor, { true, true }, {}, oledWidth, oledHeight, {}, {});
+        ASSERT_EQ (p.headings.size(), 3u);
+        EXPECT_LT (p.cursor.y1, p.cursor.y0);
+        EXPECT_EQ (p.active.x0, p.meters[1].box.x0 - 1);   // the bracket is Core's source, kept
+    }
+}

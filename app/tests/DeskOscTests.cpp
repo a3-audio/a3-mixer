@@ -179,12 +179,12 @@ TEST (DeskRing, EngineWordsAreHeardAndNumbered)
             EXPECT_EQ (found->key, key);
             EXPECT_EQ (found->number, ch);
         }
-    for (int deck = 1; deck <= 2; ++deck)
+    for (int deck = 1; deck <= 4; ++deck)
     {
         const auto found = osc.match (osc.address ("stemdeck.present", deck));
         ASSERT_TRUE (found.has_value()) << deck;
         EXPECT_EQ (found->key, "stemdeck.present");
         EXPECT_EQ (found->number, deck);
     }
-    EXPECT_FALSE (osc.match (osc.address ("stemdeck.present", 3)).has_value());
+    EXPECT_FALSE (osc.match (osc.address ("stemdeck.present", 5)).has_value());
 }

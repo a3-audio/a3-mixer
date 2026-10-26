@@ -487,6 +487,12 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
 #: there reads ABSENT_NAME and has no bar.
 ENGINE_RING = ("AN", "A", "B")
 DECKS = len(ENGINE_RING) - 1
+#: Core numbers decks 1-4 (A-D); the ring offers two, C and D are only
+#: shown as the letter of a channel that plays them.
+CORE_DECKS = 4
+DECK_LETTERS = "ABCD"
+#: What an arrow box with no rows draws: nothing.
+NO_ARROW = (0, 0, -1, -1)
 ABSENT_NAME = "-"
 #: The interim's levels are (D1, D2, A); the engine ring's are (A, D1, D2).
 ENGINE_LEVEL_ORDER = (2, 0, 1)
@@ -499,6 +505,11 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
     are in ring order; `present` says per deck (A, B) whether it is there --
     an absent deck is a dash over an empty slot, no bar and no scale marks."""
     spans, columns, gaps, ((h0, h1), arrow, (m0, m1)) = _channel_layout(width, height)
+    if source > DECKS:
+        # Deck C or D plays: the ring has no place for it, so the deck's
+        # letter fills the display -- no bars, no bracket, no arrow.
+        letter = Heading((0, h0, width - 1, m1), DECK_LETTERS[source - 1])
+        return Picture((letter,), (), NO_ARROW, (), None, None, ())
     there = (True,) + tuple(bool(on) for on in present)
     names = [name if on else ABSENT_NAME for name, on in zip(ENGINE_RING, there)]
     headings = tuple(Heading((x0, h0, x1, h1), name)
@@ -511,7 +522,9 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
                      shown(levels, 0.0), shown(clips or (False,) * 3, False),
                      shown(holds or (0.0,) * 3, 0.0))
     dividers = tuple(_divider(left, right, (m0, m1)) for left, right in gaps)
-    return Picture(headings, meters, _arrow(columns[cursor], arrow), dividers, None,
+    # A cursor on deck C or D selects no ring slot: no arrow.
+    pointer = _arrow(columns[cursor], arrow) if cursor <= DECKS else NO_ARROW
+    return Picture(headings, meters, pointer, dividers, None,
                    _bracket(meters[source].box),
                    _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
@@ -567,7 +580,7 @@ def cursor_announcement(args):
 def source_announcement(args):
     """The ring place (0 = analog, k = deck k) out of `/channel/{ch}/source`
     or `/channel/{ch}/source/cursor`, or None if damaged."""
-    if len(args) != 1 or not _is_count(args[0], DECKS):
+    if len(args) != 1 or not _is_count(args[0], CORE_DECKS):
         return None
     return args[0]
 

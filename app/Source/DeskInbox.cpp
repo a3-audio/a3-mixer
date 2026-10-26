@@ -76,7 +76,7 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
     }
     if (key == "channel.source" || key == "channel.source.cursor")
     {
-        if (const auto v = countIn (m[0], display::engineDecks))
+        if (const auto v = countIn (m[0], display::coreDecks))
         {
             (key == "channel.source" ? _ind.source : _ind.sourceCursor)[slot] = *v;
             _ind.engine = _ind.engine || key == "channel.source";
@@ -85,7 +85,8 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
     }
     if (key == "stemdeck.present")
     {
-        if (const auto v = countIn (m[0], 1))
+        // Core numbers decks 1-4; the ring offers two, so C and D are heard but not kept.
+        if (const auto v = countIn (m[0], 1); v && slot < _ind.deckPresent.size())
             _ind.deckPresent[slot] = *v == 1;
         return;
     }

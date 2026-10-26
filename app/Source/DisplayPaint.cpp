@@ -72,9 +72,12 @@ juce::Image paintPicture (const Picture& p, int width, int height)
         g.setColour (juce::Colours::white);
     }
     const auto& a = p.active;
-    g.fillRect (a.x0, a.y0, a.x1 - a.x0 + 1, 1);
-    g.fillRect (a.x0, a.y0, 1, a.y1 - a.y0 + 1);
-    g.fillRect (a.x1, a.y0, 1, a.y1 - a.y0 + 1);
+    if (a.x1 >= a.x0 && a.y1 >= a.y0)   // an empty box is "no bracket"
+    {
+        g.fillRect (a.x0, a.y0, a.x1 - a.x0 + 1, 1);
+        g.fillRect (a.x0, a.y0, 1, a.y1 - a.y0 + 1);
+        g.fillRect (a.x1, a.y0, 1, a.y1 - a.y0 + 1);
+    }
     const auto& c = p.cursor;
     for (int row = 0, y = c.y0; y <= c.y1 && c.x0 + row <= c.x1 - row; ++row, ++y)
         g.fillRect (c.x0 + row, y, (c.x1 - row) - (c.x0 + row) + 1, 1);
