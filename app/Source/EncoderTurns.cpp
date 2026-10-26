@@ -36,9 +36,7 @@ int channelTurnsTo (int channel, int cursor, int slot)
 
 int engineTurnsTo (int cursor, int slot)
 {
-    if (cursor >= display::channelMeters)   // Core's deck C or D: off the ring
-        return 0;
-    return shortestInRing (cursor, slot, display::channelMeters);
+    return shortestInRing (display::engineSlot (cursor), slot, display::engineSlots);
 }
 
 int returnTurnsTo (int cursor, int target)

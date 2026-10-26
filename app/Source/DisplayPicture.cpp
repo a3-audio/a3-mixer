@@ -200,35 +200,43 @@ Picture channelPicture (int channel, int cursor, const std::array<double, channe
     return p;
 }
 
-Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
-                       const std::array<double, channelMeters>& levels, int width, int height,
-                       const std::array<bool, channelMeters>& clips, const std::array<double, channelMeters>& holds)
-{
-    // ENGINE_RING = AN, A, B; the analog input is always there.
-    constexpr std::array<const char*, channelMeters> names { "AN", "A", "B" };
-    constexpr const char* absentName = "-";
-    const std::array<bool, channelMeters> there { true, present[0], present[1] };
-    const auto layout = channelLayout (width, height);
-    constexpr Box nothing { 0, 0, -1, -1 };   // paints nothing
+int engineSlot (int source) { return source >= 1 && source <= engineDecks ? source - 1 : engineSlots - 1; }
 
-    if (source > engineDecks)
+Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
+                       const std::array<double, engineSlots>& levels, int width, int height,
+                       const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds)
+{
+    // ENGINE_GROUPS: a deck spans two stem slots of the grid, A keeps the ninth.
+    struct EngineGroup
     {
-        // Deck C or D plays: the ring has no place for it, so its letter fills the display.
-        Picture letter;
-        letter.headings.push_back ({ { 0, layout.bands[0].top, width - 1, layout.bands[2].bottom },
-                                     std::string (1, (char) ('A' + source - 1)) });
-        letter.cursor = nothing;
-        letter.active = nothing;
-        return letter;
-    }
+        const char* name;
+        int first, last;
+    };
+    constexpr std::array<EngineGroup, engineSlots> groups { { { "D1", 0, 1 },
+                                                              { "D2", 2, 3 },
+                                                              { "D3", 4, 5 },
+                                                              { "D4", 6, 7 },
+                                                              { "A", analogInput, analogInput } } };
+    constexpr const char* absentName = "-";
+    const auto slots = channelColumns (width);
+    const auto rows = bands (height);
+    const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
+
+    std::array<bool, engineSlots> there {};
+    for (size_t i = 0; i < engineDecks; ++i)
+        there[i] = present[i];
+    there[engineSlots - 1] = true;
+
     auto shownLevels = levels;
     auto shownClips = clips;
     auto shownHolds = holds;
     Picture p;
-    for (size_t i = 0; i < channelMeters; ++i)
+    std::vector<Span> columns;
+    for (size_t i = 0; i < groups.size(); ++i)
     {
-        p.headings.push_back ({ { layout.spans[i].x0, layout.bands[0].top, layout.spans[i].x1, layout.bands[0].bottom },
-                                there[i] ? names[i] : absentName });
+        const Span span { slots[(size_t) groups[i].first].x0, slots[(size_t) groups[i].last].x1 };
+        columns.push_back (centred (span, stemWidth));
+        p.headings.push_back ({ { span.x0, rows[0].top, span.x1, rows[0].bottom }, there[i] ? groups[i].name : absentName });
         if (! there[i])
         {
             shownLevels[i] = 0.0;
@@ -236,12 +244,16 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
             shownHolds[i] = 0.0;
         }
     }
-    p.meters = metersFor (meterBoxes (layout), shownLevels, shownClips, shownHolds);
-    p.dividers = dividersOf (layout);
-    p.active = bracket (p.meters[(size_t) source].box);
-    p.cursor = cursor <= engineDecks ? arrowBox (layout.columns[(size_t) cursor], layout.bands[1]) : nothing;
+    std::vector<Box> boxes;
+    for (const auto& c : columns)
+        boxes.push_back ({ c.x0, rows[2].top, c.x1, rows[2].bottom });
+    p.meters = metersFor (boxes, shownLevels, shownClips, shownHolds);
+    // One divider, between the decks and A: two stem slots leave no room for one between neighbouring decks.
+    p.dividers.push_back (divider (slots[(size_t) analogInput - 1], slots[(size_t) analogInput], rows[2]));
+    p.active = bracket (p.meters[(size_t) engineSlot (source)].box);
+    p.cursor = arrowBox (columns[(size_t) engineSlot (cursor)], rows[1]);
     std::vector<Meter> shown;
-    for (size_t i = 0; i < channelMeters; ++i)
+    for (size_t i = 0; i < engineSlots; ++i)
         if (there[i])
             shown.push_back (p.meters[i]);
     addMarks (p.marks, shown, channelMarkLength);

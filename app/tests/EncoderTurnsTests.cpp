@@ -53,18 +53,14 @@ TEST (DragClicks, ANonPositiveStepIsOnePixel)
     EXPECT_EQ (DragClicks (-3.f).feed (-4.f), -4);
 }
 
-// Engine mode: the ring is AN | A | B by Core's numbers, the same shortest way round.
+// Engine mode: the ring is D1 D2 D3 D4 A (Core's 1-4, then 0), `cursor` in Core's numbers, `slot` the
+// picture's place left to right; the same shortest way round as Core's ring of five.
 TEST (DeskRing, TheEngineRingTurnsTheShortestWay)
 {
-    EXPECT_EQ (engineTurnsTo (0, 1), 1);
-    EXPECT_EQ (engineTurnsTo (2, 0), 1);    // B -> AN wraps
-    EXPECT_EQ (engineTurnsTo (0, 2), -1);
-    EXPECT_EQ (engineTurnsTo (1, 1), 0);
-}
-
-// A cursor on deck C or D (3, 4) is off the ring: a tap sends no turns rather than a guess.
-TEST (DeskRing, AnEngineCursorOffTheRingTurnsNothing)
-{
-    EXPECT_EQ (engineTurnsTo (3, 1), 0);
-    EXPECT_EQ (engineTurnsTo (4, 2), 0);
+    EXPECT_EQ (engineTurnsTo (0, 0), 1);     // A -> D1 wraps
+    EXPECT_EQ (engineTurnsTo (1, 4), -1);    // D1 -> A wraps
+    EXPECT_EQ (engineTurnsTo (1, 2), 2);     // D1 -> D3
+    EXPECT_EQ (engineTurnsTo (4, 1), -2);    // D4 -> D2
+    EXPECT_EQ (engineTurnsTo (0, 2), -2);    // A -> D3
+    EXPECT_EQ (engineTurnsTo (2, 1), 0);
 }

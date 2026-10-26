@@ -107,7 +107,7 @@ void DeskComponent::buildStrip (int ch)
     _leds[i] = std::make_unique<LedColumn>();
     _displays[i] = std::make_unique<OledView>();
     _displays[i]->onSlot = [this, ch] (int slot) {
-        // The slots are the pictures' left to right: D1 | D2 | A, or AN | A | B in engine mode.
+        // The slots are the pictures' left to right: D1 | D2 | A, or D1 D2 D3 D4 A in engine mode.
         const auto turns = _ind.engine ? turns::engineTurnsTo (_ind.sourceCursor[(size_t) ch - 1], slot)
                                        : turns::channelTurnsTo (ch - 1, _ind.cursor[(size_t) ch - 1], slot);
         if (turns != 0 && handsAccepted())
@@ -400,16 +400,10 @@ void DeskComponent::showDisplays (double dt)
         clips[2] = clipHolds[2].feed (_meters->analogPeak (ch), dt);
         if (_ind.engine)
         {
-            // Ring order AN | A | B; the interim's levels are D1 | D2 | A.
-            constexpr std::array<size_t, display::channelMeters> ringOrder { 2, 0, 1 };
-            std::array<double, display::channelMeters> ringLevels {}, ringHolds {};
-            std::array<bool, display::channelMeters> ringClips {};
-            for (size_t i = 0; i < ringOrder.size(); ++i)
-            {
-                ringLevels[i] = levels[ringOrder[i]];
-                ringHolds[i] = holds[ringOrder[i]];
-                ringClips[i] = clips[ringOrder[i]];
-            }
+            // Ring order D1 D2 D3 D4 A; the interim's levels are D1 | D2 | A, decks 3 and 4 have no meter.
+            const std::array<double, display::engineSlots> ringLevels { levels[0], levels[1], 0.0, 0.0, levels[2] };
+            const std::array<double, display::engineSlots> ringHolds { holds[0], holds[1], 0.0, 0.0, holds[2] };
+            const std::array<bool, display::engineSlots> ringClips { clips[0], clips[1], false, false, clips[2] };
             _displays[(size_t) ch - 1]->setPicture (display::enginePicture (
                 _ind.source[(size_t) ch - 1], _ind.sourceCursor[(size_t) ch - 1], _ind.deckPresent, ringLevels,
                 display::oledWidth, display::oledHeight, ringClips, ringHolds));

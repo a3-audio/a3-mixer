@@ -259,7 +259,7 @@ TEST (DeskRing, EngineModeLabels)
 {
     Desk d;
     EXPECT_FALSE (d.ind.engine);
-    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { false, false }));
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 4> { false, false, false, false }));
     d.hear ("channel.source", 2, 1);
     d.hear ("channel.source.cursor", 2, 2);
     d.hear ("stemdeck.present", 1, 1);
@@ -267,7 +267,7 @@ TEST (DeskRing, EngineModeLabels)
     EXPECT_EQ (d.ind.source[1], 1);
     EXPECT_EQ (d.ind.sourceCursor[1], 2);
     EXPECT_EQ (d.ind.source[0], 0);   // a channel not yet reported plays analog
-    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { true, false }));
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 4> { true, false, false, false }));
     d.hear ("stemdeck.present", 1, 0);
     EXPECT_FALSE (d.ind.deckPresent[0]);
 }
@@ -283,8 +283,8 @@ TEST (DeskRing, DamagedEngineWordsChangeNothing)
     EXPECT_FALSE (d.ind.deckPresent[1]);
 }
 
-// Core numbers decks 1-4. The ring offers AN | A | B; decks C and D are heard and kept, never indexed.
-TEST (DeskRing, DecksCAndDFromCoreAreHeardWithoutIndexingTheRing)
+// Core numbers decks 1-4, and the ring D1 D2 D3 D4 A offers all four.
+TEST (DeskRing, DecksThreeAndFourAreHeardAndKept)
 {
     Desk d;
     d.hear ("channel.source", 1, 3);
@@ -294,7 +294,7 @@ TEST (DeskRing, DecksCAndDFromCoreAreHeardWithoutIndexingTheRing)
     EXPECT_TRUE (d.ind.engine);
     EXPECT_EQ (d.ind.source[0], 3);
     EXPECT_EQ (d.ind.sourceCursor[0], 4);
-    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 2> { false, false }));   // C and D have no ring place
+    EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 4> { false, false, true, true }));
 }
 
 TEST (DeskRing, ANewCoreClearsEngineMode)
