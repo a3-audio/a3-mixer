@@ -561,6 +561,8 @@ class Displays:
             self._sources[index] = source
         for other in (range(len(PANELS) - 1) if fresh else (index,)):
             self._post(panel_for_channel(other))
+        if fresh:
+            self._post(return_panel())  # its second source is named by the mode
 
     def show_source_cursor(self, index, cursor):
         """A channel's cursor in the engine-mode ring."""
@@ -577,6 +579,7 @@ class Displays:
             self._decks_present = [False] * DECKS
         for index in range(len(PANELS) - 1):
             self._post(panel_for_channel(index))
+        self._post(return_panel())
 
     def show_deck_present(self, deck, present):
         """Whether deck `deck` (0-3 for decks 1-4) is there: every channel
@@ -636,8 +639,10 @@ class Displays:
                 cursor, mode, cue = self._return[0], self._return_mode, self._return_cue
                 levels = self._levels[panel] or (0.0, 0.0)
                 clips, holds = self._clips[panel], self._holds[panel]
+                engine = any(source is not None for source in self._sources)
                 return lambda width, height: return_picture(cursor, mode, cue, levels,
-                                                            width, height, clips, holds)
+                                                            width, height, clips, holds,
+                                                            engine)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]

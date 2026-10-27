@@ -418,7 +418,7 @@ void DeskComponent::showDisplays (double dt)
                                       _returnClips[1].feed (_meters->returnAnalogPeak(), dt) };
     _returnDisplay->setPicture (display::returnPicture (
         _ind.returnCursor, _ind.returnMode, _ind.returnCue, { fraction (stem.bar), fraction (analog.bar) },
-        display::oledWidth, display::oledHeight, clips, { fraction (stem.hold), fraction (analog.hold) }));
+        display::oledWidth, display::oledHeight, clips, { fraction (stem.hold), fraction (analog.hold) }, _ind.engine));
 }
 
 juce::String DeskComponent::statusRight() const

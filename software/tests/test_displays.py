@@ -661,6 +661,29 @@ class WhatPlaysWhere(unittest.TestCase):
         from display_panel import panel_for_channel
         return self.displays._picture_for(panel_for_channel(index))(128, 64)
 
+    def return_names(self):
+        from display_panel import return_panel
+        picture = self.displays._picture_for(return_panel())(128, 64)
+        return [h.text for h in picture.headings]
+
+    def test_engine_mode_return_says_delay(self):
+        self.assertEqual(self.return_names(), ["STEM", "ANALOG"])
+        self.displays.show_source(0, 1)
+        self.assertEqual(self.return_names(), ["DELAY", "ANALOG"])
+
+    def test_the_return_is_redrawn_when_the_engine_mode_begins_and_ends(self):
+        returns = lambda: [device for label, device in self.rig.built if label == "Aux Return"]
+        for change in (lambda: self.displays.show_source(0, 1), self.displays.forget_engine):
+            self.rig.drawn.clear()
+            change()
+            self.displays.drain()
+            self.assertIn(returns()[-1], [device for device, _ in self.rig.drawn])
+
+    def test_the_return_says_stem_again_when_the_engine_is_forgotten(self):
+        self.displays.show_source(0, 1)
+        self.displays.forget_engine()
+        self.assertEqual(self.return_names(), ["STEM", "ANALOG"])
+
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
         self.displays.drain()

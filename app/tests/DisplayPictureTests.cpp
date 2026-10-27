@@ -81,6 +81,18 @@ TEST (DisplayPicture, ReturnPicturesAreThePythons)
     }
 }
 
+TEST (DisplayPicture, EngineReturnSaysDelay)
+{
+    const auto headings = [] (bool engine) {
+        std::vector<std::string> texts;
+        for (const auto& h : returnPicture (1, 1, false, { 0.5, 0.5 }, 128, 64, { false, false }, { 0.0, 0.0 }, engine).headings)
+            texts.push_back (h.text);
+        return texts;
+    };
+    EXPECT_EQ (headings (true), (std::vector<std::string> { "DELAY", "ANALOG" }));
+    EXPECT_EQ (headings (false), (std::vector<std::string> { "STEM", "ANALOG" }));
+}
+
 TEST (ClipHold, AnOverLightsItForOneSecond)
 {
     ClipHold hold;

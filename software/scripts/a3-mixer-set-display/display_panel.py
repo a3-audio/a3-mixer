@@ -189,6 +189,9 @@ def playing_slot(index, mask):
 ANALOG_MODE, STEM_MODE = 0, 1
 RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
 RETURN_NAMES = {STEM_MODE: "STEM", ANALOG_MODE: "ANALOG"}
+#: With the engine the second source is the delay line, and RETURN scales
+#: its output.
+ENGINE_RETURN_NAMES = {STEM_MODE: "DELAY", ANALOG_MODE: "ANALOG"}
 #: The return's third cursor position (2026-10-04): its CUE field, right
 #: of the two modes. A cursor, never a mode.
 CUE_CURSOR = 2
@@ -558,12 +561,13 @@ RETURN_HEADING_OF_WIDTH = 0.34
 RETURN_METER_OF_HEADING = 0.5
 
 
-def return_picture(cursor, mode, cue, levels, width, height, clips=(), holds=()):
+def return_picture(cursor, mode, cue, levels, width, height, clips=(), holds=(),
+                   engine=False):
     """The aux return: STEM and ANALOG as mono meters under their names, the
     active bracket over the playing mode's meter, the CUE toggle behind a
     divider at the right edge -- on while the return is cued --, and the
     cursor as the arrow over one of the three. `levels`, `clips` and
-    `holds` are STEM, ANALOG."""
+    `holds` are STEM, ANALOG; in engine mode STEM reads DELAY."""
     (h0, h1), arrow, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -573,7 +577,8 @@ def return_picture(cursor, mode, cue, levels, width, height, clips=(), holds=())
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
     spans = ((0, heading - 1), (room - heading, room - 1))
-    names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option])
+    option_names = ENGINE_RETURN_NAMES if engine else RETURN_NAMES
+    names = tuple(Heading((x0, h0, x1, h1), option_names[option])
                   for option, (x0, x1) in zip(RETURN_OPTIONS, spans))
     boxes = []
     for x0, x1 in spans:

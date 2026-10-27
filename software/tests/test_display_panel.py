@@ -399,6 +399,19 @@ class ReturnMeter(unittest.TestCase):
     def heading(self, picture, text):
         return next(h for h in picture.headings if h.text == text)
 
+    def test_engine_mode_return_says_delay(self):
+        """R1: with the engine the return's second source is the delay
+        line, so its name is DELAY (ANALOG stays)."""
+        from display_panel import return_picture
+        p = return_picture(1, 1, False, (0.5, 0.5), W, H, engine=True)
+        self.assertEqual([h.text for h in p.headings], ["DELAY", "ANALOG"])
+
+    def test_reaper_mode_return_says_stem(self):
+        from display_panel import return_picture
+        p = return_picture(1, 1, False, (0.5, 0.5), W, H, engine=False)
+        self.assertEqual([h.text for h in p.headings], ["STEM", "ANALOG"])
+        self.assertEqual(p, return_picture(1, 1, False, (0.5, 0.5), W, H))
+
     def test_only_stem_and_analog_from_left_to_right(self):
         """Maintainer, 2026-10-04: the AUX title irritated and went; the
         return shows its two options and nothing between them."""
