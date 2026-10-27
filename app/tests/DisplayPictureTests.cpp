@@ -153,12 +153,12 @@ TEST (DisplayPicture, DeckChannelSnapshotPaintsAbsentDeckEmpty)
     EXPECT_EQ (picture.headings[1].text, "-");
 }
 
-// D1 D2 D3 D4 A, analog last (maintainer, 2026-10-26); the numbers are Core's (0 analog, k deck k).
+// 1 2 3 4 A, analog last (maintainer, 2026-10-26); the numbers are Core's (0 analog, k deck k).
 TEST (DeskRing, EngineModeLabelsOnThePicture)
 {
     const auto all = enginePicture (1, 0, { true, true, true, true }, {}, oledWidth, oledHeight, {}, {});
     ASSERT_EQ (all.headings.size(), 5u);
-    const std::array<std::string, 5> names { "D1", "D2", "D3", "D4", "A" };
+    const std::array<std::string, 5> names { "1", "2", "3", "4", "A" };
     for (size_t i = 0; i < names.size(); ++i)
         EXPECT_EQ (all.headings[i].text, names[i]);
     const auto centre = [] (const Box& b) { return b.x0 + b.x1; };

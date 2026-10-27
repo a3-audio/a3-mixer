@@ -482,13 +482,14 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
 
 
 #: The ring in engine mode (Core's a3_core_decks), left to right: decks 1-4,
-#: then the analog input -- analog last (maintainer, 2026-10-26). Each entry
+#: then the analog input -- analog last (maintainer, 2026-10-26). The decks are
+#: bare digits: on the 128x64 OLED "D1" had to be drawn too small to read. Each entry
 #: is the heading, the number `channel.source` carries (0 analog, k deck k)
 #: and the first and last slot of the grid (_channel_columns) it spans: a
 #: deck two stem slots, A the ninth slot as in the interim. A deck that is
 #: not there reads ABSENT_NAME and has no bar.
 ANALOG_SOURCE = 0
-ENGINE_GROUPS = (("D1", 1, 0, 1), ("D2", 2, 2, 3), ("D3", 3, 4, 5), ("D4", 4, 6, 7),
+ENGINE_GROUPS = (("1", 1, 0, 1), ("2", 2, 2, 3), ("3", 3, 4, 5), ("4", 4, 6, 7),
                  ("A", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
 ENGINE_SOURCES = tuple(source for _, source, _, _ in ENGINE_GROUPS)
 #: Core numbers decks 1-4.
@@ -506,7 +507,7 @@ def engine_slot(source):
 
 def engine_levels(values, empty):
     """The interim's (D1, D2, A) values in the engine ring's order
-    D1 D2 D3 D4 A: decks 3 and 4 have no meter, they read `empty`."""
+    1 2 3 4 A: decks 3 and 4 have no meter, they read `empty`."""
     if not values:
         return ()
     d1, d2, analog = values
@@ -526,7 +527,7 @@ def _engine_layout(width, height):
 
 def engine_channel_picture(source, cursor, present, levels, width, height,
                            clips=(), holds=()):
-    """A channel in engine mode: D1 D2 D3 D4 A, `source` (0 analog, k deck
+    """A channel in engine mode: 1 2 3 4 A, `source` (0 analog, k deck
     k) under the active bracket, `cursor` (the same numbers) under the arrow.
     `levels`, `clips` and `holds` are in display order, five each; `present`
     says per deck (1-4) whether it is there -- an absent deck is a dash over

@@ -212,10 +212,10 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
         const char* name;
         int first, last;
     };
-    constexpr std::array<EngineGroup, engineSlots> groups { { { "D1", 0, 1 },
-                                                              { "D2", 2, 3 },
-                                                              { "D3", 4, 5 },
-                                                              { "D4", 6, 7 },
+    constexpr std::array<EngineGroup, engineSlots> groups { { { "1", 0, 1 },
+                                                              { "2", 2, 3 },
+                                                              { "3", 4, 5 },
+                                                              { "4", 6, 7 },
                                                               { "A", analogInput, analogInput } } };
     constexpr const char* absentName = "-";
     const auto slots = channelColumns (width);

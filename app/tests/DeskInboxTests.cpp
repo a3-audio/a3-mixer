@@ -283,7 +283,7 @@ TEST (DeskRing, DamagedEngineWordsChangeNothing)
     EXPECT_FALSE (d.ind.deckPresent[1]);
 }
 
-// Core numbers decks 1-4, and the ring D1 D2 D3 D4 A offers all four.
+// Core numbers decks 1-4, and the ring 1 2 3 4 A offers all four.
 TEST (DeskRing, DecksThreeAndFourAreHeardAndKept)
 {
     Desk d;

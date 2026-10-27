@@ -32,7 +32,7 @@ struct Indicators
     int returnCursor = display::stemMode, returnMode = display::stemMode;
     bool returnCue = false;
     /** Engine mode (Plan 4e): from Core's first `channel.source` report until a new Core. Each channel's
-        source and cursor in the ring D1 D2 D3 D4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
+        source and cursor in the ring 1 2 3 4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
     bool engine = false;
     std::array<int, numChannels> source {}, sourceCursor {};
     std::array<bool, display::engineDecks> deckPresent {};

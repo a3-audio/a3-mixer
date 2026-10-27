@@ -72,9 +72,9 @@ int playingSlot (int channel, int mask);
 Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
                         int height, const std::array<bool, channelMeters>& clips,
                         const std::array<double, channelMeters>& holds);
-/** The engine ring's place (0-4, left to right D1 D2 D3 D4 A) of Core's source 1-4 or 0 (analog). */
+/** The engine ring's place (0-4, left to right 1 2 3 4 A) of Core's source 1-4 or 0 (analog). */
 int engineSlot (int source);
-/** A channel in engine mode: D1 D2 D3 D4 A, analog last (Core's numbers 1-4 and 0), `source` under the
+/** A channel in engine mode: 1 2 3 4 A, analog last (Core's numbers 1-4 and 0), `source` under the
     active bracket, `cursor` under the arrow. `levels`, `clips` and `holds` are in that display order; `present`
     says per deck (1-4) whether it is there: an absent deck is a dash over an empty slot, no bar and no scale
     marks, and keeps its bracket and cursor (they are Core's). */

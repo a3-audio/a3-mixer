@@ -5,7 +5,7 @@
 """The deck ring (Plan 4e): in engine mode Core reports each channel's source
 (`channel.source`, 0 = analog, k = deck k), its cursor
 (`channel.source.cursor`) and which decks are there (`stemdeck.present`); the
-channel's display then shows D1 D2 D3 D4 A (decks 1-4, analog last) instead of
+channel's display then shows 1 2 3 4 A (decks 1-4, analog last) instead of
 the interim's D1 | D2 | A.
 Without such a report the desk is the interim's."""
 
@@ -52,10 +52,10 @@ class DeckRing(unittest.TestCase):
         self.displays.show_source_cursor(1, 1)
         self.displays.drain()
         drawn = self.picture_of(1)
-        self.assertEqual(self.names(drawn), ["D1", "D2", "D3", "D4", "A"])
+        self.assertEqual(self.names(drawn), ["1", "2", "3", "4", "A"])
         self.assertEqual(self.active_of(drawn), 1)      # deck 2 plays
         self.assertEqual(cursor_of(drawn), 0)           # the cursor is on deck 1
-        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "D3", "D4", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["1", "2", "3", "4", "A"])
 
     def test_analog_is_the_last_slot(self):
         self.decks_there()
@@ -104,7 +104,7 @@ class DeckRing(unittest.TestCase):
         self.displays.show_source(0, 0)
         self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
         self.displays.show_deck_present(2, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "D3", "-", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "3", "-", "A"])
 
     def test_an_absent_deck_keeps_its_cursor_and_bracket(self):
         self.displays.show_source(0, 2)
@@ -144,11 +144,11 @@ class DeckRing(unittest.TestCase):
         marks_present = len(self.picture_of(0).marks)
         self.displays.show_deck_present(0, False)
         picture = self.picture_of(0)
-        self.assertEqual(self.names(picture), ["-", "D2", "D3", "D4", "A"])
+        self.assertEqual(self.names(picture), ["-", "2", "3", "4", "A"])
         self.assertEqual(picture.meters[0].level, 0.0)
         self.assertEqual(len(picture.marks), marks_present - 2)
         self.displays.show_deck_present(0, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "D3", "D4", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["1", "2", "3", "4", "A"])
 
     def test_a_deck_report_redraws_every_channel(self):
         self.displays.show_source(0, 0)
@@ -216,6 +216,28 @@ class TheTruth(unittest.TestCase):
         self.assertEqual(self.osc.channel_of("channel.source", "/channel/3/source"), 3)
         self.assertEqual(self.osc.channel_of("channel.source.cursor",
                                              "/channel/3/source/cursor"), 3)
+
+
+class EngineHeadingSize(unittest.TestCase):
+    """On the real OLED the ring's headings were too small to read: they must
+    be drawn at least as large as the REAPER-mode D1 | D2 | A headings."""
+
+    def glyph_height(self, picture):
+        from PIL import Image
+        import a3_mixer_displays
+        image = Image.new("1", (128, 64))
+        a3_mixer_displays.paint(image, picture)
+        top, bottom = picture.headings[0].box[1], picture.headings[0].box[3]
+        rows = [y for y in range(top, bottom + 1)
+                if any(image.getpixel((x, y)) for x in range(128))]
+        return max(rows) - min(rows) + 1
+
+    def test_engine_headings_are_at_least_as_tall_as_the_three_slot_ones(self):
+        from display_panel import channel_picture, engine_channel_picture
+        engine = engine_channel_picture(1, 0, (True,) * 4, (0.0,) * 5, 128, 64)
+        three = channel_picture(0, 0, (0.0,) * 3, 0, 128, 64)
+        self.assertGreaterEqual(self.glyph_height(engine), self.glyph_height(three))
+        self.assertGreaterEqual(self.glyph_height(engine), 10)   # of a 12-row band
 
 
 if __name__ == "__main__":

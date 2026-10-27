@@ -106,8 +106,11 @@ from display_panel import (channel_announcement, return_announcement,  # noqa: E
 #: stopped, and the last peak must not stand on the display for ever.
 METER_STALE_SECONDS = 0.5
 
-#: Text height as a share of its heading's box.
-TEXT_OF_HEADING = 0.9
+#: Text size as a share of its heading's box height. Above 1 on purpose:
+#: the size is a font size, a capital is about 0.73 of it, and _fit shrinks
+#: whatever does not fit, so the glyphs fill the band (they were too small
+#: to read on the real OLED at 0.9).
+TEXT_OF_HEADING = 1.4
 
 
 @functools.lru_cache(maxsize=8)
