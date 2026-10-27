@@ -31,11 +31,25 @@ struct Indicators
     std::array<int, numChannels> stemMask {}, cursor {};
     int returnCursor = display::stemMode, returnMode = display::stemMode;
     bool returnCue = false;
+    /** Engine mode (Plan 4e): from Core's first `channel.source` report until a new Core. Each channel's
+        source and cursor in the ring 1 2 3 4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
+    bool engine = false;
+    std::array<int, numChannels> source {}, sourceCursor {};
+    std::array<bool, display::engineDecks> deckPresent {};
     double tapLitUntilMs = -1.0;
     float bpm = 0.f;
     /** pro-DJ LIVE is a lease: on while the last "1" is younger than liveLeaseMs. */
     bool prodjLive = false;
     double prodjLiveUntilMs = -1.0;
+
+    /** A new Core may come up as REAPER's, which reports no source: back to the interim's ring. */
+    void forgetEngine()
+    {
+        engine = false;
+        source = {};
+        sourceCursor = {};
+        deckPresent = {};
+    }
 };
 
 /** Every message from Core on desk.osc. A damaged one changes nothing: nothing may raise into the receiver. */

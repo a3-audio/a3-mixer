@@ -95,7 +95,8 @@ from a3_mixer_meters import (DEFAULT_METER_TIMING, MeterBallistics,  # noqa: E40
 
 from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
                            cursor_announcement, mode_announcement, cue_announcement,
-                           channel_picture,
+                           present_announcement, source_announcement,
+                           channel_picture, engine_channel_picture, engine_levels, DECKS,
                            return_picture, panel_for_channel, return_panel,
                            pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
                            STEM_MODE, STEMS_PER_DECK,
@@ -105,8 +106,11 @@ from display_panel import (channel_announcement, return_announcement,  # noqa: E
 #: stopped, and the last peak must not stand on the display for ever.
 METER_STALE_SECONDS = 0.5
 
-#: Text height as a share of its heading's box.
-TEXT_OF_HEADING = 0.9
+#: Text size as a share of its heading's box height. Above 1 on purpose:
+#: the size is a font size, a capital is about 0.73 of it, and _fit shrinks
+#: whatever does not fit, so the glyphs fill the band (they were too small
+#: to read on the real OLED at 0.9).
+TEXT_OF_HEADING = 1.4
 
 
 @functools.lru_cache(maxsize=8)
@@ -380,6 +384,12 @@ class Displays:
         # whether it is cued.
         self._channel_masks = [0] * (len(PANELS) - 1)
         self._cursors = [ANALOG_INPUT] * (len(PANELS) - 1)
+        # Engine mode (Plan 4e), once Core has reported a channel's source:
+        # each channel's source and cursor in the ring AN | A | B, and which
+        # decks are there (absent until Core reports them). None until then -- the interim's D1 | D2 | A.
+        self._sources = [None] * (len(PANELS) - 1)
+        self._source_cursors = [0] * (len(PANELS) - 1)
+        self._decks_present = [False] * DECKS
         self._return = (STEM_MODE, (False,) * PAIRS)
         self._return_mode = STEM_MODE
         self._return_cue = False
@@ -541,6 +551,43 @@ class Displays:
             self._cursors[index] = cursor
         self._post(panel_for_channel(index))
 
+    def show_source(self, index, source):
+        """A channel's source in engine mode (0 = analog, k = deck k). The
+        first report puts the whole desk on the deck ring (the mode is
+        Core's, not a channel's): channels not yet reported play analog."""
+        with self._wake:
+            fresh = self._sources[index] is None
+            self._sources = [0 if other is None else other for other in self._sources]
+            self._sources[index] = source
+        for other in (range(len(PANELS) - 1) if fresh else (index,)):
+            self._post(panel_for_channel(other))
+
+    def show_source_cursor(self, index, cursor):
+        """A channel's cursor in the engine-mode ring."""
+        with self._wake:
+            self._source_cursors[index] = cursor
+        self._post(panel_for_channel(index))
+
+    def forget_engine(self):
+        """A new Core: engine mode ends until it reports a source again --
+        it may have come up as REAPER's, which sends none."""
+        with self._wake:
+            self._sources = [None] * len(self._sources)
+            self._source_cursors = [0] * len(self._source_cursors)
+            self._decks_present = [False] * DECKS
+        for index in range(len(PANELS) - 1):
+            self._post(panel_for_channel(index))
+
+    def show_deck_present(self, deck, present):
+        """Whether deck `deck` (0-3 for decks 1-4) is there: every channel
+        draws it."""
+        if not 0 <= deck < DECKS:
+            return
+        with self._wake:
+            self._decks_present[deck] = bool(present)
+        for index in range(len(PANELS) - 1):
+            self._post(panel_for_channel(index))
+
     def show_return(self, cursor, plays):
         with self._wake:
             self._return = (cursor, tuple(plays))
@@ -596,8 +643,20 @@ class Displays:
             mask = self._channel_masks[index]
             levels = self._levels[panel] or (0.0,) * 3
             clips, holds = self._clips[panel], self._holds[panel]
+            source = self._sources[index]
+            if source is not None:
+                return self._engine_picture(index, source, levels, clips, holds)
         return lambda width, height: channel_picture(index, cursor, levels, mask,
                                                      width, height, clips, holds)
+
+    def _engine_picture(self, index, source, levels, clips, holds):
+        # Called under self._wake: the state is read here, drawn later.
+        cursor = self._source_cursors[index]
+        present = tuple(self._decks_present)
+        levels = engine_levels(levels, 0.0)
+        clips, holds = engine_levels(clips, False), engine_levels(holds, 0.0)
+        return lambda width, height: engine_channel_picture(
+            source, cursor, present, levels, width, height, clips, holds)
 
     def _post(self, panel):
         with self._wake:
@@ -677,6 +736,18 @@ class NoDisplays:
         pass
 
     def show_cursor(self, index, cursor):
+        pass
+
+    def show_source(self, index, source):
+        pass
+
+    def show_source_cursor(self, index, cursor):
+        pass
+
+    def forget_engine(self):
+        pass
+
+    def show_deck_present(self, deck, present):
         pass
 
     def show_return(self, cursor, plays):

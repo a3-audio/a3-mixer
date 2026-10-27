@@ -74,6 +74,22 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
             _ind.cursor[slot] = *v;
         return;
     }
+    if (key == "channel.source" || key == "channel.source.cursor")
+    {
+        if (const auto v = countIn (m[0], display::coreDecks))
+        {
+            (key == "channel.source" ? _ind.source : _ind.sourceCursor)[slot] = *v;
+            _ind.engine = _ind.engine || key == "channel.source";
+        }
+        return;
+    }
+    if (key == "stemdeck.present")
+    {
+        // Core numbers decks 1-4, the ring offers all four.
+        if (const auto v = countIn (m[0], 1); v && slot < _ind.deckPresent.size())
+            _ind.deckPresent[slot] = *v == 1;
+        return;
+    }
     if (key == "aux-return.stem")
     {
         if (m.size() != 1 + display::pairs)

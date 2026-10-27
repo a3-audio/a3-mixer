@@ -52,3 +52,15 @@ TEST (DragClicks, ANonPositiveStepIsOnePixel)
     EXPECT_EQ (DragClicks (0.f).feed (5.f), 5);
     EXPECT_EQ (DragClicks (-3.f).feed (-4.f), -4);
 }
+
+// Engine mode: the ring is D1 D2 D3 D4 A (Core's 1-4, then 0), `cursor` in Core's numbers, `slot` the
+// picture's place left to right; the same shortest way round as Core's ring of five.
+TEST (DeskRing, TheEngineRingTurnsTheShortestWay)
+{
+    EXPECT_EQ (engineTurnsTo (0, 0), 1);     // A -> D1 wraps
+    EXPECT_EQ (engineTurnsTo (1, 4), -1);    // D1 -> A wraps
+    EXPECT_EQ (engineTurnsTo (1, 2), 2);     // D1 -> D3
+    EXPECT_EQ (engineTurnsTo (4, 1), -2);    // D4 -> D2
+    EXPECT_EQ (engineTurnsTo (0, 2), -2);    // A -> D3
+    EXPECT_EQ (engineTurnsTo (2, 1), 0);
+}

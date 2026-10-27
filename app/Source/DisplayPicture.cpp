@@ -140,31 +140,123 @@ int playingSlot (int channel, int mask)
     return 2;
 }
 
+namespace
+{
+// What both channel pictures stand on: the three heading spans, the three bar columns, the dividers'
+// slots and the bands.
+struct ChannelLayout
+{
+    std::array<Span, 3> spans, columns;
+    std::array<Rows, 3> bands;
+    std::vector<Span> slots;
+};
+
+ChannelLayout channelLayout (int width, int height)
+{
+    ChannelLayout layout;
+    layout.slots = channelColumns (width);
+    const int stemWidth = layout.slots[0].x1 - layout.slots[0].x0 + 1;
+    for (size_t g = 0; g < channelGroups.size(); ++g)
+    {
+        layout.spans[g] = { layout.slots[(size_t) channelGroups[g].first].x0, layout.slots[(size_t) channelGroups[g].last].x1 };
+        layout.columns[g] = centred (layout.spans[g], stemWidth);
+    }
+    layout.bands = bands (height);
+    return layout;
+}
+
+std::vector<Box> dividersOf (const ChannelLayout& layout)
+{
+    std::vector<Box> out;
+    for (size_t g = 1; g < channelGroups.size(); ++g)
+        out.push_back (divider (layout.slots[(size_t) channelGroups[g].first - 1],
+                                layout.slots[(size_t) channelGroups[g].first], layout.bands[2]));
+    return out;
+}
+
+std::vector<Box> meterBoxes (const ChannelLayout& layout)
+{
+    std::vector<Box> boxes;
+    for (const auto& c : layout.columns)
+        boxes.push_back ({ c.x0, layout.bands[2].top, c.x1, layout.bands[2].bottom });
+    return boxes;
+}
+}
+
 Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
                         int height, const std::array<bool, channelMeters>& clips,
                         const std::array<double, channelMeters>& holds)
 {
-    const auto slots = channelColumns (width);
-    const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
-    const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
+    const auto layout = channelLayout (width, height);
+    Picture p;
+    for (size_t g = 0; g < channelGroups.size(); ++g)
+        p.headings.push_back ({ { layout.spans[g].x0, layout.bands[0].top, layout.spans[g].x1, layout.bands[0].bottom },
+                                channelGroups[g].name });
+    p.meters = metersFor (meterBoxes (layout), levels, clips, holds);
+    p.dividers = dividersOf (layout);
+    p.active = bracket (p.meters[(size_t) playingSlot (channel, mask)].box);
+    p.cursor = arrowBox (layout.columns[(size_t) channelSlot (channel, cursor)], layout.bands[1]);
+    addMarks (p.marks, p.meters, channelMarkLength);
+    return p;
+}
 
+int engineSlot (int source) { return source >= 1 && source <= engineDecks ? source - 1 : engineSlots - 1; }
+
+Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
+                       const std::array<double, engineSlots>& levels, int width, int height,
+                       const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds)
+{
+    // ENGINE_GROUPS: a deck spans two stem slots of the grid, A keeps the ninth.
+    struct EngineGroup
+    {
+        const char* name;
+        int first, last;
+    };
+    constexpr std::array<EngineGroup, engineSlots> groups { { { "1", 0, 1 },
+                                                              { "2", 2, 3 },
+                                                              { "3", 4, 5 },
+                                                              { "4", 6, 7 },
+                                                              { "A", analogInput, analogInput } } };
+    constexpr const char* absentName = "-";
+    const auto slots = channelColumns (width);
+    const auto rows = bands (height);
+    const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
+
+    std::array<bool, engineSlots> there {};
+    for (size_t i = 0; i < engineDecks; ++i)
+        there[i] = present[i];
+    there[engineSlots - 1] = true;
+
+    auto shownLevels = levels;
+    auto shownClips = clips;
+    auto shownHolds = holds;
     Picture p;
     std::vector<Span> columns;
-    for (const auto& g : channelGroups)
+    for (size_t i = 0; i < groups.size(); ++i)
     {
-        const Span span { slots[(size_t) g.first].x0, slots[(size_t) g.last].x1 };
-        p.headings.push_back ({ { span.x0, headingRows.top, span.x1, headingRows.bottom }, g.name });
+        const Span span { slots[(size_t) groups[i].first].x0, slots[(size_t) groups[i].last].x1 };
         columns.push_back (centred (span, stemWidth));
+        p.headings.push_back ({ { span.x0, rows[0].top, span.x1, rows[0].bottom }, there[i] ? groups[i].name : absentName });
+        if (! there[i])
+        {
+            shownLevels[i] = 0.0;
+            shownClips[i] = false;
+            shownHolds[i] = 0.0;
+        }
     }
     std::vector<Box> boxes;
     for (const auto& c : columns)
-        boxes.push_back ({ c.x0, meterRows.top, c.x1, meterRows.bottom });
-    p.meters = metersFor (boxes, levels, clips, holds);
-    for (size_t g = 1; g < channelGroups.size(); ++g)
-        p.dividers.push_back (divider (slots[(size_t) channelGroups[g].first - 1], slots[(size_t) channelGroups[g].first], meterRows));
-    p.active = bracket (p.meters[(size_t) playingSlot (channel, mask)].box);
-    p.cursor = arrowBox (columns[(size_t) channelSlot (channel, cursor)], arrowRowsBand);
-    addMarks (p.marks, p.meters, channelMarkLength);
+        boxes.push_back ({ c.x0, rows[2].top, c.x1, rows[2].bottom });
+    p.meters = metersFor (boxes, shownLevels, shownClips, shownHolds);
+    // One divider, between the decks and A: two stem slots leave no room for one between neighbouring decks.
+    p.dividers.push_back (divider (slots[(size_t) analogInput - 1], slots[(size_t) analogInput], rows[2]));
+    p.active = bracket (p.meters[(size_t) engineSlot (source)].box);
+    p.cursor = arrowBox (columns[(size_t) engineSlot (cursor)], rows[1]);
+    std::vector<Meter> shown;
+    for (size_t i = 0; i < engineSlots; ++i)
+        if (there[i])
+            shown.push_back (p.meters[i]);
+    addMarks (p.marks, shown, channelMarkLength);
     return p;
 }
 

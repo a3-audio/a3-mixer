@@ -34,6 +34,11 @@ int channelTurnsTo (int channel, int cursor, int slot)
     return shortestInRing (display::channelSlot (channel, cursor), slot, display::channelMeters);
 }
 
+int engineTurnsTo (int cursor, int slot)
+{
+    return shortestInRing (display::engineSlot (cursor), slot, display::engineSlots);
+}
+
 int returnTurnsTo (int cursor, int target)
 {
     constexpr std::array<int, 3> along { 1, 0, 2 };   // STEM -> ANALOG -> CUE -> STEM

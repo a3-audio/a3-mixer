@@ -15,7 +15,7 @@ namespace desk::display
 {
 inline constexpr int oledWidth = 128, oledHeight = 64;
 inline constexpr int pairs = 8, analogInput = 8, cueCursor = 2, analogMode = 0, stemMode = 1;
-inline constexpr int stemsPerDeck = 4, channelMeters = 3;
+inline constexpr int stemsPerDeck = 4, channelMeters = 3, engineDecks = 4, engineSlots = 5, coreDecks = 4;
 
 struct Box
 {
@@ -72,6 +72,15 @@ int playingSlot (int channel, int mask);
 Picture channelPicture (int channel, int cursor, const std::array<double, channelMeters>& levels, int mask, int width,
                         int height, const std::array<bool, channelMeters>& clips,
                         const std::array<double, channelMeters>& holds);
+/** The engine ring's place (0-4, left to right 1 2 3 4 A) of Core's source 1-4 or 0 (analog). */
+int engineSlot (int source);
+/** A channel in engine mode: 1 2 3 4 A, analog last (Core's numbers 1-4 and 0), `source` under the
+    active bracket, `cursor` under the arrow. `levels`, `clips` and `holds` are in that display order; `present`
+    says per deck (1-4) whether it is there: an absent deck is a dash over an empty slot, no bar and no scale
+    marks, and keeps its bracket and cursor (they are Core's). */
+Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
+                       const std::array<double, engineSlots>& levels, int width, int height,
+                       const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds);
 /** STEM and ANALOG (in that order), the CUE field, the cursor over one of three. */
 Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
                        const std::array<bool, 2>& clips, const std::array<double, 2>& holds);

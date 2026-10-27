@@ -89,6 +89,12 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
        "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode", "core.here",
        "aux-return.cue.led")
 
+#: What Core adds in engine mode (Plan 4e): the channel's source and its ring
+#: cursor, and whether a deck is there. Optional -- a truth from before has
+#: no such keys and the desk is the interim's, which is why they are not in
+#: KEYS_USED (that list is what a truth must have).
+ENGINE_KEYS = ("channel.source", "channel.source.cursor", "stemdeck.present")
+
 
 def _pattern_regex(pattern):
     """"/channel/{ch}/volume" as a regex with a named group per placeholder."""
@@ -210,6 +216,16 @@ class MixerOsc:
         regex = self._matchers.get(key)
         fields = regex and self._fields(key, regex, address)
         return fields.get("ch") if fields else None
+
+    def deck_of(self, key, address):
+        """The deck (1-2) if `address` is exactly `key`'s, else None."""
+        regex = self._matchers.get(key)
+        fields = regex and self._fields(key, regex, address)
+        return fields.get("deck") if fields else None
+
+    def engine_keys(self):
+        """The engine-mode words (ENGINE_KEYS) this truth has."""
+        return tuple(key for key in ENGINE_KEYS if key in self._data["addresses"])
 
     def is_address(self, key, address):
         """Whether `address` is exactly `key`'s: channel_of() for an address
