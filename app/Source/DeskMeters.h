@@ -30,6 +30,8 @@ public:
     Reading output (int column, std::int64_t nowMs) const;          // 0 = SUB, 1-7 = tops
     Reading stem (int pair, std::int64_t nowMs) const;              // 0-7 = stem_a1 ... stem_b4
     Reading analog (int channel, std::int64_t nowMs) const;         // 1-4
+    /** A deck's W before any channel (deck_a ... deck_d, /vu 37-40): its bar on every channel display. */
+    Reading deck (int deck, std::int64_t nowMs) const;              // 0-3
     /** The FX Return after RETURN (aux_L/aux_R, P47): its one bar, the louder side. */
     Reading fxReturn (std::int64_t nowMs) const;
     /** The loudest raw peak of the last take, for the clip hatch; 0 when none came. */
@@ -38,11 +40,13 @@ public:
     /** The clip hatch's peaks: the last take's, by the bars' own names and louder side. */
     float stemPeak (int pair) const;   // 0-7
     float analogPeak (int channel) const;   // 1-4
+    float deckPeak (int deck) const;        // 0-3
     float fxReturnPeak() const;
 
 private:
     static std::string stemName (int pair);
     static std::string analogName (int channel);
+    static std::string deckName (int deck);
     float louderTaken (const std::string& left, const std::string& right) const;
     Reading one (const std::string& name, std::int64_t nowMs) const;
     Reading louder (const std::string& left, const std::string& right, std::int64_t nowMs) const;

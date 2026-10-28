@@ -217,7 +217,6 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
                                                               { "C", 4, 5 },
                                                               { "D", 6, 7 },
                                                               { "ST", analogInput, analogInput } } };
-    constexpr const char* absentName = "-";
     const auto slots = channelColumns (width);
     const auto rows = bands (height);
     const int stemWidth = slots[0].x1 - slots[0].x0 + 1;
@@ -236,7 +235,7 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     {
         const Span span { slots[(size_t) groups[i].first].x0, slots[(size_t) groups[i].last].x1 };
         columns.push_back (centred (span, stemWidth));
-        p.headings.push_back ({ { span.x0, rows[0].top, span.x1, rows[0].bottom }, there[i] ? groups[i].name : absentName });
+        p.headings.push_back ({ { span.x0, rows[0].top, span.x1, rows[0].bottom }, groups[i].name });
         if (! there[i])
         {
             shownLevels[i] = 0.0;

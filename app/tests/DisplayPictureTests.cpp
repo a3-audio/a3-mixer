@@ -169,7 +169,7 @@ TEST (DisplayPicture, DeckChannelSnapshot)
     }
 }
 
-// A page test must paint: an absent deck is a dash over an empty slot, a present one a bar.
+// A page test must paint: an absent deck keeps its letter over an empty slot, a present one a bar.
 TEST (DisplayPicture, DeckChannelSnapshotPaintsAbsentDeckEmpty)
 {
     const auto picture = enginePicture (0, 0, { true, false, true, true }, { 1, 1, 1, 1, 1 }, oledWidth, oledHeight,
@@ -186,7 +186,7 @@ TEST (DisplayPicture, DeckChannelSnapshotPaintsAbsentDeckEmpty)
     EXPECT_GT (lit (picture.meters[0].box), 0);   // D1
     EXPECT_EQ (lit (picture.meters[1].box), 0);   // D2 absent: no bar
     EXPECT_GT (lit (picture.meters[4].box), 0);   // A
-    EXPECT_EQ (picture.headings[1].text, "-");
+    EXPECT_EQ (picture.headings[1].text, "B");   // the letter stays: five fixed slots
 }
 
 // 1 2 3 4 A, analog last (maintainer, 2026-10-26); the numbers are Core's (0 analog, k deck k).
@@ -200,9 +200,9 @@ TEST (DeskRing, EngineModeLabelsOnThePicture)
     const auto centre = [] (const Box& b) { return b.x0 + b.x1; };
     EXPECT_LE (std::abs (centre (all.cursor) - centre (all.meters[4].box)), 1);   // arrow over A
     EXPECT_EQ (all.active.x0, all.meters[0].box.x0 - 1);                          // bracket round D1
-    // An absent deck keeps cursor and bracket (they are Core's) and is only drawn "-".
+    // An absent deck keeps cursor, bracket (they are Core's) and its letter: five fixed slots.
     const auto absent = enginePicture (4, 3, { true, true, true, false }, {}, oledWidth, oledHeight, {}, {});
-    EXPECT_EQ (absent.headings[3].text, "-");
+    EXPECT_EQ (absent.headings[3].text, "D");
     EXPECT_EQ (absent.active.x0, absent.meters[3].box.x0 - 1);
     EXPECT_LE (std::abs (centre (absent.cursor) - centre (absent.meters[2].box)), 1);
 }

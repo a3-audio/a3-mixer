@@ -91,20 +91,23 @@ class DeckRing(unittest.TestCase):
         self.displays.show_cursor(0, 4)
         self.assertEqual(cursor_of(self.picture_of(0)), 1)
 
-    def test_deck_meters_are_their_stems_and_a_is_the_input(self):
+    def test_a_stem_meter_feeds_no_deck_bar(self):
+        # A deck bar is the deck's own meter (deck_a ... deck_d); stem pair 1
+        # is deck A's stem 1, not deck A on channel 1.
         self.decks_there()
         self.displays.show_source(0, 0)
-        self.displays.note_peak(1, 1.0)         # stem pair 1: deck 1's stem on channel 1
+        self.displays.note_peak(1, 1.0)
         self.displays.step_meters()
         levels = [m.level for m in self.picture_of(0).meters]
-        self.assertGreater(levels[0], 0.0)      # D1: the stem
-        self.assertEqual(levels[1:], [0.0] * 4)
+        self.assertEqual(levels, [0.0] * 5)
 
-    def test_decks_are_absent_until_core_reports_them(self):
+    def test_an_absent_deck_keeps_its_letter(self):
+        # Five fixed slots (maintainer, 2026-10-28): nothing is renamed or
+        # moves when a deck comes or goes.
         self.displays.show_source(0, 0)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
         self.displays.show_deck_present(2, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "C", "-", "ST"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
 
     def test_an_absent_deck_keeps_its_cursor_and_bracket(self):
         self.displays.show_source(0, 2)
@@ -112,7 +115,7 @@ class DeckRing(unittest.TestCase):
         picture = self.picture_of(0)
         self.assertEqual(self.active_of(picture), 1)
         self.assertEqual(cursor_of(picture), 0)
-        self.assertEqual(self.names(picture), ["-", "-", "-", "-", "ST"])
+        self.assertEqual(self.names(picture), ["A", "B", "C", "D", "ST"])
 
     def test_a_new_core_puts_the_interim_ring_back(self):
         self.decks_there()
@@ -125,7 +128,7 @@ class DeckRing(unittest.TestCase):
         self.assertEqual(len(self.rig.drawn), 4)    # four channels
         self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "ST"])
         self.displays.show_source(0, 0)     # engine again: decks unreported, cursor home
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
         self.assertEqual(cursor_of(self.picture_of(0)), 4)
 
     def test_a_second_channels_report_posts_only_its_own_panel(self):
@@ -136,15 +139,16 @@ class DeckRing(unittest.TestCase):
         self.displays.drain()
         self.assertEqual(len(self.rig.drawn), 1)
 
-    def test_absent_deck_is_drawn_absent(self):
+    def test_absent_deck_is_drawn_dim(self):
+        # Its letter and its place stay; no bar and no scale marks.
         self.displays.show_source(0, 0)
         self.decks_there()
-        self.displays.note_peak(1, 1.0)
+        self.displays.note_deck(0, 1.0)
         self.displays.step_meters()
         marks_present = len(self.picture_of(0).marks)
         self.displays.show_deck_present(0, False)
         picture = self.picture_of(0)
-        self.assertEqual(self.names(picture), ["-", "B", "C", "D", "ST"])
+        self.assertEqual(self.names(picture), ["A", "B", "C", "D", "ST"])
         self.assertEqual(picture.meters[0].level, 0.0)
         self.assertEqual(len(picture.marks), marks_present - 2)
         self.displays.show_deck_present(0, True)
@@ -161,7 +165,8 @@ class DeckRing(unittest.TestCase):
     def test_a_deck_past_four_changes_nothing(self):
         self.displays.show_source(0, 0)
         self.displays.show_deck_present(4, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
+        self.assertEqual([m.level for m in self.picture_of(0).meters], [0.0] * 5)
+        self.assertEqual(self.picture_of(0).marks, self.picture_of(1).marks)
 
     def test_announcements(self):
         self.assertEqual(source_announcement([2]), 2)
@@ -242,3 +247,126 @@ class EngineHeadingSize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheRingFromTheStart(unittest.TestCase):
+    """With a truth that has the engine's words the desk is on the ring A B C
+    D ST from its first picture: five fixed slots, nothing moves or is
+    renamed when Core, a source or a deck report arrives, or a new Core
+    comes (maintainer, 2026-10-28: "braucht nicht umskalieren")."""
+
+    def setUp(self):
+        self.rig = Rig()
+        self.displays = self.rig.displays()
+        self.displays.start_on_ring()
+        self.displays.blank_all()
+
+    def picture_of(self, index):
+        return self.displays._picture_for(panel_for_channel(index))(128, 64)
+
+    def layout(self, index=0):
+        picture = self.picture_of(index)
+        return ([(h.box, h.text) for h in picture.headings],
+                [m.box for m in picture.meters], picture.dividers)
+
+    def test_the_first_picture_is_the_ring_with_analog_playing(self):
+        picture = self.picture_of(0)
+        self.assertEqual([h.text for h in picture.headings], ["A", "B", "C", "D", "ST"])
+        self.assertEqual(len(picture.meters), 5)
+        self.assertEqual(picture.active[0] + 1, picture.meters[4].box[0])
+
+    def test_no_report_moves_or_renames_a_slot(self):
+        first = self.layout()
+        steps = (lambda: self.displays.show_source(0, 2),
+                 lambda: self.displays.show_deck_present(1, True),
+                 lambda: self.displays.show_deck_present(0, True),
+                 lambda: self.displays.show_source_cursor(0, 3),
+                 lambda: self.displays.show_deck_present(1, False),
+                 self.displays.forget_engine)
+        for step in steps:
+            step()
+            self.assertEqual(self.layout(), first)
+
+    def test_a_new_core_keeps_the_ring(self):
+        self.displays.show_source(0, 2)
+        self.displays.forget_engine()
+        picture = self.picture_of(0)
+        self.assertEqual([h.text for h in picture.headings], ["A", "B", "C", "D", "ST"])
+        self.assertEqual(picture.active[0] + 1, picture.meters[4].box[0])   # analog until told
+
+
+class DeckBarsShowTheirDecks(unittest.TestCase):
+    """Each deck's bar is the engine's meter of that deck (/vu 37-40,
+    deck_a ... deck_d: its W before any channel), on every channel, playing
+    there or not -- as ST is the analog input whatever plays."""
+
+    def setUp(self):
+        self.now = 0.0
+        self.rig = Rig()
+        self.displays = self.rig.displays(clock=lambda: self.now)
+        self.displays.start_on_ring()
+        self.displays.blank_all()
+        self.displays.drain()
+        for deck in range(4):
+            self.displays.show_deck_present(deck, True)
+
+    def levels(self, index=0):
+        picture = self.displays._picture_for(panel_for_channel(index))(128, 64)
+        return [m.level for m in picture.meters]
+
+    def step(self):
+        from display_panel import METER_STEPS_PER_SECOND
+        self.now += 1.0 / METER_STEPS_PER_SECOND
+        self.displays.step_meters()
+
+    def levels_for_peak(self, peak):
+        from a3_mixer_meters import DEFAULT_METER_TIMING, MeterBallistics, bar_fraction, peak_db
+        ballistics = MeterBallistics(DEFAULT_METER_TIMING, lambda: self.now)
+        return bar_fraction(ballistics.feed(peak_db(peak))[0])
+
+    def test_each_deck_bar_is_its_decks_meter_on_every_channel(self):
+        self.displays.show_source(0, 1)       # deck A plays on channel 1, B nowhere
+        self.displays.note_deck(1, 1.0)
+        self.displays.note_deck(3, 0.5)
+        self.step()
+        for channel in range(4):
+            self.assertEqual(self.levels(channel),
+                             [0.0, self.levels_for_peak(1.0), 0.0, self.levels_for_peak(0.5), 0.0])
+
+    def test_st_keeps_its_analog_level_beside_them(self):
+        self.displays.note_deck(0, 1.0)
+        self.displays.note_analog(0, 0, 1.0)
+        self.step()
+        levels = self.levels()
+        self.assertGreater(levels[0], 0.0)
+        self.assertGreater(levels[4], 0.0)
+
+    def test_an_absent_deck_shows_no_bar(self):
+        self.displays.show_deck_present(2, False)
+        self.displays.note_deck(2, 1.0)
+        self.step()
+        self.assertEqual(self.levels()[2], 0.0)
+
+    def test_a_deck_bar_falls_when_its_meter_goes_silent(self):
+        self.displays.note_deck(0, 1.0)
+        self.step()
+        for _ in range(60):
+            self.step()
+        self.assertEqual(self.levels()[0], 0.0)
+
+    def test_a_deck_past_four_is_ignored(self):
+        self.displays.note_deck(4, 1.0)
+        self.displays.note_deck(-1, 1.0)
+        self.step()
+        self.assertEqual(self.levels(), [0.0] * 5)
+
+
+class TheDeskStartsOnTheRing(unittest.TestCase):
+    """a3-mixer.py needs the Pi to import, so its wiring is read: with the
+    engine's words in the truth the displays start on the ring."""
+
+    def test_it_asks_for_the_ring_when_the_truth_has_the_engines_words(self):
+        source = (Path(__file__).resolve().parents[1] / "scripts/a3-mixer.py").read_text()
+        opened = source.split("displays = open_displays(", 1)[1].split("displays.blank_all()", 1)[0]
+        self.assertIn('if "channel.source" in osc.engine_keys():', opened)
+        self.assertIn("displays.start_on_ring()", opened)

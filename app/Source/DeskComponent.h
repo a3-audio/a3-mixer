@@ -131,6 +131,7 @@ private:
     std::unique_ptr<OledView> _returnDisplay;
     std::unique_ptr<StatusLine> _status;
     std::array<std::array<display::ClipHold, display::channelMeters>, numChannels> _channelClips;
+    std::array<std::array<display::ClipHold, display::engineDecks>, numChannels> _deckClips;   // per channel, as its bars
     display::ClipHold _returnClip;
 };
 }

@@ -177,6 +177,9 @@ void DeskComponent::useTruth (a3::OscTruth truth)
     _meters = std::make_unique<DeskMeters> (*_osc, ballistics);
     _ask = StartupAsk();
     _inbox = std::make_unique<DeskInbox> (*_osc, _state, _ind, _ask);
+    // The engine's words in the truth: the ring A B C D ST from the start, no interim that jumps.
+    if (_osc->hasOptional ("channel.source"))
+        _ind.startOnRing();
 }
 
 void DeskComponent::setLinkState (DeskLink::Opened opened)
@@ -398,10 +401,19 @@ void DeskComponent::showDisplays (double dt)
         clips[2] = clipHolds[2].feed (_meters->analogPeak (ch), dt);
         if (_ind.engine)
         {
-            // Ring order 1 2 3 4 A; the interim's levels are D1 | D2 | A, decks 3 and 4 have no meter.
-            const std::array<double, display::engineSlots> ringLevels { levels[0], levels[1], 0.0, 0.0, levels[2] };
-            const std::array<double, display::engineSlots> ringHolds { holds[0], holds[1], 0.0, 0.0, holds[2] };
-            const std::array<bool, display::engineSlots> ringClips { clips[0], clips[1], false, false, clips[2] };
+            // Ring order A B C D ST: each deck's own meter, whatever plays here; ST the analog input.
+            std::array<double, display::engineSlots> ringLevels {}, ringHolds {};
+            std::array<bool, display::engineSlots> ringClips {};
+            for (int deck = 0; deck < display::engineDecks; ++deck)
+            {
+                const auto r = _meters->deck (deck, now);
+                ringLevels[(size_t) deck] = fraction (r.bar);
+                ringHolds[(size_t) deck] = fraction (r.hold);
+                ringClips[(size_t) deck] = _deckClips[(size_t) ch - 1][(size_t) deck].feed (_meters->deckPeak (deck), dt);
+            }
+            ringLevels[display::engineDecks] = levels[2];
+            ringHolds[display::engineDecks] = holds[2];
+            ringClips[display::engineDecks] = clips[2];
             _displays[(size_t) ch - 1]->setPicture (display::enginePicture (
                 _ind.source[(size_t) ch - 1], _ind.sourceCursor[(size_t) ch - 1], _ind.deckPresent, ringLevels,
                 display::oledWidth, display::oledHeight, ringClips, ringHolds));

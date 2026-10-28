@@ -108,12 +108,19 @@ class TheDeskFeedsAFromTheAnalogMeters(unittest.TestCase):
     def test_an_analog_meter_lights_no_led(self):
         self.assertNotIn("send_vu_level", self.branch("osc.analog_side(number)"))
 
-    def test_an_input_meter_no_longer_feeds_a(self):
-        self.assertNotIn("displays.", self.branch("osc.input_side(number)"))
+    def test_an_input_meter_feeds_only_the_leds(self):
+        branch = self.branch("osc.input_side(number)")
+        self.assertIn("send_vu_level(slot", branch)
+        self.assertNotIn("displays.", branch)
+
+    def test_a_deck_meter_is_its_decks_bar(self):
+        branch = self.branch("osc.deck_meter(number)")
+        self.assertIn("displays.note_deck(deck, osc_arguments[0])", branch)
+        self.assertNotIn("send_vu_level", branch)
 
     def test_nothing_else_feeds_a(self):
         self.assertEqual(self.handler.count("displays.note_analog("), 1)
-        self.assertNotIn("note_input", self.handler)
+        self.assertEqual(self.handler.count("displays.note_deck("), 1)
 
 
 class AIsTheAnalogInputWhateverPlays(unittest.TestCase):
