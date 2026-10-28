@@ -396,6 +396,8 @@ class Displays:
         # displays' clock.
         self._stem_peaks = {}
         self._aux_peaks = {}
+        self._input_peaks = {}   # likewise, the channel's in{n}_pre (a deck's W)
+        self._deck_w = {}        # per panel: (level, hold, clip) of the playing deck's W
         self._analog_peaks = {}  # per channel, then per side: {index: {side: held}}
         self._timing = timing
         self._ballistics = {}
@@ -427,6 +429,13 @@ class Displays:
         with self._wake:
             self._hold(self._analog_peaks.setdefault(index, {}), side, peak)
 
+    def note_input(self, index, side, peak):
+        """Channel `index`'s in{n}_pre peak, L (0) or R (1), from the OSC
+        thread. While a deck is the source Core writes the deck's W on both
+        sides there; it is the bar of the selected deck."""
+        with self._wake:
+            self._hold(self._input_peaks.setdefault(index, {}), side, peak)
+
     def _hold(self, peaks, key, peak):
         if not isinstance(peak, (int, float)) or isinstance(peak, bool):
             return
@@ -457,13 +466,14 @@ class Displays:
                     index = PANELS.index(panel)
                     analog = self._move(("analog", index), self._analog_peak(index), dt)
                     levels_and_clips = [stems[index], stems[STEMS_PER_DECK + index], analog]
+                    self._deck_w[panel] = self._move(("deck w", index), self._deck_w_peak(index), dt)
                 self._levels[panel] = tuple(level for level, _, _ in levels_and_clips)
                 self._holds[panel] = tuple(hold for _, hold, _ in levels_and_clips)
                 self._clips[panel] = tuple(clip for _, _, clip in levels_and_clips)
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
             held = [self._stem_peaks, self._aux_peaks]
-            for peaks in held + list(self._analog_peaks.values()):
+            for peaks in held + list(self._analog_peaks.values()) + list(self._input_peaks.values()):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
             self._wake.notify()
@@ -496,6 +506,14 @@ class Displays:
     def _analog_peak(self, index):
         """A's raw peak on channel `index`: its analog input's louder side."""
         return self._louder_side(self._analog_peaks.get(index, {}))
+
+    def _deck_w_peak(self, index):
+        """The deck's W on channel `index`: the louder side of its input
+        meter while a deck is the source, else silence (the meter then
+        carries analog, which ST shows already)."""
+        if not self._sources[index]:
+            return 0.0
+        return self._louder_side(self._input_peaks.get(index, {}))
 
     def _pixels_now(self, panel):
         """The panel's meters in pixels, laid out for its display's size."""
@@ -612,18 +630,29 @@ class Displays:
             clips, holds = self._clips[panel], self._holds[panel]
             source = self._sources[index]
             if source is not None:
-                return self._engine_picture(index, source, levels, clips, holds)
+                return self._engine_picture(panel, index, source, levels, clips, holds)
         return lambda width, height: channel_picture(index, cursor, levels, mask,
                                                      width, height, clips, holds)
 
-    def _engine_picture(self, index, source, levels, clips, holds):
+    def _engine_picture(self, panel, index, source, levels, clips, holds):
         # Called under self._wake: the state is read here, drawn later.
         cursor = self._source_cursors[index]
         present = tuple(self._decks_present)
         levels = engine_levels(levels, 0.0)
         clips, holds = engine_levels(clips, False), engine_levels(holds, 0.0)
+        if source and panel in self._deck_w:
+            levels, holds, clips = (self._with_w(values, w, source - 1)
+                                    for values, w in zip((levels, holds, clips), self._deck_w[panel]))
         return lambda width, height: engine_channel_picture(
             source, cursor, present, levels, width, height, clips, holds)
+
+    @staticmethod
+    def _with_w(values, w, slot):
+        """`values` (five, in ring order) with the selected deck's slot
+        replaced by its W."""
+        if not values:
+            return values
+        return values[:slot] + (w,) + values[slot + 1:]
 
     def _post(self, panel):
         with self._wake:
@@ -724,6 +753,9 @@ class NoDisplays:
         pass
 
     def note_analog(self, index, side, peak):
+        pass
+
+    def note_input(self, index, side, peak):
         pass
 
     def note_peak(self, pair, peak):

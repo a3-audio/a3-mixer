@@ -214,10 +214,12 @@ def vu_handler(address: str,
         channel, side = found
         displays.note_analog(channel, side, osc_arguments[0])
         return
-    # An input's stereo meter carries what plays: its LEDs show the louder side.
+    # An input's stereo meter carries what plays: its LEDs show the louder side,
+    # and while a deck is the channel's source its display's bar shows it (W).
     found = osc.input_side(number)
     if found is not None:
         slot, side = found
+        displays.note_input(slot, side, osc_arguments[0])
         send_vu_level(slot, *stereo_inputs.note(slot, side, osc_arguments[0], osc_arguments[1]))
         return
     slot = osc.vu_slot(number)

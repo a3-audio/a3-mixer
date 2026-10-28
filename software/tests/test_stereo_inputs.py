@@ -99,11 +99,13 @@ class TheDeskLightsTheLouderSide(unittest.TestCase):
         self.assertIn("osc.input_side(number)", self.handler)
         self.assertIn("stereo_inputs.note(", self.handler)
 
-    def test_a_side_lights_the_leds_only(self):
+    def test_a_side_feeds_no_a(self):
         """The stereo input meter carries whatever plays on the channel; A
-        is the analog input's own meter since 2026-10-07."""
+        is the analog input's own meter since 2026-10-07. It feeds the
+        selected deck's bar (W) and nothing else on the display."""
         stereo = self.handler.split("osc.input_side(number)", 1)[1].split("return", 1)[0]
-        self.assertNotIn("displays.", stereo)
+        self.assertNotIn("note_analog", stereo)
+        self.assertNotIn("note_peak", stereo)
 
     def test_the_stereo_side_is_asked_before_the_slot(self):
         self.assertLess(self.handler.index("osc.input_side(number)"),

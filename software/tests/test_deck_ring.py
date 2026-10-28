@@ -242,3 +242,75 @@ class EngineHeadingSize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeckWOnTheSelectedBar(unittest.TestCase):
+    """The selected deck's bar shows the deck's W (the channel's in{n}_pre,
+    /vu/51-58: the louder side); the other bars keep their stems, ST the
+    analog level."""
+
+    def setUp(self):
+        self.now = 0.0
+        self.rig = Rig()
+        self.displays = self.rig.displays(clock=lambda: self.now)
+        self.displays.blank_all()
+        self.displays.drain()
+        for deck in range(4):
+            self.displays.show_deck_present(deck, True)
+
+    def levels(self, index=0):
+        picture = self.displays._picture_for(panel_for_channel(index))(128, 64)
+        return [m.level for m in picture.meters]
+
+    def step(self):
+        from display_panel import METER_STEPS_PER_SECOND
+        self.now += 1.0 / METER_STEPS_PER_SECOND
+        self.displays.step_meters()
+
+    def test_the_selected_decks_bar_is_w_the_louder_side(self):
+        self.displays.show_source(0, 3)
+        self.displays.note_input(0, 0, 0.1)
+        self.displays.note_input(0, 1, 1.0)
+        self.step()
+        levels = self.levels()
+        self.assertEqual(levels[2], self.levels_for_peak(1.0))
+        self.assertEqual(levels[:2] + levels[3:], [0.0] * 4)
+
+    def levels_for_peak(self, peak):
+        from a3_mixer_meters import DEFAULT_METER_TIMING, MeterBallistics, bar_fraction, peak_db
+        ballistics = MeterBallistics(DEFAULT_METER_TIMING, lambda: self.now)
+        return bar_fraction(ballistics.feed(peak_db(peak))[0])
+
+    def test_other_bars_keep_their_stems_and_st_its_analog(self):
+        self.displays.show_source(0, 2)
+        self.displays.note_peak(1, 1.0)          # deck 1's stem
+        self.displays.note_analog(0, 0, 1.0)
+        self.displays.note_input(0, 0, 1.0)
+        self.step()
+        levels = self.levels()
+        self.assertGreater(levels[0], 0.0)
+        self.assertGreater(levels[1], 0.0)       # W on deck 2
+        self.assertEqual(levels[2:4], [0.0, 0.0])
+        self.assertGreater(levels[4], 0.0)
+
+    def test_with_st_selected_the_input_meter_changes_nothing(self):
+        self.displays.show_source(0, 0)
+        self.displays.note_input(0, 0, 1.0)
+        self.step()
+        self.assertEqual(self.levels(), [0.0] * 5)
+
+    def test_w_is_its_own_channels(self):
+        self.displays.show_source(0, 1)
+        self.displays.show_source(1, 1)
+        self.displays.note_input(1, 0, 1.0)
+        self.step()
+        self.assertEqual(self.levels(0)[0], 0.0)
+        self.assertGreater(self.levels(1)[0], 0.0)
+
+    def test_w_falls_when_the_meter_goes_silent(self):
+        self.displays.show_source(0, 1)
+        self.displays.note_input(0, 0, 1.0)
+        self.step()
+        for _ in range(60):
+            self.step()
+        self.assertEqual(self.levels()[0], 0.0)
