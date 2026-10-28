@@ -24,7 +24,7 @@ whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
 The return's display is the FX Return, the master of the delay channel
-(P47): one mono meter under FX RTN -- aux_L/aux_R, the return after RETURN,
+(P47): one mono meter under AUX-RETURN -- aux_L/aux_R, the return after RETURN,
 the louder side -- and, at its right edge behind a divider, the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
 is cued. Its encoder's push toggles the cue; with nothing to choose there is

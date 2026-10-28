@@ -85,14 +85,16 @@ TEST (DisplayPicture, ReturnPicturesAreThePythons)
     }
 }
 
-// P47: the FX Return is the delay channel's master: one meter under FX RTN (P42's short form), the CUE
+// P47: the FX Return is the delay channel's master: one meter under AUX-RETURN, the CUE
 // field, no arrow and no bracket.
-TEST (DisplayPicture, TheReturnIsOneMeterNamedFxRtn)
+TEST (DisplayPicture, TheReturnIsOneMeterNamedAuxReturn)
 {
     const auto picture = returnPicture (false, 0.5, 128, 64, false, 0.0);
     ASSERT_EQ (picture.headings.size(), 1u);
-    EXPECT_EQ (picture.headings[0].text, "FX RTN");
+    EXPECT_EQ (picture.headings[0].text, "AUX-RETURN");
     EXPECT_EQ (picture.meters.size(), 1u);
+    EXPECT_GE (picture.headings[0].box.x1 - picture.headings[0].box.x0 + 1, 80);
+    EXPECT_LE (picture.meters[0].box.x1 - picture.meters[0].box.x0 + 1, 24);
     EXPECT_TRUE (isEmpty (picture.cursor));
     EXPECT_TRUE (isEmpty (picture.active));
     ASSERT_TRUE (picture.toggle.has_value());

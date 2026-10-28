@@ -173,9 +173,9 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, shortened to fit the heading (P42), and its CUE field. It has no
+#: its name, written out in a wide heading box (2026-10-28), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
-RETURN_NAME = "FX RTN"
+RETURN_NAME = "AUX-RETURN"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -527,12 +527,15 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
 #: The return's heading as a share of the panel's width, and its meter as a
 #: share of its heading: as slim as the channels' bars look beside their
 #: neighbours.
-RETURN_HEADING_OF_WIDTH = 0.34
-RETURN_METER_OF_HEADING = 0.5
+# AUX-RETURN is written out on one line, so its box is wide (0.75 of the panel,
+# left of the divider); the meter keeps the width it had under the short form
+# (0.34 * 0.5 of the panel = 0.2267 of the box).
+RETURN_HEADING_OF_WIDTH = 0.75
+RETURN_METER_OF_HEADING = 0.2267
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0):
-    """The FX Return: one mono meter under FX RTN, centred left of the
+    """The FX Return: one mono meter under AUX-RETURN, centred left of the
     divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose."""
     (h0, h1), _, (m0, m1) = _bands(height)

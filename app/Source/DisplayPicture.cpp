@@ -13,7 +13,7 @@ namespace
 {
 constexpr int innerGap = 2, groupGap = 7, edge = 1, lastSlotMeters = 2;
 constexpr int arrowRows = 5, arrowWidth = 2 * arrowRows, bracketRows = 4;
-constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.34, returnMeterOfHeading = 0.5;
+constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.75, returnMeterOfHeading = 0.2267;
 constexpr std::array<double, 2> markedFractions { 4.0 / 8.0, 6.0 / 8.0 };   // first yellow, first red LED
 constexpr int channelMarkLength = innerGap - 1;
 
@@ -271,7 +271,7 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     const int left = x0 + floorDiv (heading - meter, 2);
 
     Picture p;
-    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "FX RTN" });
+    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RETURN" });
     p.meters = metersFor (std::vector<Box> { { left, meterRows.top, left + meter - 1, meterRows.bottom } },
                           std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
     p.toggle = Toggle { { toggleSlot.x0, meterRows.top, toggleSlot.x1, meterRows.bottom }, cue, "CUE" };

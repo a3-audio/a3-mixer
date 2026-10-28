@@ -147,13 +147,13 @@ class WhatIsDrawn(unittest.TestCase):
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_its_one_meter(self):
-        """P47: FX RTN, one meter, no arrow and no bracket."""
+        """P47: AUX-RETURN, one meter, no arrow and no bracket."""
         rig = Rig()
         displays = rig.displays()
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["FX RTN"])
+        self.assertEqual([h.text for h in picture.headings], ["AUX-RETURN"])
         self.assertEqual(len(picture.meters), 1)
         self.assertIsNone(picture.active)
         self.assertIsNone(picture.cursor)
@@ -639,11 +639,11 @@ class WhatPlaysWhere(unittest.TestCase):
         return [h.text for h in picture.headings]
 
     def test_the_return_is_the_same_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RETURN"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RETURN"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RETURN"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))

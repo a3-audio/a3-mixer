@@ -385,7 +385,7 @@ class ActiveBracket(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """P47: the FX Return is the master of the delay channel. Its display is
-    one mono meter under FX RTN -- the return after RETURN -- and the CUE
+    one mono meter under AUX-RETURN -- the return after RETURN -- and the CUE
     field: no source to choose, so no second meter, no arrow and no active
     bracket."""
 
@@ -395,11 +395,19 @@ class ReturnMeter(unittest.TestCase):
 
     def test_one_meter_under_one_name(self):
         p = self.picture(level=0.4)
-        self.assertEqual([h.text for h in p.headings], ["FX RTN"])
+        self.assertEqual([h.text for h in p.headings], ["AUX-RETURN"])
         self.assertEqual([m.level for m in p.meters], [0.4])
         heading, meter = p.headings[0].box, p.meters[0].box
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
         self.assertLess(heading[3], meter[1])
+
+    def test_the_name_has_a_box_wide_enough_for_one_legible_line(self):
+        """AUX-RETURN is never cut and never shrunk into 43 px: its box is
+        wide, the meter keeps its width."""
+        p = self.picture()
+        heading, meter = p.headings[0].box, p.meters[0].box
+        self.assertGreaterEqual(heading[2] - heading[0] + 1, 80)
+        self.assertLessEqual(meter[2] - meter[0] + 1, 24)
 
     def test_no_arrow_and_no_bracket(self):
         p = self.picture()
