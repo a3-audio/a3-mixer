@@ -165,7 +165,7 @@ class ChannelSelector(unittest.TestCase):
 
     def test_three_headings_over_their_meters(self):
         p = self.picture()
-        self.assertEqual([h.text for h in p.headings], ["D1", "D2", "A"])
+        self.assertEqual([h.text for h in p.headings], ["A", "B", "ST"])
         for heading, meter in zip(p.headings, p.meters):
             self.assertLess(heading.box[3], meter.box[1])
 

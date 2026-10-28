@@ -35,7 +35,7 @@ struct Group
     const char* name;
     int first, last;
 };
-constexpr std::array<Group, 3> channelGroups { { { "D1", 0, 3 }, { "D2", 4, 7 }, { "A", analogInput, analogInput } } };
+constexpr std::array<Group, 3> channelGroups { { { "A", 0, 3 }, { "B", 4, 7 }, { "ST", analogInput, analogInput } } };
 
 std::vector<Span> channelColumns (int width)
 {
@@ -212,11 +212,11 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
         const char* name;
         int first, last;
     };
-    constexpr std::array<EngineGroup, engineSlots> groups { { { "1", 0, 1 },
-                                                              { "2", 2, 3 },
-                                                              { "3", 4, 5 },
-                                                              { "4", 6, 7 },
-                                                              { "A", analogInput, analogInput } } };
+    constexpr std::array<EngineGroup, engineSlots> groups { { { "A", 0, 1 },
+                                                              { "B", 2, 3 },
+                                                              { "C", 4, 5 },
+                                                              { "D", 6, 7 },
+                                                              { "ST", analogInput, analogInput } } };
     constexpr const char* absentName = "-";
     const auto slots = channelColumns (width);
     const auto rows = bands (height);

@@ -52,10 +52,10 @@ class DeckRing(unittest.TestCase):
         self.displays.show_source_cursor(1, 1)
         self.displays.drain()
         drawn = self.picture_of(1)
-        self.assertEqual(self.names(drawn), ["1", "2", "3", "4", "A"])
+        self.assertEqual(self.names(drawn), ["A", "B", "C", "D", "ST"])
         self.assertEqual(self.active_of(drawn), 1)      # deck 2 plays
         self.assertEqual(cursor_of(drawn), 0)           # the cursor is on deck 1
-        self.assertEqual(self.names(self.picture_of(0)), ["1", "2", "3", "4", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
 
     def test_analog_is_the_last_slot(self):
         self.decks_there()
@@ -87,7 +87,7 @@ class DeckRing(unittest.TestCase):
         self.assertEqual(cursor_of(self.picture_of(0)), 4)
 
     def test_reaper_mode_ring_is_unchanged(self):
-        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "ST"])
         self.displays.show_cursor(0, 4)
         self.assertEqual(cursor_of(self.picture_of(0)), 1)
 
@@ -102,9 +102,9 @@ class DeckRing(unittest.TestCase):
 
     def test_decks_are_absent_until_core_reports_them(self):
         self.displays.show_source(0, 0)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
         self.displays.show_deck_present(2, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "3", "-", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "C", "-", "ST"])
 
     def test_an_absent_deck_keeps_its_cursor_and_bracket(self):
         self.displays.show_source(0, 2)
@@ -112,7 +112,7 @@ class DeckRing(unittest.TestCase):
         picture = self.picture_of(0)
         self.assertEqual(self.active_of(picture), 1)
         self.assertEqual(cursor_of(picture), 0)
-        self.assertEqual(self.names(picture), ["-", "-", "-", "-", "A"])
+        self.assertEqual(self.names(picture), ["-", "-", "-", "-", "ST"])
 
     def test_a_new_core_puts_the_interim_ring_back(self):
         self.decks_there()
@@ -123,9 +123,9 @@ class DeckRing(unittest.TestCase):
         self.displays.forget_engine()
         self.displays.drain()
         self.assertEqual(len(self.rig.drawn), 4)    # four channels
-        self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "ST"])
         self.displays.show_source(0, 0)     # engine again: decks unreported, cursor home
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
         self.assertEqual(cursor_of(self.picture_of(0)), 4)
 
     def test_a_second_channels_report_posts_only_its_own_panel(self):
@@ -144,11 +144,11 @@ class DeckRing(unittest.TestCase):
         marks_present = len(self.picture_of(0).marks)
         self.displays.show_deck_present(0, False)
         picture = self.picture_of(0)
-        self.assertEqual(self.names(picture), ["-", "2", "3", "4", "A"])
+        self.assertEqual(self.names(picture), ["-", "B", "C", "D", "ST"])
         self.assertEqual(picture.meters[0].level, 0.0)
         self.assertEqual(len(picture.marks), marks_present - 2)
         self.displays.show_deck_present(0, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["1", "2", "3", "4", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
 
     def test_a_deck_report_redraws_every_channel(self):
         self.displays.show_source(0, 0)
@@ -161,7 +161,7 @@ class DeckRing(unittest.TestCase):
     def test_a_deck_past_four_changes_nothing(self):
         self.displays.show_source(0, 0)
         self.displays.show_deck_present(4, True)
-        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])
+        self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "ST"])
 
     def test_announcements(self):
         self.assertEqual(source_announcement([2]), 2)

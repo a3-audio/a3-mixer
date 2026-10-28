@@ -143,7 +143,7 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_cursor(0, 0)
         displays.drain()
         _, picture = rig.drawn[0]                       # Deck 1, first in the table
-        self.assertEqual([h.text for h in picture.headings], ["D1", "D2", "A"])
+        self.assertEqual([h.text for h in picture.headings], ["A", "B", "ST"])
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_its_one_meter(self):
@@ -924,7 +924,7 @@ class Painting(unittest.TestCase):
         picture = self.states()[name]
         image = self.paint_state(name, picture)
         heading, meter = picture.headings[2], picture.meters[2]
-        self.assertEqual(heading.text, "A")
+        self.assertEqual(heading.text, "ST")
         self.assertTrue(self.lit(image, heading.box))
         self.assertGreater(meter.pixels(), 0)
         self.assertTrue(self.all_lit(image, self.bar_pixels(meter)))

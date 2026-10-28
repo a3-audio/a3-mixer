@@ -142,7 +142,7 @@ ANALOG_INPUT = PAIRS
 STEMS_PER_DECK = 4
 #: Headings over the channel's meters: the name, the first and the last
 #: slot of the grid (_channel_columns) it spans. A heads the ninth slot.
-CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", ANALOG_INPUT, ANALOG_INPUT))
+CHANNEL_GROUPS = (("A", 0, 3), ("B", 4, 7), ("ST", ANALOG_INPUT, ANALOG_INPUT))
 
 
 def channel_ring(index):
@@ -473,8 +473,8 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
 #: deck two stem slots, A the ninth slot as in the interim. A deck that is
 #: not there reads ABSENT_NAME and has no bar.
 ANALOG_SOURCE = 0
-ENGINE_GROUPS = (("1", 1, 0, 1), ("2", 2, 2, 3), ("3", 3, 4, 5), ("4", 4, 6, 7),
-                 ("A", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
+ENGINE_GROUPS = (("A", 1, 0, 1), ("B", 2, 2, 3), ("C", 3, 4, 5), ("D", 4, 6, 7),
+                 ("ST", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
 ENGINE_SOURCES = tuple(source for _, source, _, _ in ENGINE_GROUPS)
 #: Core numbers decks 1-4.
 CORE_DECKS = 4
