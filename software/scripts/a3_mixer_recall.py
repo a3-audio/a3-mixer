@@ -137,6 +137,30 @@ class CoreArrival:
         self._last = None
 
 
+class ForgetThenAsk:
+    """A new Core wipes what the displays know of engine mode, then asks for
+    the state again. `forget()` wipes, `ask()` sends /state/recall. The
+    first announcement after the desk's start is news too, and it lands up
+    to 2 s after the desk's own recall was answered: forgetting alone wiped
+    that answer, and Core repeats a value only when it changes (rig,
+    2026-10-28: no deck meters, the bracket stuck on ST). An ask that cannot
+    be sent is said and tried on the next announcement."""
+
+    def __init__(self, arrival, forget, ask, report):
+        self._arrival = arrival
+        self._forget, self._ask, self._report = forget, ask, report
+
+    def heard(self, now, boot_id=None):
+        if not self._arrival.heard(now, boot_id):
+            return
+        self._forget()
+        try:
+            self._ask()
+        except OSError as error:
+            self._arrival.forget()
+            self._report("a3-mixer: cannot ask Core for the state yet: %s" % error)
+
+
 class DeskInFront:
     """The desk is in front: when Core turns up, hello at once, then every
     position. `send(kind)` sends "hello"; `dump()` sends the positions. A
