@@ -189,6 +189,24 @@ TEST (DeskMeters, TheClipPeaksReadTheBarsNames)
     EXPECT_FLOAT_EQ (meters.fxReturnPeak(), 1.4f);
 }
 
+// The engine's deck meters (/vu 37-40, deck_a ... deck_d): each deck's W before any channel, its bar on
+// every channel display (2026-10-28: a one-deck StemDeck sends no stem meters).
+TEST (DeskMeters, EachDeckReadsItsOwnMeter)
+{
+    const DeskOsc osc (test::truth());
+    DeskMeters meters (osc, test::truth().meterBallistics());
+    std::vector<std::optional<float>> peaks ((size_t) test::truth().vuCount());
+    for (const auto* name : { "deck_a", "deck_b", "deck_c", "deck_d" })
+        ASSERT_GT (osc.vuNumber (name), 0) << name;
+    peaks[(size_t) osc.vuNumber ("deck_b") - 1] = 0.5f;
+    peaks[(size_t) osc.vuNumber ("deck_d") - 1] = 1.2f;
+    meters.take (peaks, 1000);
+    EXPECT_FLOAT_EQ (meters.deck (0, 1000).bar, 0.f);
+    EXPECT_NEAR (meters.deck (1, 1000).bar, 0.5f, 1e-4f);
+    EXPECT_FLOAT_EQ (meters.deckPeak (3), 1.2f);
+    EXPECT_FLOAT_EQ (meters.deck (4, 1000).bar, 0.f);   // no fifth deck
+}
+
 namespace
 {
 struct LiveDesk
@@ -289,6 +307,21 @@ TEST (DeskRing, DecksThreeAndFourAreHeardAndKept)
     EXPECT_EQ (d.ind.source[0], 3);
     EXPECT_EQ (d.ind.sourceCursor[0], 4);
     EXPECT_EQ (d.ind.deckPresent, (std::array<bool, 4> { false, false, true, true }));
+}
+
+// Five fixed slots (maintainer, 2026-10-28): with the engine's words in the truth the ring is there from
+// the start, and a new Core keeps it -- analog plays until Core reports again.
+TEST (DeskRing, OnTheRingFromTheStartAndAfterANewCore)
+{
+    Desk d;
+    d.ind.startOnRing();
+    EXPECT_TRUE (d.ind.engine);
+    d.hear ("channel.source", 3, 2);
+    d.hear ("stemdeck.present", 2, 1);
+    d.ind.forgetEngine();
+    EXPECT_TRUE (d.ind.engine);
+    EXPECT_EQ (d.ind.source[2], 0);
+    EXPECT_FALSE (d.ind.deckPresent[1]);
 }
 
 TEST (DeskRing, ANewCoreClearsEngineMode)

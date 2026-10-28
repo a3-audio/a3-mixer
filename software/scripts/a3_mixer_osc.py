@@ -120,6 +120,10 @@ STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
 #: The FX Return's meter, left and right: the return display's one bar (P47).
 AUX_METERS = ("aux_L", "aux_R")
 
+#: The engine's deck meters, decks 1-4 (/vu 37-40 since 2026-10-28): each
+#: deck's W before any channel, the channel displays' deck bars.
+DECK_METERS = ("deck_a", "deck_b", "deck_c", "deck_d")
+
 
 class TruthMissing(Exception):
     """No truth to read -- the desk cannot know where Core is."""
@@ -263,6 +267,10 @@ class MixerOsc:
         (aux_R), None for any other /vu/<number>."""
         return self._side(number, AUX_METERS)
 
+    def deck_meter(self, number):
+        """The deck (0-3) whose meter /vu/<number> is, or None."""
+        return self._side(number, DECK_METERS)
+
     def _side(self, number, names):
         meters = self._data.get("vu_meters", [])
         if not 1 <= number <= len(meters):
@@ -296,7 +304,8 @@ class MixerOsc:
 
     def _lights_something(self, number):
         return any(found is not None for found in (
-            self.stem_pair(number), self.aux_side(number), self.input_side(number),
+            self.stem_pair(number), self.aux_side(number), self.deck_meter(number),
+            self.input_side(number),
             self.analog_side(number), self.vu_slot(number)))
 
     @property

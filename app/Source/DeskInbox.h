@@ -33,6 +33,8 @@ struct Indicators
     /** Engine mode (Plan 4e): from Core's first `channel.source` report until a new Core. Each channel's
         source and cursor in the ring 1 2 3 4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
     bool engine = false;
+    /** The truth has the engine's words: the ring from the start, kept across a new Core (2026-10-28). */
+    bool onRing = false;
     std::array<int, numChannels> source {}, sourceCursor {};
     std::array<bool, display::engineDecks> deckPresent {};
     double tapLitUntilMs = -1.0;
@@ -41,10 +43,17 @@ struct Indicators
     bool prodjLive = false;
     double prodjLiveUntilMs = -1.0;
 
-    /** A new Core may come up as REAPER's, which reports no source: back to the interim's ring. */
+    void startOnRing()
+    {
+        onRing = true;
+        engine = true;
+    }
+
+    /** A new Core: its sources are unknown until it reports them -- analog on the ring, or, without the
+        engine's words in the truth, back to the interim's ring (it may have come up as REAPER's). */
     void forgetEngine()
     {
-        engine = false;
+        engine = onRing;
         source = {};
         sourceCursor = {};
         deckPresent = {};

@@ -751,7 +751,7 @@ TEST (DeskComponent, TheChannelDisplayFollowsCoresCursor)
     ASSERT_NE (display, nullptr);
     desk->step (140);
     const auto before = display->createComponentSnapshot (display->getLocalBounds());
-    juce::OSCMessage cursor (juce::OSCAddressPattern (osc().address ("channel.stem.cursor", 2)), 5);
+    juce::OSCMessage cursor (juce::OSCAddressPattern (osc().address ("channel.source.cursor", 2)), 2);
     desk->receive (cursor, 150);
     desk->step (180);
     const auto after = display->createComponentSnapshot (display->getLocalBounds());
@@ -843,24 +843,25 @@ TEST (DeskRing, TheReturnDisplayIsTheSameInEveryMode)
 
 // Without Core's source reports (REAPER mode) the display is the interim's, whatever else arrives; a new
 // Core takes the desk out of engine mode again.
-TEST (DeskRing, ReaperModeUnchanged)
+// Five fixed slots (maintainer, 2026-10-28): the truth has the engine's words, so the ring A B C D ST with
+// analog playing is the first picture, and a new Core brings that picture back -- never the interim's.
+TEST (DeskRing, TheRingFromTheStartAndAfterANewCore)
 {
     Captured c;
     auto desk = deskJoined (c);
     desk->step (140);
-    const auto reaper = displayShot (*desk, 0);
-    hearEngine (*desk, "stemdeck.present", 1, 1, 150);   // a deck report alone is no engine mode
-    hearEngine (*desk, "channel.source.cursor", 1, 2, 150);
+    const auto start = displayShot (*desk, 0);
+    hearEngine (*desk, "channel.source", 1, 0, 160);   // Core's first report: analog, as already shown
     desk->step (180);
-    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 0)));
+    EXPECT_TRUE (samePixels (start, displayShot (*desk, 0)));
 
     hearEngine (*desk, "channel.source", 1, 1, 200);
     desk->step (220);
-    EXPECT_FALSE (samePixels (reaper, displayShot (*desk, 0)));   // engine mode paints its own ring
+    EXPECT_FALSE (samePixels (start, displayShot (*desk, 0)));
 
     desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-2" }, 9000);
     desk->step (9020);
     answer (*desk, 9100);   // the surface dims until the new Core answers
     desk->step (9120);
-    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 0)));
+    EXPECT_TRUE (samePixels (start, displayShot (*desk, 0)));
 }

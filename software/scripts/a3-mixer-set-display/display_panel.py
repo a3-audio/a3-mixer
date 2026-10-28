@@ -471,7 +471,8 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
 #: is the heading, the number `channel.source` carries (0 analog, k deck k)
 #: and the first and last slot of the grid (_channel_columns) it spans: a
 #: deck two stem slots, A the ninth slot as in the interim. A deck that is
-#: not there reads ABSENT_NAME and has no bar.
+#: not there keeps its letter and its place, dim: no bar and no scale marks
+#: (maintainer, 2026-10-28: five fixed slots, nothing rescales).
 ANALOG_SOURCE = 0
 ENGINE_GROUPS = (("A", 1, 0, 1), ("B", 2, 2, 3), ("C", 3, 4, 5), ("D", 4, 6, 7),
                  ("ST", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
@@ -481,21 +482,11 @@ CORE_DECKS = 4
 DECKS = CORE_DECKS
 #: What an arrow box with no rows draws: nothing.
 NO_ARROW = (0, 0, -1, -1)
-ABSENT_NAME = "-"
 
 
 def engine_slot(source):
     """The display slot (0-4) of a ring place (0 analog, k deck k)."""
     return ENGINE_SOURCES.index(source)
-
-
-def engine_levels(values, empty):
-    """The interim's (D1, D2, A) values in the engine ring's order
-    1 2 3 4 A: decks 3 and 4 have no meter, they read `empty`."""
-    if not values:
-        return ()
-    d1, d2, analog = values
-    return (d1, d2, empty, empty, analog)
 
 
 def _engine_layout(width, height):
@@ -514,14 +505,12 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
     """A channel in engine mode: 1 2 3 4 A, `source` (0 analog, k deck
     k) under the active bracket, `cursor` (the same numbers) under the arrow.
     `levels`, `clips` and `holds` are in display order, five each; `present`
-    says per deck (1-4) whether it is there -- an absent deck is a dash over
-    an empty slot, no bar and no scale marks."""
+    says per deck (1-4) whether it is there -- an absent deck keeps its
+    letter over an empty slot, no bar and no scale marks."""
     spans, columns, divider, ((h0, h1), arrow, (m0, m1)) = _engine_layout(width, height)
     there = tuple(bool(on) for on in present) + (True,)
-    names = [name if on else ABSENT_NAME
-             for (name, _, _, _), on in zip(ENGINE_GROUPS, there)]
     headings = tuple(Heading((x0, h0, x1, h1), name)
-                     for name, (x0, x1) in zip(names, spans))
+                     for (name, _, _, _), (x0, x1) in zip(ENGINE_GROUPS, spans))
 
     def shown(values, empty):
         values = values or (empty,) * len(there)

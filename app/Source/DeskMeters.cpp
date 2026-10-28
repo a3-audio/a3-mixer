@@ -22,6 +22,8 @@ std::vector<std::string> shownNames()
     for (const auto* deck : { "a", "b" })
         for (int stem = 1; stem <= 4; ++stem)
             names.push_back (std::string ("stem_") + deck + std::to_string (stem));
+    for (const auto* deck : { "deck_a", "deck_b", "deck_c", "deck_d" })
+        names.push_back (deck);
     return names;
 }
 }
@@ -81,6 +83,13 @@ std::string DeskMeters::stemName (int pair)
 
 std::string DeskMeters::analogName (int ch) { return "analog" + std::to_string (ch); }
 
+std::string DeskMeters::deckName (int deck)
+{
+    return deck >= 0 && deck < 4 ? std::string ("deck_") + (char) ('a' + deck) : std::string();
+}
+
+DeskMeters::Reading DeskMeters::deck (int d, std::int64_t now) const { return one (deckName (d), now); }
+
 DeskMeters::Reading DeskMeters::stem (int pair, std::int64_t now) const { return one (stemName (pair), now); }
 
 DeskMeters::Reading DeskMeters::analog (int ch, std::int64_t now) const
@@ -103,5 +112,6 @@ float DeskMeters::louderTaken (const std::string& left, const std::string& right
 
 float DeskMeters::stemPeak (int pair) const { return takenPeak (stemName (pair)); }
 float DeskMeters::analogPeak (int ch) const { return louderTaken (analogName (ch) + "_L", analogName (ch) + "_R"); }
+float DeskMeters::deckPeak (int d) const { return takenPeak (deckName (d)); }
 float DeskMeters::fxReturnPeak() const { return louderTaken ("aux_L", "aux_R"); }
 }

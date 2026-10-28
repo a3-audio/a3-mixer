@@ -214,12 +214,16 @@ def vu_handler(address: str,
         channel, side = found
         displays.note_analog(channel, side, osc_arguments[0])
         return
-    # An input's stereo meter carries what plays: its LEDs show the louder side,
-    # and while a deck is the channel's source its display's bar shows it (W).
+    # A deck's meter (its W before any channel): its bar on every channel
+    # display, whatever plays there, no LED.
+    deck = osc.deck_meter(number)
+    if deck is not None:
+        displays.note_deck(deck, osc_arguments[0])
+        return
+    # An input's stereo meter carries what plays: its LEDs show the louder side.
     found = osc.input_side(number)
     if found is not None:
         slot, side = found
-        displays.note_input(slot, side, osc_arguments[0])
         send_vu_level(slot, *stereo_inputs.note(slot, side, osc_arguments[0], osc_arguments[1]))
         return
     slot = osc.vu_slot(number)
@@ -521,6 +525,10 @@ if __name__ == '__main__':
     # The displays show what Core announces; until it does, a dash. A failing
     # display is reported inside Displays and never reaches this server.
     displays = open_displays(osc.meters())
+    # With the engine's words in the truth the displays are on the ring A B C
+    # D ST from the start: no interim picture that jumps once Core speaks.
+    if "channel.source" in osc.engine_keys():
+        displays.start_on_ring()
     displays.blank_all()
 
     # A new Core ends engine mode until it reports a source again: it may

@@ -199,6 +199,24 @@ class StemMetersByName(unittest.TestCase):
         self.assertIsNone(osc.stem_pair(41))
 
 
+class DeckMetersByName(unittest.TestCase):
+    """The engine's deck meters (/vu 37-40 since 2026-10-28), deck_a ...
+    deck_d, are found by name: decks 0-3, shown on the channel displays."""
+
+    def test_the_deck_meters_are_decks_zero_to_three(self):
+        osc = made_up(vu_meters=["analog1_L", "deck_a", "deck_b", "deck_c", "deck_d"])
+        self.assertEqual([osc.deck_meter(n) for n in range(1, 6)], [None, 0, 1, 2, 3])
+        self.assertTrue(all(osc.shows_meter(n) for n in range(2, 6)))
+
+    def test_a_truth_without_them_has_none(self):
+        osc = made_up(vu_meters=["free67", "stem_a1"])
+        self.assertEqual([osc.deck_meter(n) for n in (1, 2, 3)], [None, None, None])
+
+    def test_the_real_truth_has_them_on_37_to_40(self):
+        osc = a3_mixer_osc.load(real_truth_path())
+        self.assertEqual([osc.deck_meter(n) for n in range(37, 41)], [0, 1, 2, 3])
+
+
 class TheDeskSaysWhichTruth(unittest.TestCase):
     """At start the desk names itself and the sha256 of its copy, so Core's
     window can show whether the copy is Core's own (/device/hello)."""

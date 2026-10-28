@@ -24,7 +24,7 @@ from a3_mixer_latest import coalesce, drain, serve  # noqa: E402
 from test_osc_truth import made_up, real_truth_path  # noqa: E402
 
 # 49-50 (StemDeck's AUX bus) are no meter of the desk's since P47.
-SHOWN_IN_THE_REAL_TRUTH = set(range(1, 9)) | set(range(11, 19)) | {35, 36} \
+SHOWN_IN_THE_REAL_TRUTH = set(range(1, 9)) | set(range(11, 19)) | {35, 36} | set(range(37, 41)) \
     | set(range(41, 49)) | set(range(51, 59))
 
 
