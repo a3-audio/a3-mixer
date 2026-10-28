@@ -25,8 +25,8 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 from a3_mixer_positions import ASK_THE_PANEL, Positions
-from a3_mixer_recall import (CoreArrival, DeskInFront, HelloEvery, RecallRequest,
-                             StateAsker)
+from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery,
+                             RecallRequest, StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour, panel_fields)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
@@ -531,18 +531,21 @@ if __name__ == '__main__':
         displays.start_on_ring()
     displays.blank_all()
 
-    # A new Core ends engine mode until it reports a source again: it may
-    # have come up as REAPER's. The socket is this thread's own -- the truth
-    # keeper reads announce_socket.
+    # A new Core: the displays forget engine mode, then the desk asks for
+    # the state again (ForgetThenAsk) -- the first announcement comes after
+    # the desk's own recall was answered. The socket is this thread's own --
+    # the truth keeper reads announce_socket.
     def forget_engine_on_new_core():
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("", ANNOUNCE_PORT))
-        arrival = CoreArrival()
+        reaction = ForgetThenAsk(
+            CoreArrival(), displays.forget_engine,
+            lambda: osc_core.send_message(osc.address("state.recall"), 1),
+            lambda line: print(line, file=sys.stderr, flush=True))
 
         def on_here(boot_id):
-            if arrival.heard(time.monotonic(), boot_id):
-                displays.forget_engine()
+            reaction.heard(time.monotonic(), boot_id)
 
         threading.Thread(target=hear, daemon=True, name="engine mode",
                          args=(listener, on_here, lambda: True)).start()

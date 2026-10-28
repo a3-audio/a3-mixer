@@ -85,18 +85,72 @@ TEST (DisplayPicture, ReturnPicturesAreThePythons)
     }
 }
 
-// P47: the FX Return is the delay channel's master: one meter under FX RTN (P42's short form), the CUE
-// field, no arrow and no bracket.
-TEST (DisplayPicture, TheReturnIsOneMeterNamedFxRtn)
+// P47: the FX Return is the delay channel's master: one meter under AUX-RTN, the CUE
+// field, no arrow and no bracket. The name's box is what AUX-RTN needs; the meter stands where it stood
+// under FX RTN (columns 39-60).
+TEST (DisplayPicture, TheReturnIsOneMeterNamedAuxRtn)
 {
     const auto picture = returnPicture (false, 0.5, 128, 64, false, 0.0);
     ASSERT_EQ (picture.headings.size(), 1u);
-    EXPECT_EQ (picture.headings[0].text, "FX RTN");
-    EXPECT_EQ (picture.meters.size(), 1u);
+    EXPECT_EQ (picture.headings[0].text, "AUX-RTN");
+    ASSERT_EQ (picture.meters.size(), 1u);
+    EXPECT_LE (picture.headings[0].box.x1 - picture.headings[0].box.x0 + 1, 64);
+    // At the left margin, where a channel's first meter starts; its width is main's 22 columns.
+    const auto channel = enginePicture (1, 1, { true, true, true, true }, {}, 128, 64, {}, {});
+    EXPECT_EQ (picture.meters[0].box.x0, channel.meters[0].box.x0);
+    EXPECT_EQ (picture.meters[0].box.x1 - picture.meters[0].box.x0 + 1, 22);
+    EXPECT_LE (picture.headings[0].box.x0, picture.meters[0].box.x0);
     EXPECT_TRUE (isEmpty (picture.cursor));
     EXPECT_TRUE (isEmpty (picture.active));
     ASSERT_TRUE (picture.toggle.has_value());
     EXPECT_EQ (picture.toggle->text, "CUE");
+}
+
+// One caption step (x0.8) below the band, as the desk's OLEDs since 2026-10-28: the letters light at most
+// half the band's rows (seven of twelve before the step).
+TEST (DisplayPaint, HeadingsAreACaptionStepBelowTheirBand)
+{
+    const auto picture = enginePicture (1, 1, { true, true, true, true }, {}, oledWidth, oledHeight, {}, {});
+    const auto image = paintPicture (picture, oledWidth, oledHeight);
+    const auto& band = picture.headings[0].box;
+    int first = -1, last = -1;
+    for (int y = band.y0; y <= band.y1; ++y)
+        for (int x = 0; x < oledWidth; ++x)
+            if (image.getPixelAt (x, y).getBrightness() > 0.5f)
+            {
+                if (first < 0) first = y;
+                last = y;
+            }
+    ASSERT_GE (first, 0);
+    EXPECT_LE (last - first + 1, (band.y1 - band.y0 + 1) * 0.5) << "ink rows " << first << ".." << last;
+}
+
+// A page test must paint: every meter of every panel lights for a level and stays dark in silence.
+TEST (DisplayPaint, EveryPanelPaintsItsMeters)
+{
+    const auto litIn = [] (const juce::Image& image, const Box& b) {
+        int n = 0;
+        for (int x = b.x0; x <= b.x1; ++x)
+            for (int y = b.y0; y <= b.y1; ++y)
+                n += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
+        return n;
+    };
+    for (const double level : { 0.6, 0.0 })
+    {
+        const std::array<double, 5> levels { level, level, level, level, level };
+        const std::vector<Picture> pictures { enginePicture (1, 1, { true, true, true, true }, levels, oledWidth, oledHeight, {}, {}),
+                                              returnPicture (false, level, oledWidth, oledHeight, false, 0.0) };
+        for (const auto& picture : pictures)
+        {
+            const auto image = paintPicture (picture, oledWidth, oledHeight);
+            ASSERT_FALSE (picture.meters.empty());
+            for (const auto& m : picture.meters)
+                if (level > 0)
+                    EXPECT_GT (litIn (image, m.box), 0) << m.box.x0;
+                else
+                    EXPECT_EQ (litIn (image, m.box), 0) << m.box.x0;
+        }
+    }
 }
 
 // A page test must paint: the name reaches the pixels inside its heading box, and the band between the

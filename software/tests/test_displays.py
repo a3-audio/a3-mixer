@@ -147,13 +147,13 @@ class WhatIsDrawn(unittest.TestCase):
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_its_one_meter(self):
-        """P47: FX RTN, one meter, no arrow and no bracket."""
+        """P47: AUX-RTN, one meter, no arrow and no bracket."""
         rig = Rig()
         displays = rig.displays()
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["FX RTN"])
+        self.assertEqual([h.text for h in picture.headings], ["AUX-RTN"])
         self.assertEqual(len(picture.meters), 1)
         self.assertIsNone(picture.active)
         self.assertIsNone(picture.cursor)
@@ -639,11 +639,11 @@ class WhatPlaysWhere(unittest.TestCase):
         return [h.text for h in picture.headings]
 
     def test_the_return_is_the_same_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RTN"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RTN"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["FX RTN"])
+        self.assertEqual(self.return_names(), ["AUX-RTN"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
@@ -1107,6 +1107,139 @@ class Painting(unittest.TestCase):
             with self.subTest(name):
                 image = self.paint_state(name, self.states()[name])
                 self.assertEqual(self.lit(image, (0, top, 127, bottom)), [])
+
+
+class MetersReachThePixels(unittest.TestCase):
+    """The whole path on the live layout: peaks noted as the OSC thread
+    notes them, a meter step, a drain, and the desk's own paint() onto a
+    128x64 image per panel. Every panel lights its meters while there is
+    signal and none while there is not (a page test must paint: a desk that
+    draws headings and no meters passes every picture test)."""
+
+    def panels_after(self, peak):
+        from PIL import Image
+        images = {}
+
+        def draw(device, picture):
+            image = Image.new("1", (128, 64))
+            paint(image, picture)
+            images[device.label] = (image, picture)
+
+        rig = Rig()
+        now = [0.0]
+
+        def make_device(panel):
+            device = rig.make_device(panel)
+            device.label = panel.label
+            return device
+
+        displays = Displays(rig.select, make_device, draw, rig.reports.append,
+                            clock=lambda: now[0])
+        displays.start_on_ring()
+        for deck in range(4):
+            displays.show_deck_present(deck, True)
+        displays.drain()
+        for _ in range(20):
+            now[0] += 0.1
+            for side in (0, 1):
+                displays.note_aux(side, peak)
+            for index in range(4):
+                displays.note_deck(index, peak)
+                displays.note_analog(index, 0, peak)
+            displays.tick()
+            displays.drain()
+        self.assertEqual(rig.reports, [])
+        return images
+
+    def lit_in(self, image, box):
+        x0, y0, x1, y1 = box
+        return sum(1 for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)
+                   if image.getpixel((x, y)))
+
+    def test_every_meter_on_every_panel_lights_with_signal(self):
+        from display_panel import PANELS
+        images = self.panels_after(0.5)
+        self.assertEqual(sorted(images), sorted(panel.label for panel in PANELS))
+        for label, (image, picture) in images.items():
+            self.assertTrue(picture.meters, label)
+            for meter in picture.meters:
+                with self.subTest(label, box=meter.box):
+                    self.assertGreater(meter.pixels(), 0)
+                    self.assertGreater(self.lit_in(image, meter.box), 0)
+
+    def test_no_meter_lights_in_silence(self):
+        for label, (image, picture) in self.panels_after(0.0).items():
+            for meter in picture.meters:
+                with self.subTest(label, box=meter.box):
+                    self.assertEqual(self.lit_in(image, meter.box), 0)
+
+
+class OneTextSize(unittest.TestCase):
+    """All text on the desk's displays is one caption step (×0.8, the
+    designer's type scale) below the size it had (maintainer, 2026-10-28:
+    "make the letters on all displays a bit smaller") -- every heading on
+    every panel the same height, the return's name not shrunk below the
+    channels' letters."""
+
+    def ink_height(self, picture):
+        from PIL import Image
+        image = Image.new("1", (128, 64))
+        paint(image, picture._replace(meters=(), marks=(), dividers=(), cursor=None,
+                                      active=None, toggle=None))
+        rows = [y for y in range(64) if any(image.getpixel((x, y)) for x in range(128))]
+        return rows[-1] - rows[0] + 1
+
+    def pictures(self):
+        from display_panel import channel_picture, engine_channel_picture, return_picture
+        return {"ring": engine_channel_picture(1, 1, (True,) * 4, (0.5,) * 5, 128, 64),
+                "interim": channel_picture(0, 0, (0.5,) * 3, 0, 128, 64),
+                "return": return_picture(False, 0.5, 128, 64)}
+
+    def test_the_headings_are_a_caption_step_below_the_band(self):
+        from display_panel import _bands
+        (top, bottom), _, _ = _bands(64)
+        band = bottom - top + 1
+        for name, picture in self.pictures().items():
+            with self.subTest(name):
+                height = self.ink_height(picture)
+                self.assertLessEqual(height, round(band * 0.85))
+                self.assertGreaterEqual(height, round(band * 0.7))
+
+    def test_every_heading_has_the_same_height(self):
+        heights = {name: self.ink_height(picture) for name, picture in self.pictures().items()}
+        self.assertEqual(len(set(heights.values())), 1, heights)
+
+    def test_the_return_name_is_whole_inside_its_box(self):
+        from PIL import Image
+        picture = self.pictures()["return"]
+        image = Image.new("1", (128, 64))
+        paint(image, picture._replace(meters=(), marks=(), dividers=(), toggle=None))
+        x0, y0, x1, y1 = picture.headings[0].box
+        lit = [(x, y) for x in range(128) for y in range(64) if image.getpixel((x, y))]
+        self.assertTrue(lit)
+        self.assertTrue(all(x0 < x < x1 and y0 <= y <= y1 for x, y in lit))
+
+    def test_the_cue_letters_are_a_caption_step_below_their_cell(self):
+        from PIL import Image
+        from a3_mixer_displays import FRAME, TOGGLE_INSET
+        picture = self.pictures()["return"]
+        image = Image.new("1", (128, 64))
+        paint(image, picture._replace(headings=(), meters=(), marks=(), dividers=()))
+        x0, y0, x1, y1 = picture.toggle.box
+        inner = (x0 + TOGGLE_INSET + FRAME + 1, y0 + TOGGLE_INSET + FRAME + 1,
+                 x1 - TOGGLE_INSET - FRAME - 1, y1 - TOGGLE_INSET - FRAME - 1)
+        cell = (inner[3] - inner[1] + 3) // len(picture.toggle.text)
+        rows = sorted({y for x in range(inner[0], inner[2] + 1)
+                       for y in range(inner[1], inner[3] + 1) if image.getpixel((x, y))})
+        runs, start = [], rows[0]
+        for previous, row in zip(rows, rows[1:]):
+            if row != previous + 1:
+                runs.append(previous - start + 1)
+                start = row
+        runs.append(rows[-1] - start + 1)
+        self.assertEqual(len(runs), 3)
+        for height in runs:
+            self.assertLessEqual(height, round(cell * 0.7))
 
 
 class HowLongADrawTakes(unittest.TestCase):

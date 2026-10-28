@@ -8,7 +8,8 @@ namespace desk::display
 {
 namespace
 {
-constexpr float textOfHeading = 0.9f;
+// One caption step (x0.8, the designer's type scale) below the box, as the desk's OLEDs since 2026-10-28.
+constexpr float textOfHeading = 0.9f, textStep = 0.8f;
 constexpr int frame = 1, toggleInset = 3, clipHatch = 3;
 
 juce::Rectangle<int> rectOf (const Box& b) { return { b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1 }; }
@@ -17,7 +18,7 @@ Box inset (const Box& b, int n) { return { b.x0 + n, b.y0 + n, b.x1 - n, b.y1 - 
 void text (juce::Graphics& g, const Box& box, const juce::String& t)
 {
     const auto r = rectOf (box);
-    g.setFont (juce::FontOptions (static_cast<float> (r.getHeight()) * textOfHeading));
+    g.setFont (juce::FontOptions (static_cast<float> (r.getHeight()) * textOfHeading * textStep));
     g.drawFittedText (t, r, juce::Justification::centred, 1, 0.5f);
 }
 

@@ -385,7 +385,7 @@ class ActiveBracket(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """P47: the FX Return is the master of the delay channel. Its display is
-    one mono meter under FX RTN -- the return after RETURN -- and the CUE
+    one mono meter under AUX-RTN -- the return after RETURN -- and the CUE
     field: no source to choose, so no second meter, no arrow and no active
     bracket."""
 
@@ -395,31 +395,64 @@ class ReturnMeter(unittest.TestCase):
 
     def test_one_meter_under_one_name(self):
         p = self.picture(level=0.4)
-        self.assertEqual([h.text for h in p.headings], ["FX RTN"])
+        self.assertEqual([h.text for h in p.headings], ["AUX-RTN"])
         self.assertEqual([m.level for m in p.meters], [0.4])
         heading, meter = p.headings[0].box, p.meters[0].box
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
         self.assertLess(heading[3], meter[1])
+
+    def test_the_meter_keeps_its_width_from_fx_rtn(self):
+        """The meter is main's: 22 columns on the 128-wide panel (it stood at
+        39-60 before it moved to the left margin)."""
+        meter = self.picture().meters[0].box
+        self.assertEqual(meter[2] - meter[0] + 1, 22)
+
+    def test_the_name_box_is_no_wider_than_aux_rtn_needs(self):
+        heading = self.picture().headings[0].box
+        self.assertLessEqual(heading[2] - heading[0] + 1, 64)
 
     def test_no_arrow_and_no_bracket(self):
         p = self.picture()
         self.assertIsNone(p.cursor)
         self.assertIsNone(p.active)
 
-    def test_the_meter_is_centred_under_its_name_left_of_the_divider(self):
+    def test_the_name_stands_at_the_left_margin_like_the_channel_headings(self):
+        """Maintainer, 2026-10-28: "aux-rtn linksbündig"."""
+        from display_panel import engine_channel_picture
+        channel = engine_channel_picture(0, 0, (True,) * 4, (0.0,) * 5, W, H)
         p = self.picture()
-        line = p.dividers[0][0]
-        meter, heading = p.meters[0].box, p.headings[0].box
-        self.assertLessEqual(abs((meter[0] + meter[2]) - (heading[0] + heading[2])), 1)
-        self.assertLess(heading[2], line - 1)
-        self.assertLessEqual(abs(heading[0] - (line - 1 - heading[2])), 3)
+        self.assertEqual(p.headings[0].box[0], channel.headings[0].box[0])
+        self.assertLess(p.headings[0].box[2], p.dividers[0][0] - 1)
+
+    def test_the_name_is_painted_from_the_left_margin(self):
+        from PIL import Image
+        from a3_mixer_displays import paint
+        p = self.picture(level=0.0)
+        image = Image.new("1", (W, H))
+        paint(image, p)
+        x0, y0, x1, y1 = p.headings[0].box
+        lit = [x for x in range(W) for y in range(y0, y1 + 1) if image.getpixel((x, y))]
+        self.assertLessEqual(min(lit) - x0, 2)
+
+    def test_the_meter_starts_where_a_channels_first_meter_starts(self):
+        """Maintainer, 2026-10-28: "aux-rtn vu meter auch linksbündig". Not at
+        the heading's own column: the scale marks need the one left of the bar."""
+        from display_panel import engine_channel_picture
+        channel = engine_channel_picture(0, 0, (True,) * 4, (0.0,) * 5, W, H)
+        p = self.picture()
+        self.assertEqual(p.meters[0].box[0], channel.meters[0].box[0])
+        self.assertLessEqual(p.headings[0].box[0], p.meters[0].box[0])
+        self.assertLessEqual(p.meters[0].box[2], p.headings[0].box[2])
+
+    def test_the_meter_stays_left_of_the_divider(self):
+        p = self.picture()
+        self.assertLess(p.meters[0].box[2], p.dividers[0][0] - 1)
 
     def test_the_meter_keeps_its_look(self):
-        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_HEADING
-        heading = round(W * RETURN_HEADING_OF_WIDTH)
+        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_WIDTH
         p = self.picture()
-        self.assertEqual(p.headings[0].box[2] - p.headings[0].box[0] + 1, heading)
-        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, round(heading * RETURN_METER_OF_HEADING))
+        self.assertEqual(p.headings[0].box[2] - p.headings[0].box[0] + 1, round(W * RETURN_HEADING_OF_WIDTH))
+        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, round(W * RETURN_METER_OF_WIDTH))
 
     def test_the_headings_are_plain(self):
         from display_panel import Heading

@@ -173,9 +173,9 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, shortened to fit the heading (P42), and its CUE field. It has no
+#: its name, AUX-RTN (maintainer, 2026-10-28), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
-RETURN_NAME = "FX RTN"
+RETURN_NAME = "AUX-RTN"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -524,28 +524,33 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
                    _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
 
-#: The return's heading as a share of the panel's width, and its meter as a
-#: share of its heading: as slim as the channels' bars look beside their
-#: neighbours.
-RETURN_HEADING_OF_WIDTH = 0.34
-RETURN_METER_OF_HEADING = 0.5
+#: The return's heading and its meter, each as a share of the panel's width.
+#: The heading holds AUX-RTN at the displays' one text size (58 of 60 columns
+#: at 128); the meter is as slim as the channels' bars look beside their
+#: neighbours -- 22 columns, the width it had under FX RTN.
+RETURN_HEADING_OF_WIDTH = 0.47
+RETURN_METER_OF_WIDTH = 0.17
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0):
-    """The FX Return: one mono meter under FX RTN, centred left of the
-    divider, and the CUE field behind it at the right edge -- on while the
+    """The FX Return: AUX-RTN at the left margin, one mono meter under it,
+    both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
     channel = _channel_columns(width)
     last_meter, toggle_slot = channel[PAIRS - 1], channel[ANALOG_INPUT]
-    room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
-    meter = round(heading * RETURN_METER_OF_HEADING)
-    x0 = (room - heading) // 2
+    meter = round(width * RETURN_METER_OF_WIDTH)
+    # The name and its meter stand at the left margin, as a channel's first
+    # heading and meter do (maintainer, 2026-10-28: "aux-rtn linksbündig",
+    # "aux-rtn vu meter auch linksbündig").
+    x0 = channel[0][0]
     x1 = x0 + heading - 1
-    left = x0 + (heading - meter) // 2
+    # Not at x0 itself: the scale marks stand in the column left of the bar.
+    stem_width = channel[0][1] - channel[0][0] + 1
+    left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
