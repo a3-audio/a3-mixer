@@ -81,10 +81,10 @@ int engineSlot (int source);
 Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
                        const std::array<double, engineSlots>& levels, int width, int height,
                        const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds);
-/** STEM and ANALOG (in that order), the CUE field, the cursor over one of three. In engine mode STEM
-    reads DELAY: the return's second source is the delay line. */
+/** FX RTN and ANALOG (in that order), the CUE field, the cursor over one of three. The return is the
+    FX Return in every mode; the heading is as wide as ANALOG, so the name is shortened. */
 Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
-                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds, bool engine = false);
+                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds);
 
 /** Lit by a peak over full scale, held one second after the last one. */
 class ClipHold

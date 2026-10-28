@@ -23,12 +23,12 @@ A's bar is the channel's analog input (analog<N>_L/R, the louder side),
 whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
-The return's display is drawn the same way: two mono meters, STEM (StemDeck's
+The return's display is drawn the same way: two mono meters, FX RTN (the FX Return: StemDeck's
 aux bus) and ANALOG (the analog return), the louder side of each, under
 plain headings and nothing between them; the mode that plays carries the
 same active bracket. At its right edge, behind a divider, sits the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
-is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
+is cued. The cursor is the same arrow, over FX RTN, ANALOG or CUE; the
 bracket never stands on CUE.
 
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
@@ -561,8 +561,6 @@ class Displays:
             self._sources[index] = source
         for other in (range(len(PANELS) - 1) if fresh else (index,)):
             self._post(panel_for_channel(other))
-        if fresh:
-            self._post(return_panel())  # its second source is named by the mode
 
     def show_source_cursor(self, index, cursor):
         """A channel's cursor in the engine-mode ring."""
@@ -579,7 +577,6 @@ class Displays:
             self._decks_present = [False] * DECKS
         for index in range(len(PANELS) - 1):
             self._post(panel_for_channel(index))
-        self._post(return_panel())
 
     def show_deck_present(self, deck, present):
         """Whether deck `deck` (0-3 for decks 1-4) is there: every channel
@@ -639,10 +636,8 @@ class Displays:
                 cursor, mode, cue = self._return[0], self._return_mode, self._return_cue
                 levels = self._levels[panel] or (0.0, 0.0)
                 clips, holds = self._clips[panel], self._holds[panel]
-                engine = any(source is not None for source in self._sources)
                 return lambda width, height: return_picture(cursor, mode, cue, levels,
-                                                            width, height, clips, holds,
-                                                            engine)
+                                                            width, height, clips, holds)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]

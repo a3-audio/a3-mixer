@@ -791,9 +791,9 @@ void hearEngine (DeskComponent& desk, const char* key, int number, int value, do
 }
 }
 
-// DeskComponent hands its engine flag to the return display: Core's first source report renames STEM to
-// DELAY (the display is the fifth OledView, after the four channels), a new Core takes it back.
-TEST (DeskRing, TheReturnDisplayFollowsEngineMode)
+// The return display is the same before and after Core's first source report, and after a new Core takes the
+// desk out of engine mode (the display is the fifth OledView, after the four channels).
+TEST (DeskRing, TheReturnDisplayIsTheSameInEveryMode)
 {
     Captured c;
     auto desk = deskJoined (c);
@@ -801,7 +801,7 @@ TEST (DeskRing, TheReturnDisplayFollowsEngineMode)
     const auto reaper = displayShot (*desk, 4);
     hearEngine (*desk, "channel.source", 1, 1, 200);
     desk->step (220);
-    EXPECT_FALSE (samePixels (reaper, displayShot (*desk, 4)));
+    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 4)));
 
     desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-2" }, 9000);
     desk->step (9020);

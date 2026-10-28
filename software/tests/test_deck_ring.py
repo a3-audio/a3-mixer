@@ -122,7 +122,7 @@ class DeckRing(unittest.TestCase):
         self.rig.drawn.clear()
         self.displays.forget_engine()
         self.displays.drain()
-        self.assertEqual(len(self.rig.drawn), 5)    # four channels and the return (DELAY -> STEM)
+        self.assertEqual(len(self.rig.drawn), 4)    # four channels
         self.assertEqual(self.names(self.picture_of(0)), ["D1", "D2", "A"])
         self.displays.show_source(0, 0)     # engine again: decks unreported, cursor home
         self.assertEqual(self.names(self.picture_of(0)), ["-", "-", "-", "-", "A"])

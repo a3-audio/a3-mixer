@@ -261,9 +261,9 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
 }
 
 Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
-                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds, bool engine)
+                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds)
 {
-    // RETURN_OPTIONS = (STEM, ANALOG), left to right.
+    // RETURN_OPTIONS = (FX RTN, ANALOG), left to right.
     constexpr std::array<int, 2> options { stemMode, analogMode };
     const auto indexOf = [&] (int option) { return option == stemMode ? 0 : 1; };
     const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
@@ -279,7 +279,7 @@ Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 
     for (size_t i = 0; i < spans.size(); ++i)
     {
         p.headings.push_back ({ { spans[i].x0, headingRows.top, spans[i].x1, headingRows.bottom },
-                                options[i] == stemMode ? (engine ? "DELAY" : "STEM") : "ANALOG" });
+                                options[i] == stemMode ? "FX RTN" : "ANALOG" });
         const int left = spans[i].x0 + floorDiv (spans[i].x1 - spans[i].x0 + 1 - meter, 2);
         boxes.push_back ({ left, meterRows.top, left + meter - 1, meterRows.bottom });
     }

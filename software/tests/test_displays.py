@@ -153,7 +153,7 @@ class WhatIsDrawn(unittest.TestCase):
         displays.show_return_mode(1)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["STEM", "ANALOG"])
+        self.assertEqual([h.text for h in picture.headings], ["FX RTN", "ANALOG"])
         active = picture.active                         # mode 1 = STEM, the left meter
         self.assertEqual((active[0], active[2]),
                          (picture.meters[0].box[0] - 1, picture.meters[0].box[2] + 1))
@@ -666,23 +666,12 @@ class WhatPlaysWhere(unittest.TestCase):
         picture = self.displays._picture_for(return_panel())(128, 64)
         return [h.text for h in picture.headings]
 
-    def test_engine_mode_return_says_delay(self):
-        self.assertEqual(self.return_names(), ["STEM", "ANALOG"])
+    def test_the_return_has_the_same_name_with_and_without_the_engine(self):
+        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["DELAY", "ANALOG"])
-
-    def test_the_return_is_redrawn_when_the_engine_mode_begins_and_ends(self):
-        returns = lambda: [device for label, device in self.rig.built if label == "Aux Return"]
-        for change in (lambda: self.displays.show_source(0, 1), self.displays.forget_engine):
-            self.rig.drawn.clear()
-            change()
-            self.displays.drain()
-            self.assertIn(returns()[-1], [device for device, _ in self.rig.drawn])
-
-    def test_the_return_says_stem_again_when_the_engine_is_forgotten(self):
-        self.displays.show_source(0, 1)
+        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["STEM", "ANALOG"])
+        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))

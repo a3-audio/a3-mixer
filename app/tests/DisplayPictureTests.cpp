@@ -81,65 +81,26 @@ TEST (DisplayPicture, ReturnPicturesAreThePythons)
     }
 }
 
-TEST (DisplayPicture, EngineReturnSaysDelay)
+// P38: the return is the FX Return in every mode; the heading is too narrow for the full name, so FX RTN.
+TEST (DisplayPicture, TheReturnIsNamedFxRtn)
 {
-    const auto headings = [] (bool engine) {
-        std::vector<std::string> texts;
-        for (const auto& h : returnPicture (1, 1, false, { 0.5, 0.5 }, 128, 64, { false, false }, { 0.0, 0.0 }, engine).headings)
-            texts.push_back (h.text);
-        return texts;
-    };
-    EXPECT_EQ (headings (true), (std::vector<std::string> { "DELAY", "ANALOG" }));
-    EXPECT_EQ (headings (false), (std::vector<std::string> { "STEM", "ANALOG" }));
+    const auto picture = returnPicture (1, 1, false, { 0.5, 0.5 }, 128, 64, { false, false }, { 0.0, 0.0 });
+    ASSERT_EQ (picture.headings.size(), 2u);
+    EXPECT_EQ (picture.headings[0].text, "FX RTN");
+    EXPECT_EQ (picture.headings[1].text, "ANALOG");
 }
 
-// Engine mode renames only the first heading: every golden case, with DELAY for STEM.
-TEST (DisplayPicture, EngineReturnIsTheGoldenWithDelayForStem)
+// A page test must paint: the name reaches the pixels, inside its heading box.
+TEST (DisplayPicture, ReturnSnapshotPaintsTheName)
 {
-    const auto* cases = desk::test::fixture()["return_pictures"].getArray();
-    ASSERT_NE (cases, nullptr);
-    for (const auto& c : *cases)
-    {
-        const auto picture = returnPicture (c["cursor"], c["mode"], c["cue"], arrayOf<2, double> (c["levels"]),
-                                            c["width"], c["height"], arrayOf<2, bool> (c["clips"]),
-                                            arrayOf<2, double> (c["holds"]), true);
-        ASSERT_EQ (picture.headings.size(), 2u);
-        EXPECT_EQ (picture.headings[0].text, "DELAY");
-        EXPECT_EQ (picture.headings[1].text, "ANALOG");
-        for (const auto* field : { "meters", "cursor", "dividers", "toggle", "active", "marks" })
-            EXPECT_EQ (juce::JSON::toString (asVar (picture, field), true),
-                       juce::JSON::toString (c["picture"][juce::Identifier (field)], true)) << field;
-    }
-}
-
-// A page test must paint: both names reach the pixels, and the two states differ only there.
-TEST (DisplayPicture, ReturnSnapshotPaintsDelayAndStem)
-{
-    const auto paint = [] (bool engine) {
-        return paintPicture (returnPicture (1, 1, false, { 0.5, 0.5 }, oledWidth, oledHeight, {}, {}, engine),
-                             oledWidth, oledHeight);
-    };
-    const auto stem = paint (false), delay = paint (true);
-    const auto lit = [] (const juce::Image& image) {
-        int n = 0;
-        for (int y = 0; y < image.getHeight(); ++y)
-            for (int x = 0; x < image.getWidth(); ++x)
-                n += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
-        return n;
-    };
-    EXPECT_GT (lit (stem), 0);
-    EXPECT_GT (lit (delay), 0);
-    const auto heading = returnPicture (1, 1, false, {}, oledWidth, oledHeight, {}, {}, true).headings[0].box;
-    bool differsInHeading = false, differsElsewhere = false;
-    for (int y = 0; y < stem.getHeight(); ++y)
-        for (int x = 0; x < stem.getWidth(); ++x)
-            if (stem.getPixelAt (x, y) != delay.getPixelAt (x, y))
-            {
-                const bool inside = x >= heading.x0 && x <= heading.x1 && y >= heading.y0 && y <= heading.y1;
-                (inside ? differsInHeading : differsElsewhere) = true;
-            }
-    EXPECT_TRUE (differsInHeading);
-    EXPECT_FALSE (differsElsewhere);
+    const auto picture = returnPicture (1, 1, false, { 0.5, 0.5 }, oledWidth, oledHeight, {}, {});
+    const auto image = paintPicture (picture, oledWidth, oledHeight);
+    const auto box = picture.headings[0].box;
+    int lit = 0;
+    for (int y = box.y0; y <= box.y1; ++y)
+        for (int x = box.x0; x <= box.x1; ++x)
+            lit += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
+    EXPECT_GT (lit, 0);
 }
 
 TEST (ClipHold, AnOverLightsItForOneSecond)
