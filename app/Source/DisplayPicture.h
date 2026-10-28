@@ -14,7 +14,7 @@
 namespace desk::display
 {
 inline constexpr int oledWidth = 128, oledHeight = 64;
-inline constexpr int pairs = 8, analogInput = 8, cueCursor = 2, analogMode = 0, stemMode = 1;
+inline constexpr int pairs = 8, analogInput = 8;
 inline constexpr int stemsPerDeck = 4, channelMeters = 3, engineDecks = 4, engineSlots = 5, coreDecks = 4;
 
 struct Box
@@ -23,6 +23,10 @@ struct Box
 };
 
 int litRows (double level, int count);
+
+/** No box: no arrow, no bracket (Python's None). */
+inline constexpr Box noBox { 0, 0, -1, -1 };
+inline bool isEmpty (const Box& b) { return b.x1 < b.x0 || b.y1 < b.y0; }
 
 struct Heading
 {
@@ -81,10 +85,9 @@ int engineSlot (int source);
 Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
                        const std::array<double, engineSlots>& levels, int width, int height,
                        const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds);
-/** FX RTN and ANALOG (in that order), the CUE field, the cursor over one of three. The return is the
-    FX Return in every mode; the heading is as wide as ANALOG, so the name is shortened. */
-Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
-                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds);
+/** The FX Return, the delay channel's master (P47): one meter under FX RTN, centred left of the divider, and
+    the CUE field behind it. Nothing to choose, so no arrow and no bracket (noBox). */
+Picture returnPicture (bool cue, double level, int width, int height, bool clip, double hold);
 
 /** Lit by a peak over full scale, held one second after the last one. */
 class ClipHold

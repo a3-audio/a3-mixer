@@ -38,7 +38,7 @@ juce::String potCaption (const std::string& key)
         { "channel.eq.mid", "MID" }, { "channel.eq.low", "LOW" }, { "channel.volume", "" },
         { "master.volume", "MASTER" }, { "filter.resonance", "RES" }, { "filter.frequency", "FREQ" },
         { "master.booth", "BOOTH" }, { "master.phones-mix", "CUE/MIX" }, { "master.phones-volume", "PHONES" },
-        { "master.aux-return", "AUX RET" } };
+        { "master.aux-return", "FX RTN" } };
     const auto found = captions.find (key);
     return found != captions.end() ? juce::String (found->second) : juce::String();
 }
@@ -78,9 +78,8 @@ std::vector<std::string> keysUsed()
     for (const auto& [key, name] : lamps)
         keys.push_back (key);
     for (const auto* key : { "filter.mode", "filter.led", "beat", "tap", "state.recall", "vu", "device.hello",
-                             "channel.stem.turn", "aux-return.stem.turn", "aux-return.stem.push", "channel.stem",
-                             "aux-return.stem", "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode",
-                             "core.here", "aux-return.cue.led" })
+                             "channel.stem.turn", "aux-return.stem.push", "channel.stem",
+                             "channel.stem.push", "channel.stem.cursor", "core.here", "aux-return.cue.led" })
         keys.emplace_back (key);
     return keys;
 }

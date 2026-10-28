@@ -38,8 +38,7 @@ std::vector<std::string> heardKeys (const a3::OscTruth& truth)
     keys.insert (keys.end(), masterPotKeys.begin(), masterPotKeys.end());
     for (const auto& [key, name] : lamps)
         keys.push_back (key);
-    for (const auto* key : { "filter.led", "channel.stem", "channel.stem.cursor", "aux-return.stem",
-                             "aux-return.stem.mode", "aux-return.cue.led", "beat" })
+    for (const auto* key : { "filter.led", "channel.stem", "channel.stem.cursor", "aux-return.cue.led", "beat" })
         keys.emplace_back (key);
     // optional: an older Core's truth lacks them
     for (const auto* key : { "prodj.live", "channel.source", "channel.source.cursor", "stemdeck.present" })

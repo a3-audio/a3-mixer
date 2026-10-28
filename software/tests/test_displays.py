@@ -86,7 +86,7 @@ class OneDevicePerPanel(unittest.TestCase):
         displays.drain()
         displays.show_cursor(0, 1)
         displays.drain()
-        displays.show_return(1, (True,) * 8)   # the return's own display
+        displays.show_return_cue(True)   # the return's own display
         displays.drain()
         self.assertEqual([2, 2, 6], rig.selected)
 
@@ -117,7 +117,7 @@ class LatestWins(unittest.TestCase):
         rig = Rig()
         displays = rig.displays()
         displays.show_cursor(0, 0)
-        displays.show_return(1, (True,) * 8)
+        displays.show_return_cue(True)
         displays.show_cursor(0, 4)
         displays.drain()
         self.assertEqual(2, len(rig.drawn))   # each panel once, with its latest
@@ -146,28 +146,32 @@ class WhatIsDrawn(unittest.TestCase):
         self.assertEqual([h.text for h in picture.headings], ["D1", "D2", "A"])
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
-    def test_the_return_shows_stem_and_analog(self):
+    def test_the_return_shows_its_one_meter(self):
+        """P47: FX RTN, one meter, no arrow and no bracket."""
         rig = Rig()
         displays = rig.displays()
-        displays.show_return(0, (True,) * 8)
-        displays.show_return_mode(1)
+        displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["FX RTN", "ANALOG"])
-        active = picture.active                         # mode 1 = STEM, the left meter
-        self.assertEqual((active[0], active[2]),
-                         (picture.meters[0].box[0] - 1, picture.meters[0].box[2] + 1))
-        self.assertEqual(cursor_of(picture), 1)         # cursor 0 = analog, the right meter
+        self.assertEqual([h.text for h in picture.headings], ["FX RTN"])
+        self.assertEqual(len(picture.meters), 1)
+        self.assertIsNone(picture.active)
+        self.assertIsNone(picture.cursor)
+
+    def test_no_source_is_shown_any_more(self):
+        rig = Rig()
+        displays = rig.displays()
+        for gone in ("show_return", "show_return_mode", "note_stem_aux"):
+            self.assertFalse(hasattr(displays, gone), gone)
 
     def test_the_return_cue_fills_the_cue_field(self):
         rig = Rig()
         displays = rig.displays()
-        displays.show_return(2, (True,) * 8)
+        displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
         self.assertEqual(picture.toggle.text, "CUE")
         self.assertFalse(picture.toggle.on)
-        self.assertEqual(cursor_of(picture), 2)         # cursor 2 = the CUE field
         displays.show_return_cue(True)
         displays.drain()
         _, picture = rig.drawn[-1]
@@ -359,24 +363,10 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual([], self.rig.drawn)
 
-    def test_an_over_on_the_analog_return_lights_analog(self):
+    def test_an_over_on_the_fx_return_lights_its_clip(self):
         self.displays.note_aux(1, 1.4)
         self.step()
-        self.assertEqual(self.clips("Aux Return"), [False, True])
-
-    def test_an_over_on_the_aux_bus_lights_stem(self):
-        self.displays.note_stem_aux(0, 1.4)
-        self.step()
-        self.assertEqual(self.clips("Aux Return"), [True, False])
-
-    def test_without_the_bus_an_over_on_a_returned_stem_lights_stem(self):
-        self.displays.show_return(1, (False, True) + (False,) * 6)
-        self.displays.note_peak(1, 3.0)                 # not on the return
-        self.step()
-        self.assertEqual(self.clips("Aux Return"), [False, False])
-        self.displays.note_peak(2, 3.0)
-        self.step()
-        self.assertEqual(self.clips("Aux Return"), [True, False])
+        self.assertEqual(self.clips("FX Return"), [True])
 
     def test_a_meter_that_stopped_clips_no_more(self):
         self.displays.note_peak(3, 2.0)
@@ -445,40 +435,22 @@ class Meters(unittest.TestCase):
         self.step()
         self.assertEqual(1, len(self.rig.drawn))
 
-    def test_analog_is_the_louder_side_of_the_analog_return(self):
+    def test_the_fx_return_is_the_louder_side_of_aux_l_and_r(self):
+        """P47: aux_L/aux_R meter the FX Return after RETURN (W on both
+        sides); one bar, the louder side."""
         self.displays.note_aux(0, 10 ** (-24 / 20))
         self.displays.note_aux(1, 10 ** (-12 / 20))
         self.step()
-        _, analog = self.levels("Aux Return")
-        self.assertAlmostEqual(analog, 0.5)
+        self.assertEqual(len(self.levels("FX Return")), 1)
+        self.assertAlmostEqual(self.levels("FX Return")[0], 0.5)
 
-    def test_without_the_bus_meters_stem_is_the_loudest_stem_on_the_return(self):
-        """The truth before stem_aux_L/R: STEM falls back to the loudest
-        stem playing on the return."""
-        self.displays.show_return(1, (False, True, False, True) + (False,) * 4)
-        self.displays.note_peak(1, 1.0)                 # not on the return
-        self.displays.note_peak(2, 10 ** (-24 / 20))
+    def test_a_stem_never_moves_the_return(self):
+        """The stems reach the delay through their sends; the return's
+        meter is the engine's, never a stem's."""
+        for pair in range(1, 9):
+            self.displays.note_peak(pair, 1.0)
         self.step()
-        stem, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(stem, 0.25)
-
-    def test_with_the_bus_meters_stem_is_the_louder_side_of_the_aux_bus(self):
-        self.displays.show_return(1, (True,) * 8)
-        self.displays.note_peak(1, 1.0)                 # on the return, but the bus rules
-        self.displays.note_stem_aux(0, 10 ** (-24 / 20))
-        self.displays.note_stem_aux(1, 10 ** (-12 / 20))
-        self.step()
-        stem, _ = self.levels("Aux Return")
-        self.assertAlmostEqual(stem, 0.5)
-
-    def test_a_bus_that_was_heard_stays_the_source_in_silence(self):
-        """Once the truth has the bus meters, a quiet bus is a quiet STEM --
-        not the stems again."""
-        self.displays.show_return(1, (True,) * 8)
-        self.displays.note_stem_aux(0, 0.0)
-        self.displays.note_peak(1, 1.0)
-        self.step()
-        self.assertEqual(self.levels("Aux Return")[0], 0.0)
+        self.assertEqual(self.levels("FX Return"), [0.0])
 
     def test_a_step_redraws_every_panel_whose_meters_moved(self):
         for pair in (1, 2, 3, 4):                       # D1's stem of each channel
@@ -666,12 +638,12 @@ class WhatPlaysWhere(unittest.TestCase):
         picture = self.displays._picture_for(return_panel())(128, 64)
         return [h.text for h in picture.headings]
 
-    def test_the_return_has_the_same_name_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
+    def test_the_return_is_the_same_with_and_without_the_engine(self):
+        self.assertEqual(self.return_names(), ["FX RTN"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
+        self.assertEqual(self.return_names(), ["FX RTN"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["FX RTN", "ANALOG"])
+        self.assertEqual(self.return_names(), ["FX RTN"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
@@ -784,8 +756,7 @@ class Painting(unittest.TestCase):
         return not any(image.getpixel(pixel) for pixel in pixels)
 
     def states(self):
-        from display_panel import (ANALOG_MODE, CUE_CURSOR, STEM_MODE, channel_picture,
-                                   return_picture)
+        from display_panel import channel_picture, return_picture
         # Channel 3 (index 2): D1 is stem 3, D2 stem 7.
         music = (0.5, 0.9, 0.0)
         analog = (0.0, 0.0, 0.7)
@@ -812,39 +783,20 @@ class Painting(unittest.TestCase):
                                                                        128, 64),
             "channel-playing-d2-beside-a": channel_picture(1, 1, music, stem(6), 128, 64),
             "channel-playing-d1-at-the-edge": channel_picture(0, 0, full, stem(1), 128, 64),
-            "return-stem-mode-cursor-on-stem": return_picture(STEM_MODE, STEM_MODE, False,
-                                                              (0.8, 0.3), 128, 64),
-            "return-stem-mode-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
-                                                                (0.8, 0.3), 128, 64),
-            "return-analog-mode-cursor-on-stem": return_picture(STEM_MODE, ANALOG_MODE, False,
-                                                                (0.4, 0.9), 128, 64),
-            "return-analog-mode-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE, False,
-                                                                  (0.2, 0.7), 128, 64),
-            "return-silent-cursor-on-analog": return_picture(ANALOG_MODE, STEM_MODE, False,
-                                                             (0.0, 0.0), 128, 64),
             "channel-clip-on-the-playing-stem": channel_picture(2, 2, over, stem(7), 128, 64,
                                                                 clips=clip_d2),
             "channel-cursor-on-a-clipping-stem": channel_picture(2, 6, held, stem(3), 128, 64,
                                                                  clips=clip_d2),
-            "return-stem-clipping-in-stem-mode": return_picture(STEM_MODE, STEM_MODE, False,
-                                                                (1.0, 0.4), 128, 64,
-                                                                clips=(True, False)),
-            "return-analog-clip-held": return_picture(STEM_MODE, ANALOG_MODE, False,
-                                                      (0.3, 0.6), 128, 64,
-                                                      clips=(False, True)),
             "channel-hold-lines": channel_picture(2, 2, music, stem(7), 128, 64,
                                                   holds=hold_music),
             "channel-hold-over-a-silent-a": channel_picture(2, 8, (0.0,) * 3, 0, 128, 64,
                                                             holds=(0.0, 0.0, 0.8)),
-            "return-hold-lines": return_picture(STEM_MODE, STEM_MODE, False, (0.5, 0.2),
-                                                128, 64, holds=(0.8, 0.6)),
-            "return-cue-on-cursor-on-cue": return_picture(CUE_CURSOR, STEM_MODE, True,
-                                                          (0.8, 0.3), 128, 64),
-            "return-cue-off-cursor-on-cue": return_picture(CUE_CURSOR, ANALOG_MODE, False,
-                                                           (0.4, 0.9), 128, 64),
-            "return-cue-on-cursor-on-analog": return_picture(ANALOG_MODE, ANALOG_MODE, True,
-                                                             (0.2, 1.0), 128, 64,
-                                                             clips=(False, True)),
+            "return-music": return_picture(False, 0.8, 128, 64),
+            "return-silent": return_picture(False, 0.0, 128, 64),
+            "return-clipping": return_picture(False, 1.0, 128, 64, clip=True),
+            "return-hold-line": return_picture(False, 0.5, 128, 64, hold=0.8),
+            "return-cue-on": return_picture(True, 0.8, 128, 64),
+            "return-cue-off": return_picture(False, 0.4, 128, 64),
         }
 
     def test_each_state_paints_its_headings(self):
@@ -856,7 +808,7 @@ class Painting(unittest.TestCase):
 
     def test_the_hold_line_is_one_lit_row_over_a_dark_gap(self):
         for name in ("channel-hold-lines", "channel-hold-over-a-silent-a",
-                     "return-hold-lines"):
+                     "return-hold-line"):
             picture = self.states()[name]
             image = self.paint_state(name, picture)
             for meter in picture.meters:
@@ -876,7 +828,8 @@ class Painting(unittest.TestCase):
                 image = self.paint_state(name, picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
                 boxes += list(picture.dividers) + list(picture.marks)
-                boxes.append(picture.cursor)
+                if picture.cursor is not None:
+                    boxes.append(picture.cursor)
                 if picture.active is not None:
                     boxes.append(picture.active)
                 if picture.toggle is not None:
@@ -913,7 +866,7 @@ class Painting(unittest.TestCase):
 
     def test_a_selected_silent_meter_paints_nothing(self):
         for name, index in (("channel-silent-cursor-on-stem-1", 0),
-                            ("return-silent-cursor-on-analog", 1)):
+                            ("return-silent", 0)):
             with self.subTest(name):
                 picture = self.states()[name]
                 image = self.paint_state(name, picture)
@@ -927,6 +880,8 @@ class Painting(unittest.TestCase):
 
     def test_the_arrow_is_a_solid_triangle_pointing_down(self):
         for name, picture in self.states().items():
+            if picture.cursor is None:                  # the FX Return has none (P47)
+                continue
             with self.subTest(name):
                 image = self.paint_state(name, picture)
                 rows = self.arrow_rows(image, picture.cursor)
@@ -996,8 +951,8 @@ class Painting(unittest.TestCase):
 
     def test_the_cue_field_on_is_a_filled_box_with_dark_letters(self):
         """The return's CUE field: a filled box with dark letters while on."""
-        picture = self.states()["return-cue-on-cursor-on-cue"]
-        image = self.paint_state("return-cue-on-cursor-on-cue", picture)
+        picture = self.states()["return-cue-on"]
+        image = self.paint_state("return-cue-on", picture)
         toggle = picture.toggle
         self.assertTrue(self.none_lit(image, self.ring(toggle.box, 0)))
         self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
@@ -1007,16 +962,16 @@ class Painting(unittest.TestCase):
                         (inside[2] - inside[0] + 1) * (inside[3] - inside[1] + 1))
 
     def test_the_cue_field_off_is_an_outline_with_light_letters(self):
-        picture = self.states()["return-cue-off-cursor-on-cue"]
-        image = self.paint_state("return-cue-off-cursor-on-cue", picture)
+        picture = self.states()["return-cue-off"]
+        image = self.paint_state("return-cue-off", picture)
         toggle = picture.toggle
         self.assertTrue(self.all_lit(image, self.ring(self.field(toggle), 0)))
         self.assertTrue(self.none_lit(image, self.field_middle(toggle)))
         self.assertTrue(self.lit(image, self.inside(toggle)))
 
     def test_the_return_divider_is_painted_full_length(self):
-        picture = self.states()["return-cue-off-cursor-on-cue"]
-        image = self.paint_state("return-cue-off-cursor-on-cue", picture)
+        picture = self.states()["return-cue-off"]
+        image = self.paint_state("return-cue-off", picture)
         (x0, y0, _, y1), = picture.dividers
         self.assertTrue(all(image.getpixel((x0, y)) for y in range(y0, y1 + 1)))
 
@@ -1046,7 +1001,7 @@ class Painting(unittest.TestCase):
         """Painted with and without it, the picture differs in exactly
         the bracket's top line and legs: lit across, lit down, its inside
         left to the meter, and nothing beyond its box."""
-        self.assertEqual(len(self.with_brackets()), 27)
+        self.assertEqual(len(self.with_brackets()), 16)   # every channel state; the FX Return has none
         for name, picture in self.with_brackets().items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -1075,7 +1030,7 @@ class Painting(unittest.TestCase):
         differs only inside that bar."""
         clipping = {name: picture for name, picture in self.states().items()
                     if any(m.clip for m in picture.meters)}
-        self.assertEqual(len(clipping), 6)
+        self.assertEqual(len(clipping), 4)
         for name, picture in clipping.items():
             with self.subTest(name):
                 image = self.paint_state(name, picture)
@@ -1123,8 +1078,7 @@ class Painting(unittest.TestCase):
         channel LEDs turn yellow (−9 dBFS) and red (−3 dBFS), lit whatever
         the level -- on a silent channel, under a full bar, on the return."""
         for name in ("channel-silent-cursor-on-stem-1", "channel-cursor-on-a-full-meter",
-                     "channel-analog-clips", "return-silent-cursor-on-analog",
-                     "return-stem-clipping-in-stem-mode"):
+                     "channel-analog-clips", "return-silent", "return-clipping"):
             with self.subTest(name):
                 picture = self.states()[name]
                 image = self.paint_state(name, picture)
@@ -1144,20 +1098,15 @@ class Painting(unittest.TestCase):
                 marks = {(x, y) for x0, y, x1, _ in picture.marks for x in range(x0, x1 + 1)}
                 self.assertLessEqual(changed, marks)
 
-    def test_the_return_shows_nothing_between_its_meters(self):
-        """No AUX title any more: between STEM's and ANALOG's columns the
-        meters' band stays dark, but for the bracket's leg a column beside
-        the active meter and ANALOG's yellow and red marks."""
-        from display_panel import meter_marks
-        for name in ("return-stem-mode-cursor-on-stem", "return-analog-mode-cursor-on-analog"):
+    def test_the_return_paints_no_arrow(self):
+        """P47: nothing to choose, so the band between the heading and the
+        meter stays dark across the whole panel."""
+        from display_panel import _bands
+        _, (top, bottom), _ = _bands(64)
+        for name in ("return-music", "return-cue-on", "return-clipping"):
             with self.subTest(name):
-                picture = self.states()[name]
-                image = self.paint_state(name, picture)
-                left, right = picture.meters
-                between = (left.box[2] + 2, left.box[1], right.box[0] - 2, left.box[3])
-                marks = {(x, y) for x0, y, x1, _ in meter_marks(right.box)
-                         for x in range(x0, x1 + 1)}
-                self.assertEqual(set(self.lit(image, between)) - marks, set())
+                image = self.paint_state(name, self.states()[name])
+                self.assertEqual(self.lit(image, (0, top, 127, bottom)), [])
 
 
 class HowLongADrawTakes(unittest.TestCase):

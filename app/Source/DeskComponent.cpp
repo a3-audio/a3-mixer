@@ -128,15 +128,13 @@ void DeskComponent::show (juce::Component& control, bool takesHands)
 void DeskComponent::buildMaster()
 {
     _select = std::make_unique<DeskEncoder> ("SELECT");
-    _select->onTurn = [this] (int clicks) { if (handsAccepted()) send (_wire->returnTurn (clicks)); };
+    // P47: the FX Return has nothing to choose -- its turn sends nothing, its push and its CUE field cue it.
     _select->onPush = [this] { if (handsAccepted()) send (_wire->returnPush()); };
     _returnDisplay = std::make_unique<OledView>();
     _returnDisplay->onSlot = [this] (int index) {
-        constexpr std::array<int, 3> cursorOf { display::stemMode, display::analogMode, display::cueCursor };
-        if (index < 0 || index >= static_cast<int> (cursorOf.size()) || ! handsAccepted())
-            return;
-        if (const auto turns = turns::returnTurnsTo (_ind.returnCursor, cursorOf[(size_t) index]); turns != 0)
-            send (_wire->returnTurn (turns));
+        constexpr int cueField = 1;   // after the one meter
+        if (index == cueField && handsAccepted())
+            send (_wire->returnPush());
     };
     _hpf = std::make_unique<DeskKey> ("HPF", theme::lampHpf);
     _hpf->onPress = [this] (bool down) { pressFilter (true, down); };
@@ -249,7 +247,7 @@ juce::Component* DeskComponent::controlFor (const std::string& key, int channel)
 {
     if (const auto pot = potIndex (key, channel); pot >= 0)
         return _potControl[(size_t) pot];
-    if (key == "aux-return.stem.turn" || key == "aux-return.stem.push")
+    if (key == "aux-return.stem.push")
         return channel == 0 ? _select.get() : nullptr;
     // One word, two keys: the filter mode is HPF as 1 and LPF as 2.
     if (key == "filter.mode")
@@ -413,12 +411,10 @@ void DeskComponent::showDisplays (double dt)
             ch - 1, _ind.cursor[(size_t) ch - 1], levels, _ind.stemMask[(size_t) ch - 1], display::oledWidth,
             display::oledHeight, clips, holds));
     }
-    const auto stem = _meters->returnStem (now), analog = _meters->returnAnalog (now);
-    const std::array<bool, 2> clips { _returnClips[0].feed (_meters->returnStemPeak(), dt),
-                                      _returnClips[1].feed (_meters->returnAnalogPeak(), dt) };
-    _returnDisplay->setPicture (display::returnPicture (
-        _ind.returnCursor, _ind.returnMode, _ind.returnCue, { fraction (stem.bar), fraction (analog.bar) },
-        display::oledWidth, display::oledHeight, clips, { fraction (stem.hold), fraction (analog.hold) }));
+    const auto fx = _meters->fxReturn (now);
+    _returnDisplay->setPicture (display::returnPicture (_ind.returnCue, fraction (fx.bar), display::oledWidth,
+                                                        display::oledHeight, _returnClip.feed (_meters->fxReturnPeak(), dt),
+                                                        fraction (fx.hold)));
 }
 
 juce::String DeskComponent::statusRight() const

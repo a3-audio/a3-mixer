@@ -37,15 +37,6 @@ TEST (SlotTurns, AChannelRingIsD1D2A)
     EXPECT_EQ (channelTurnsTo (1, 0, 0), 1);
 }
 
-TEST (SlotTurns, TheReturnRingIsStemAnalogCue)
-{
-    EXPECT_EQ (returnTurnsTo (1, 0), 1);    // STEM -> ANALOG
-    EXPECT_EQ (returnTurnsTo (0, 2), 1);    // ANALOG -> CUE
-    EXPECT_EQ (returnTurnsTo (2, 1), 1);    // CUE -> STEM
-    EXPECT_EQ (returnTurnsTo (1, 2), -1);
-    EXPECT_EQ (returnTurnsTo (2, 2), 0);
-}
-
 // A knob that has no size yet (0 x 0) must not make a division by zero.
 TEST (DragClicks, ANonPositiveStepIsOnePixel)
 {

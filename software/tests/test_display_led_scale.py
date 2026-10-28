@@ -128,11 +128,10 @@ class TheScaleIsOneTable(unittest.TestCase):
 
 def pictures(level, hold=0.0):
     """Every display drawn with all meters at `level` and `hold`."""
-    from display_panel import STEM_MODE, channel_picture, return_picture
+    from display_panel import channel_picture, return_picture
     return {
         "channel": channel_picture(0, 0, (level,) * 3, 0, W, H, holds=(hold,) * 3),
-        "return": return_picture(STEM_MODE, STEM_MODE, False, (level,) * 2, W, H,
-                                 holds=(hold,) * 2),
+        "return": return_picture(False, level, W, H, hold=hold),
     }
 
 
@@ -220,11 +219,11 @@ class MarksBesideTheBar(unittest.TestCase):
 
     def test_the_marks_stay_on_the_panel_and_clear_of_the_bracket(self):
         for name, picture in pictures(0.0).items():
-            bracket_bottom = picture.active[3]
             for x0, y0, x1, y1 in picture.marks:
                 with self.subTest(name, mark=(x0, y0, x1, y1)):
                     self.assertTrue(0 <= x0 <= x1 < W and 0 <= y0 <= y1 < H)
-                    self.assertGreater(y0, bracket_bottom + 1)
+                    if picture.active is not None:      # the FX Return has none (P47)
+                        self.assertGreater(y0, picture.active[3] + 1)
 
     def test_the_marks_cover_no_bar_and_no_divider(self):
         """In a 2-column gap the marks of two neighbours meet; they must

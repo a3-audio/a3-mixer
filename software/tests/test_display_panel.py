@@ -65,7 +65,7 @@ class PanelTable(unittest.TestCase):
     # "Line In" -- dieselbe Copy-Paste-Schicht, aus der auch das sechste
     # Display kam, das es nie gab.
     def test_the_fifth_is_the_aux_return(self):
-        self.assertEqual("Aux Return", PANELS[-1].label)
+        self.assertEqual("FX Return", PANELS[-1].label)
 
     def test_the_first_four_are_the_channel_strips(self):
         self.assertEqual(["Deck 1", "Deck 2", "Deck 3", "Deck 4"],
@@ -384,95 +384,71 @@ class ActiveBracket(unittest.TestCase):
 
 
 class ReturnMeter(unittest.TestCase):
-    """The return is drawn like a channel (2026-10-04): two mono meters,
-    STEM (StemDeck's aux bus) and ANALOG (the analog return), under their
-    names; the mode that plays carries the active bracket over its meter, as
-    a channel's playing stem does, and the cursor is the same down arrow,
-    over STEM, ANALOG or the CUE field (ReturnCue)."""
+    """P47: the FX Return is the master of the delay channel. Its display is
+    one mono meter under FX RTN -- the return after RETURN -- and the CUE
+    field: no source to choose, so no second meter, no arrow and no active
+    bracket."""
 
-    def picture(self, cursor=None, mode=None, levels=(0.5, 0.5), cue=False):
-        from display_panel import STEM_MODE, return_picture
-        cursor = STEM_MODE if cursor is None else cursor
-        mode = STEM_MODE if mode is None else mode
-        return return_picture(cursor, mode, cue, levels, W, H)
-
-    def heading(self, picture, text):
-        return next(h for h in picture.headings if h.text == text)
-
-    def test_the_return_has_one_name_both_ways(self):
-        """P38: the return is the FX Return in every mode; the heading is
-        too narrow for the full name, so it reads FX RTN."""
+    def picture(self, level=0.5, cue=False):
         from display_panel import return_picture
-        p = return_picture(1, 1, False, (0.5, 0.5), W, H)
-        self.assertEqual([h.text for h in p.headings], ["FX RTN", "ANALOG"])
+        return return_picture(cue, level, W, H)
 
-    def test_only_stem_and_analog_from_left_to_right(self):
-        """Maintainer, 2026-10-04: the AUX title irritated and went; the
-        return shows its two options and nothing between them."""
+    def test_one_meter_under_one_name(self):
+        p = self.picture(level=0.4)
+        self.assertEqual([h.text for h in p.headings], ["FX RTN"])
+        self.assertEqual([m.level for m in p.meters], [0.4])
+        heading, meter = p.headings[0].box, p.meters[0].box
+        self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
+        self.assertLess(heading[3], meter[1])
+
+    def test_no_arrow_and_no_bracket(self):
         p = self.picture()
-        self.assertEqual([h.text for h in p.headings], ["FX RTN", "ANALOG"])
-        lefts = [h.box[0] for h in p.headings]
-        self.assertEqual(lefts, sorted(lefts))
+        self.assertIsNone(p.cursor)
+        self.assertIsNone(p.active)
 
-    def test_two_mono_meters_under_their_headings(self):
-        from display_panel import Meter
-        p = self.picture(levels=(0.1, 0.4))
-        self.assertEqual([m.level for m in p.meters], [0.1, 0.4])
-        self.assertTrue(all(type(m) is Meter for m in p.meters))
-        for text, meter in (("FX RTN", p.meters[0]), ("ANALOG", p.meters[1])):
-            heading = self.heading(p, text).box
-            self.assertTrue(heading[0] <= meter.box[0] and meter.box[2] <= heading[2], text)
-            self.assertLess(heading[3], meter.box[1])
+    def test_the_meter_is_centred_under_its_name_left_of_the_divider(self):
+        p = self.picture()
+        line = p.dividers[0][0]
+        meter, heading = p.meters[0].box, p.headings[0].box
+        self.assertLessEqual(abs((meter[0] + meter[2]) - (heading[0] + heading[2])), 1)
+        self.assertLess(heading[2], line - 1)
+        self.assertLessEqual(abs(heading[0] - (line - 1 - heading[2])), 3)
 
-    def test_the_mode_that_plays_has_the_active_bracket(self):
-        """Maintainer, 2026-10-04: the bracket replaces the inverted
-        heading, so "active" looks the same on every display."""
-        from display_panel import ANALOG_MODE, STEM_MODE
-        for mode, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
-            for cursor in (STEM_MODE, ANALOG_MODE):
-                p = self.picture(cursor=cursor, mode=mode)
-                assert_bracket_over(self, p, p.meters[index].box)
+    def test_the_meter_keeps_its_look(self):
+        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_HEADING
+        heading = round(W * RETURN_HEADING_OF_WIDTH)
+        p = self.picture()
+        self.assertEqual(p.headings[0].box[2] - p.headings[0].box[0] + 1, heading)
+        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, round(heading * RETURN_METER_OF_HEADING))
 
     def test_the_headings_are_plain(self):
         from display_panel import Heading
         self.assertEqual(Heading._fields, ("box", "text"))
 
-    def test_the_cursor_is_an_arrow_above_stem_or_analog(self):
-        from display_panel import ANALOG_MODE, STEM_MODE
-        for cursor, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
-            p = self.picture(cursor=cursor)
-            x0, y0, x1, y1 = p.cursor
-            meter = p.meters[index].box
-            self.assertGreater(y0, max(h.box[3] for h in p.headings))
-            self.assertLess(y1, meter[1])
-            self.assertLessEqual(abs((x0 + x1) - (meter[0] + meter[2])), 1)
-
-    def test_the_return_arrow_reads_like_the_channels(self):
-        from display_panel import channel_picture
-        channel = channel_picture(0, 0, (0.0,) * 3, 0, W, H).cursor
-        ret = self.picture().cursor
-        self.assertEqual((ret[1], ret[3]), (channel[1], channel[3]))
-        self.assertGreaterEqual(ret[2] - ret[0], channel[2] - channel[0])
-
-    def test_the_meters_stand_inside_the_panel(self):
-        for x0, y0, x1, y1 in [m.box for m in self.picture().meters]:
-            self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H)
+    def test_the_meter_stands_inside_the_panel(self):
+        x0, y0, x1, y1 = self.picture().meters[0].box
+        self.assertTrue(0 <= x0 < x1 < W and 0 <= y0 < y1 < H)
 
     def test_there_is_no_scale_any_more(self):
         from display_panel import Picture
         self.assertNotIn("ticks", Picture._fields)
 
+    def test_no_source_words_are_left(self):
+        import display_panel
+        for gone in ("STEM_MODE", "ANALOG_MODE", "RETURN_OPTIONS", "CUE_CURSOR",
+                     "return_announcement", "mode_announcement"):
+            self.assertFalse(hasattr(display_panel, gone), gone)
+
 
 class ReturnCue(unittest.TestCase):
-    """Maintainer, 2026-10-04: the return gets a cue of its own, switched on
-    its display -- a CUE field at the right edge behind a divider, in the
-    slot where a channel shows A, so both displays read the same. The
-    cursor runs over STEM, ANALOG and CUE; the active bracket stays over the
-    playing mode and never stands on CUE."""
+    """Maintainer, 2026-10-04: the return gets a cue of its own -- a CUE
+    field at the right edge behind a divider, in the slot where a channel
+    shows A, so both displays read the same. Since P47 the encoder's push
+    toggles it directly."""
 
-    def picture(self, cursor=1, mode=1, cue=False, levels=(0.5, 0.5)):
+    def picture(self, cue=False, level=0.5):
         from display_panel import return_picture
-        return return_picture(cursor, mode, cue, levels, W, H)
+        return return_picture(cue, level, W, H)
 
     def channel(self, cursor=0):
         from display_panel import channel_picture
@@ -497,50 +473,6 @@ class ReturnCue(unittest.TestCase):
         self.assertEqual(len(p.dividers), 1)
         self.assertEqual(p.dividers[0], channel.dividers[-1])
 
-    def test_the_meters_stay_left_of_the_divider(self):
-        """With a column of dark between a meter -- or its bracket -- and
-        the line."""
-        from display_panel import ANALOG_MODE, STEM_MODE
-        for mode in (STEM_MODE, ANALOG_MODE):
-            p = self.picture(mode=mode)
-            line = p.dividers[0][0]
-            for meter in p.meters:
-                self.assertLess(meter.box[2], line - 1, mode)
-            for heading in p.headings:
-                self.assertLess(heading.box[2], line, mode)
-            self.assertLess(p.active[2], line - 1, mode)
-
-    def test_stem_and_analog_keep_their_look(self):
-        """The meters and headings may move left, but keep their size."""
-        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_HEADING
-        heading = round(W * RETURN_HEADING_OF_WIDTH)
-        p = self.picture()
-        self.assertEqual([h.box[2] - h.box[0] + 1 for h in p.headings], [heading] * 2)
-        self.assertEqual([m.box[2] - m.box[0] + 1 for m in p.meters],
-                         [round(heading * RETURN_METER_OF_HEADING)] * 2)
-
-    def test_the_cursor_on_cue_is_the_channels_arrow_on_a(self):
-        from display_panel import ANALOG_INPUT, CUE_CURSOR
-        self.assertEqual(CUE_CURSOR, 2)
-        self.assertEqual(self.picture(cursor=CUE_CURSOR).cursor,
-                         self.channel(cursor=ANALOG_INPUT).cursor)
-
-    def test_the_cursor_on_stem_or_analog_is_not_on_cue(self):
-        from display_panel import ANALOG_MODE, STEM_MODE
-        for cursor, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
-            p = self.picture(cursor=cursor)
-            meter = p.meters[index].box
-            self.assertLessEqual(abs((p.cursor[0] + p.cursor[2]) - (meter[0] + meter[2])), 1)
-
-    def test_the_bracket_never_stands_on_cue(self):
-        from display_panel import ANALOG_MODE, CUE_CURSOR, STEM_MODE
-        for mode, index in ((STEM_MODE, 0), (ANALOG_MODE, 1)):
-            for cursor in (STEM_MODE, ANALOG_MODE, CUE_CURSOR):
-                for cue in (False, True):
-                    p = self.picture(cursor=cursor, mode=mode, cue=cue)
-                    assert_bracket_over(self, p, p.meters[index].box)
-                    self.assertLess(p.active[2], p.toggle.box[0])
-
     def test_the_cue_moves_neither_meter_nor_heading(self):
         on, off = self.picture(cue=True), self.picture(cue=False)
         self.assertEqual([m.box for m in on.meters], [m.box for m in off.meters])
@@ -548,10 +480,10 @@ class ReturnCue(unittest.TestCase):
 
     def test_it_lays_out_on_a_short_panel_too(self):
         from display_panel import return_picture
-        p = return_picture(2, 0, True, (0.5, 0.5), W, 32)
+        p = return_picture(True, 0.5, W, 32)
         for box in [m.box for m in p.meters] + [h.box for h in p.headings]:
             self.assertTrue(box[3] < 32, box)
-        self.assertTrue(p.toggle.box[3] < 32 and p.cursor[3] < 32)
+        self.assertTrue(p.toggle.box[3] < 32)
 
 
 class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):
@@ -604,11 +536,10 @@ class TheHoldLine(unittest.TestCase):
         self.assertIsNotNone(p.meters[0].hold_row())
         self.assertEqual([m.hold_row() for m in p.meters[1:]], [None] * 2)
 
-    def test_the_return_carries_a_hold_per_meter(self):
+    def test_the_return_carries_its_hold(self):
         from display_panel import return_picture
-        p = return_picture(0, 1, False, (0.1, 0.1), W, H, holds=(0.0, 0.8))
-        self.assertIsNone(p.meters[0].hold_row())
-        self.assertIsNotNone(p.meters[1].hold_row())
+        self.assertIsNone(return_picture(False, 0.1, W, H).meters[0].hold_row())
+        self.assertIsNotNone(return_picture(False, 0.1, W, H, hold=0.8).meters[0].hold_row())
 
     def test_a_moved_hold_is_a_new_picture(self):
         from display_panel import channel_picture, pixel_key
@@ -659,23 +590,16 @@ class InPixels(unittest.TestCase):
         self.assertEqual(pixel_key(self.channel(mask=stem(1))),
                          pixel_key(self.channel(mask=stem(1) | stem(5))))
 
-    def test_the_playing_mode_is_part_of_the_picture(self):
-        from display_panel import ANALOG_MODE, STEM_MODE, pixel_key, return_picture
-        self.assertNotEqual(
-            pixel_key(return_picture(STEM_MODE, STEM_MODE, False, (0.0, 0.0), W, H)),
-            pixel_key(return_picture(STEM_MODE, ANALOG_MODE, False, (0.0, 0.0), W, H)))
-
     def test_the_return_cue_is_part_of_the_picture(self):
         """A cue switched on or off is one redraw of the return panel."""
-        from display_panel import STEM_MODE, pixel_key, return_picture
-        self.assertNotEqual(
-            pixel_key(return_picture(STEM_MODE, STEM_MODE, False, (0.0, 0.0), W, H)),
-            pixel_key(return_picture(STEM_MODE, STEM_MODE, True, (0.0, 0.0), W, H)))
+        from display_panel import pixel_key, return_picture
+        self.assertNotEqual(pixel_key(return_picture(False, 0.0, W, H)),
+                            pixel_key(return_picture(True, 0.0, W, H)))
 
     def test_the_return_in_rows(self):
         from display_panel import pixel_key, return_picture
-        one = return_picture(1, 1, False, (0.500, 0.500), W, H)
-        two = return_picture(1, 1, False, (0.505, 0.505), W, H)
+        one = return_picture(False, 0.500, W, H)
+        two = return_picture(False, 0.505, W, H)
         self.assertEqual(pixel_key(one), pixel_key(two))
 
 
@@ -735,10 +659,10 @@ class ClipIndication(unittest.TestCase):
         self.assertAlmostEqual(meter_level(10 ** (-12 / 20)), 0.5)
 
     def test_a_meter_does_not_clip_unless_told(self):
-        from display_panel import ANALOG_MODE, Meter, channel_picture, return_picture
+        from display_panel import Meter, channel_picture, return_picture
         self.assertFalse(Meter((0, 0, 9, 9), 1.0).clip)
         pictures = (channel_picture(0, 8, (1.0,) * 3, 0, W, H),
-                    return_picture(ANALOG_MODE, ANALOG_MODE, False, (1.0, 1.0), W, H))
+                    return_picture(False, 1.0, W, H))
         for picture in pictures:
             self.assertEqual([m.clip for m in picture.meters], [False] * len(picture.meters))
 
@@ -748,10 +672,9 @@ class ClipIndication(unittest.TestCase):
         p = channel_picture(0, 8, (1.0,) * 3, 0, W, H, clips=clips)
         self.assertEqual(tuple(m.clip for m in p.meters), clips)
 
-    def test_the_return_carries_stem_and_analogs_clip(self):
-        from display_panel import STEM_MODE, return_picture
-        p = return_picture(STEM_MODE, STEM_MODE, False, (1.0, 0.2), W, H, clips=(True, False))
-        self.assertEqual([m.clip for m in p.meters], [True, False])
+    def test_the_return_carries_its_clip(self):
+        from display_panel import return_picture
+        self.assertEqual([m.clip for m in return_picture(False, 1.0, W, H, clip=True).meters], [True])
 
     def test_a_clip_is_shown_on_the_bar(self):
         from display_panel import Meter
@@ -762,14 +685,12 @@ class ClipIndication(unittest.TestCase):
 
     def test_a_clip_is_part_of_the_picture(self):
         """A clip lighting or going out is one redraw, nothing more."""
-        from display_panel import STEM_MODE, channel_picture, pixel_key, return_picture
+        from display_panel import channel_picture, pixel_key, return_picture
         clean = channel_picture(0, 8, (1.0,) * 3, 0, W, H)
         over = channel_picture(0, 8, (1.0,) * 3, 0, W, H, clips=(True, False, False))
         self.assertNotEqual(pixel_key(clean), pixel_key(over))
-        self.assertNotEqual(
-            pixel_key(return_picture(STEM_MODE, STEM_MODE, False, (1.0, 0.0), W, H)),
-            pixel_key(return_picture(STEM_MODE, STEM_MODE, False, (1.0, 0.0), W, H,
-                                     clips=(True, False))))
+        self.assertNotEqual(pixel_key(return_picture(False, 1.0, W, H)),
+                            pixel_key(return_picture(False, 1.0, W, H, clip=True)))
 
 
 class MeterLevels(unittest.TestCase):
@@ -792,12 +713,6 @@ class SelectorAnnouncements(unittest.TestCase):
         for args in ((9,), (-1,), (True,), (1.0,), ("1",), (1, 2), ()):
             self.assertIsNone(cursor_announcement(args), args)
 
-    def test_a_mode_is_zero_or_one(self):
-        from display_panel import mode_announcement
-        self.assertEqual(mode_announcement((1,)), 1)
-        for args in ((2,), (-1,), (True,), ()):
-            self.assertIsNone(mode_announcement(args), args)
-
 
 class StemPanels(unittest.TestCase):
     def test_channels_zero_to_three_are_the_four_decks(self):
@@ -805,9 +720,9 @@ class StemPanels(unittest.TestCase):
         self.assertEqual([panel_for_channel(i).label for i in range(4)],
                          ["Deck 1", "Deck 2", "Deck 3", "Deck 4"])
 
-    def test_the_return_is_the_aux_return_panel(self):
+    def test_the_return_is_the_fx_return_panel(self):
         from display_panel import return_panel
-        self.assertEqual(return_panel().label, "Aux Return")
+        self.assertEqual(return_panel().label, "FX Return")
 
     def test_the_mapping_hands_out_the_table_rows_themselves(self):
         from display_panel import PANELS, panel_for_channel, return_panel
@@ -819,12 +734,6 @@ class StemPanels(unittest.TestCase):
         for index in (-1, 4, 5):
             with self.assertRaises(IndexError):
                 panel_for_channel(index)
-
-
-def return_announcement_cursor(args):
-    from display_panel import return_announcement
-    announced = return_announcement(args)
-    return None if announced is None else announced[0]
 
 
 class StemAnnouncements(unittest.TestCase):
@@ -839,20 +748,6 @@ class StemAnnouncements(unittest.TestCase):
         for args in ((), ("x",), (256,), (-1,), (None,), (1.5,), ("3",), (True,)):
             self.assertIsNone(channel_announcement(args), args)
 
-    def test_a_return_announcement_is_cursor_and_eight_pairs(self):
-        from display_panel import return_announcement
-        self.assertEqual(return_announcement((1, 1, 0, 0, 1, 1, 1, 1, 1)),
-                         (1, (True, False, False, True, True, True, True, True)))
-        self.assertEqual(return_announcement((0,) * 9), (0, (False,) * 8))
-
-    def test_the_cursor_is_analog_stem_or_cue(self):
-        """The truth's words: 0 = analog, 1 = stem, 2 = cue (2026-10-04).
-        A cursor past them used to pass and then broke the return's
-        picture."""
-        self.assertEqual(return_announcement_cursor((1,) + (1,) * 8), 1)
-        self.assertEqual(return_announcement_cursor((2,) + (1,) * 8), 2)
-        self.assertIsNone(return_announcement_cursor((3,) + (1,) * 8))
-
     def test_a_return_cue_is_on_or_off(self):
         """/aux-return/cue/led: f, 1.0 = on, as Core sends a lamp."""
         from display_panel import cue_announcement
@@ -866,13 +761,6 @@ class StemAnnouncements(unittest.TestCase):
         for args in ((), (0.5,), (2.0,), (-1.0,), (True,), ("1",), (None,),
                      (float("nan"),), (1.0, 1.0)):
             self.assertIsNone(cue_announcement(args), args)
-
-    def test_a_damaged_return_announcement_is_none(self):
-        from display_panel import return_announcement
-        for args in ((), (1, 1), (1,) + (1,) * 7, (1,) + (1,) * 9,
-                     (10,) + (1,) * 8, (1, 2) + (1,) * 7, ("a",) + (1,) * 8,
-                     (1, True) + (1,) * 7):
-            self.assertIsNone(return_announcement(args), args)
 
 
 if __name__ == "__main__":

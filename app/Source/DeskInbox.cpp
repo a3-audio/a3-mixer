@@ -90,23 +90,6 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
             _ind.deckPresent[slot] = *v == 1;
         return;
     }
-    if (key == "aux-return.stem")
-    {
-        if (m.size() != 1 + display::pairs)
-            return;
-        for (int i = 1; i < m.size(); ++i)
-            if (! countIn (m[i], 1))
-                return;
-        if (const auto v = countIn (m[0], display::cueCursor))
-            _ind.returnCursor = *v;
-        return;
-    }
-    if (key == "aux-return.stem.mode")
-    {
-        if (const auto v = countIn (m[0], 1))
-            _ind.returnMode = *v;
-        return;
-    }
     if (key == "aux-return.cue.led")
     {
         if (const auto v = numberIn (m[0]))

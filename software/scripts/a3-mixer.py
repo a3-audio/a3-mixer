@@ -32,9 +32,8 @@ from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
-                               cursor_announcement, mode_announcement, open_displays,
-                               present_announcement, source_announcement,
-                               return_announcement)
+                               cursor_announcement, open_displays,
+                               present_announcement, source_announcement)
 from a3_mixer_meters import (MeterBallistics, StereoInputs, channel_vu_line,
                              main_vu_line, peak_db)
 from a3_mixer_latest import serve
@@ -203,16 +202,10 @@ def vu_handler(address: str,
     if pair is not None:
         displays.note_peak(pair, osc_arguments[0])
         return
-    # The analog return's meter: the return display's ANALOG, no LED.
+    # The FX Return's meter (P47): the return display's one bar, no LED.
     side = osc.aux_side(number)
     if side is not None:
         displays.note_aux(side, osc_arguments[0])
-        return
-    # StemDeck's aux bus: the return display's STEM, no LED. Only a truth that
-    # names stem_aux_L/R sends it; without, the displays fall back.
-    side = osc.stem_aux_side(number)
-    if side is not None:
-        displays.note_stem_aux(side, osc_arguments[0])
         return
     # An analog input's meter: the channel display's A, whatever plays on
     # the channel (2026-10-07), no LED.
@@ -553,23 +546,13 @@ if __name__ == '__main__':
         if ch is not None and mask is not None and 1 <= ch <= num_channel:
             displays.show_channel(ch - 1, mask)
 
-    def stem_handler_return(address, *args):
-        announced = return_announcement(args)
-        if announced:
-            displays.show_return(*announced)
-
-    # Where a channel's selector cursor stands, and the return's mode: each
-    # on its own display. A damaged value is ignored.
+    # Where a channel's selector cursor stands: its own display. A damaged
+    # value is ignored.
     def stem_handler_cursor(address, *args):
         ch = osc.channel_of("channel.stem.cursor", address)
         cursor = cursor_announcement(args)
         if ch is not None and cursor is not None and 1 <= ch <= num_channel:
             displays.show_cursor(ch - 1, cursor)
-
-    def stem_handler_mode(address, *args):
-        mode = mode_announcement(args)
-        if mode is not None:
-            displays.show_return_mode(mode)
 
     # Engine mode (Plan 4e): Core reports each channel's source, its ring
     # cursor and which decks are there; the first source report puts a
@@ -600,9 +583,7 @@ if __name__ == '__main__':
         dispatcher.map(osc.subscription(key), engine_handlers[key])
 
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
-    dispatcher.map(osc.subscription("aux-return.stem"), stem_handler_return)
     dispatcher.map(osc.subscription("channel.stem.cursor"), stem_handler_cursor)
-    dispatcher.map(osc.subscription("aux-return.stem.mode"), stem_handler_mode)
 
     # Whether the return is cued: its CUE field. A damaged value is ignored.
     def cue_handler_return(address, *args):

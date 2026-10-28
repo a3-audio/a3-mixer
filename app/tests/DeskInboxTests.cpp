@@ -76,13 +76,9 @@ TEST (DeskInbox, StemsCursorAndReturn)
     Desk d;
     d.hear ("channel.stem", 3, 0b100);
     d.hear ("channel.stem.cursor", 3, 7);
-    d.hear ("aux-return.stem", 0, 2, 0, 1, 0, 0, 0, 0, 0, 0);
-    d.hear ("aux-return.stem.mode", 0, 0);
     d.hear ("aux-return.cue.led", 0, 1.f);
     EXPECT_EQ (d.ind.stemMask[2], 0b100);
     EXPECT_EQ (d.ind.cursor[2], 7);
-    EXPECT_EQ (d.ind.returnCursor, 2);
-    EXPECT_EQ (d.ind.returnMode, 0);
     EXPECT_TRUE (d.ind.returnCue);
 }
 
@@ -99,10 +95,10 @@ TEST (DeskInbox, DamagedMessagesChangeNothing)
     Desk d;
     d.hear ("channel.stem", 1, juce::String ("x"));
     d.hear ("channel.stem.cursor", 1, 9);
-    d.hear ("aux-return.stem", 0, 1, 0, 1);
+    d.hear ("aux-return.cue.led", 0, juce::String ("on"));
     EXPECT_EQ (d.ind.stemMask[0], 0);
     EXPECT_EQ (d.ind.cursor[0], 0);
-    EXPECT_EQ (d.ind.returnCursor, 1);
+    EXPECT_FALSE (d.ind.returnCue);
 }
 
 TEST (DeskInbox, ANonFiniteValueIsDropped)
@@ -169,8 +165,7 @@ TEST (DeskMeters, AnalogAndReturnMetersReadTheirOwnNames)
     peaks[(size_t) osc.vuNumber ("aux_L") - 1] = 0.8f;
     meters.take (peaks, 1000);
     EXPECT_NEAR (meters.analog (3, 1000).bar, 0.4f, 1e-4f);
-    EXPECT_NEAR (meters.returnStem (1000).bar, 0.6f, 1e-4f);
-    EXPECT_NEAR (meters.returnAnalog (1000).bar, 0.8f, 1e-4f);
+    EXPECT_NEAR (meters.fxReturn (1000).bar, 0.8f, 1e-4f);   // aux_L/R, never StemDeck's AUX bus (P47)
     EXPECT_FLOAT_EQ (meters.analog (1, 1000).bar, 0.f);
 }
 
@@ -191,8 +186,7 @@ TEST (DeskMeters, TheClipPeaksReadTheBarsNames)
     EXPECT_FLOAT_EQ (meters.stemPeak (5), 1.2f);
     EXPECT_FLOAT_EQ (meters.stemPeak (0), 0.f);
     EXPECT_FLOAT_EQ (meters.analogPeak (3), 1.1f);
-    EXPECT_FLOAT_EQ (meters.returnStemPeak(), 1.3f);
-    EXPECT_FLOAT_EQ (meters.returnAnalogPeak(), 1.4f);
+    EXPECT_FLOAT_EQ (meters.fxReturnPeak(), 1.4f);
 }
 
 namespace

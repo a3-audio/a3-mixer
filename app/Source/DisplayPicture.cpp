@@ -260,40 +260,25 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     return p;
 }
 
-Picture returnPicture (int cursor, int mode, bool cue, const std::array<double, 2>& levels, int width, int height,
-                       const std::array<bool, 2>& clips, const std::array<double, 2>& holds)
+Picture returnPicture (bool cue, double level, int width, int height, bool clip, double hold)
 {
-    // RETURN_OPTIONS = (FX RTN, ANALOG), left to right.
-    constexpr std::array<int, 2> options { stemMode, analogMode };
-    const auto indexOf = [&] (int option) { return option == stemMode ? 0 : 1; };
     const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
     const auto channel = channelColumns (width);
     const auto lastMeter = channel[pairs - 1], toggleSlot = channel[analogInput];
     const int room = lastMeter.x1 + 1;
     const int heading = pyRound (width * returnHeadingOfWidth);
     const int meter = pyRound (heading * returnMeterOfHeading);
-    const std::array<Span, 2> spans { { { 0, heading - 1 }, { room - heading, room - 1 } } };
+    const int x0 = floorDiv (room - heading, 2);
+    const int left = x0 + floorDiv (heading - meter, 2);
 
     Picture p;
-    std::vector<Box> boxes;
-    for (size_t i = 0; i < spans.size(); ++i)
-    {
-        p.headings.push_back ({ { spans[i].x0, headingRows.top, spans[i].x1, headingRows.bottom },
-                                options[i] == stemMode ? "FX RTN" : "ANALOG" });
-        const int left = spans[i].x0 + floorDiv (spans[i].x1 - spans[i].x0 + 1 - meter, 2);
-        boxes.push_back ({ left, meterRows.top, left + meter - 1, meterRows.bottom });
-    }
-    p.meters = metersFor (boxes, levels, clips, holds);
+    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "FX RTN" });
+    p.meters = metersFor (std::vector<Box> { { left, meterRows.top, left + meter - 1, meterRows.bottom } },
+                          std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
     p.toggle = Toggle { { toggleSlot.x0, meterRows.top, toggleSlot.x1, meterRows.bottom }, cue, "CUE" };
     p.dividers.push_back (divider (lastMeter, toggleSlot, meterRows));
-    Span selected = toggleSlot;
-    if (cursor != cueCursor)
-    {
-        const auto& b = boxes[(size_t) indexOf (cursor)];
-        selected = { b.x0, b.x1 };
-    }
-    p.active = bracket (boxes[(size_t) indexOf (mode)]);
-    p.cursor = arrowBox (selected, arrowRowsBand);
+    p.cursor = noBox;
+    p.active = noBox;
     addMarks (p.marks, p.meters, std::nullopt);
     return p;
 }

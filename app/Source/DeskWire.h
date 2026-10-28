@@ -33,7 +33,6 @@ public:
     /** HPF or LPF, on press only: the word, as a3-mixer.py sends it. */
     Outgoing filterMode (bool highPass) const;
     Outgoing channelTurn (int channel, int clicks) const;
-    Outgoing returnTurn (int clicks) const;
     Outgoing channelPush (int channel) const;
     Outgoing returnPush() const;
     Outgoing tap() const;
