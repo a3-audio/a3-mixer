@@ -134,8 +134,9 @@ class Messages(unittest.TestCase):
     def test_a_channel_encoder_turns_its_channel(self):
         self.assertEqual(enc.encoder_message(made_up(), 1, -2), ("/t/channel.stem.turn/2", -2))
 
-    def test_the_fifth_turns_the_return(self):
-        self.assertEqual(enc.encoder_message(made_up(), 4, 1), ("/t/aux-return.stem.turn", 1))
+    def test_the_fifth_turn_says_nothing(self):
+        """P47: the FX Return has nothing to choose; only its push counts."""
+        self.assertIsNone(enc.encoder_message(made_up(), 4, 1))
 
     def test_no_click_no_message(self):
         self.assertIsNone(enc.encoder_message(made_up(), 0, 0))

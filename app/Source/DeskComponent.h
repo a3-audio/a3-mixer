@@ -61,7 +61,7 @@ public:
     const DeskMeters* meters() const { return _meters.get(); }
     /** The control a truth key stands for, for every control the desk has a key for: pots and fader
         ("channel.volume", "master.booth"), "channel.cue", "channel.filter", "tap" (0 = the first), the INPUT
-        encoders ("channel.stem.turn"/".push"), SELECT ("aux-return.stem.turn"/".push", channel 0), and
+        encoders ("channel.stem.turn"/".push"), SELECT ("aux-return.stem.push", channel 0: the FX Return's cue), and
         "filter.mode" (1 = HPF, 2 = LPF). Channel 0 for the master section; nullptr for anything else. */
     juce::Component* controlFor (const std::string& key, int channel) const;
 
@@ -131,6 +131,6 @@ private:
     std::unique_ptr<OledView> _returnDisplay;
     std::unique_ptr<StatusLine> _status;
     std::array<std::array<display::ClipHold, display::channelMeters>, numChannels> _channelClips;
-    std::array<display::ClipHold, 2> _returnClips;
+    display::ClipHold _returnClip;
 };
 }

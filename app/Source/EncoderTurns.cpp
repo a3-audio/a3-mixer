@@ -38,16 +38,4 @@ int engineTurnsTo (int cursor, int slot)
 {
     return shortestInRing (display::engineSlot (cursor), slot, display::engineSlots);
 }
-
-int returnTurnsTo (int cursor, int target)
-{
-    constexpr std::array<int, 3> along { 1, 0, 2 };   // STEM -> ANALOG -> CUE -> STEM
-    const auto indexOf = [&] (int position) {
-        for (int i = 0; i < 3; ++i)
-            if (along[(size_t) i] == position)
-                return i;
-        return 0;
-    };
-    return shortestInRing (indexOf (cursor), indexOf (target), 3);
-}
 }

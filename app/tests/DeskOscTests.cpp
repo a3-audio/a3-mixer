@@ -94,8 +94,7 @@ TEST (DeskOsc, EveryWordItHearsMatchesBack)
             EXPECT_EQ (found->key, key);
             EXPECT_EQ (found->number, ch);
         }
-    for (const auto* key : { "master.volume", "filter.frequency", "filter.led", "aux-return.stem", "aux-return.stem.mode",
-                             "aux-return.cue.led", "beat" })
+    for (const auto* key : { "master.volume", "filter.frequency", "filter.led", "aux-return.cue.led", "beat" })
         EXPECT_EQ (osc.match (osc.address (key))->key, key);
 }
 
@@ -187,4 +186,10 @@ TEST (DeskRing, EngineWordsAreHeardAndNumbered)
         EXPECT_EQ (found->number, deck);
     }
     EXPECT_FALSE (osc.match (osc.address ("stemdeck.present", 5)).has_value());
+}
+
+// P42: one short form, FX RTN, wherever "FX Return" does not fit -- the RETURN pot's caption too.
+TEST (DeskControls, TheReturnPotReadsFxRtn)
+{
+    EXPECT_EQ (desk::potCaption ("master.aux-return"), "FX RTN");
 }

@@ -84,9 +84,9 @@ OUTPUT_METERS = (
 KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
     + tuple(MASTER_POTS.values()) + tuple(LAMPS) \
     + ("filter.mode", "filter.led", "beat", "tap", "state.recall", "vu",
-       "device.hello", "channel.stem.turn", "aux-return.stem.turn",
-       "aux-return.stem.push", "channel.stem", "aux-return.stem",
-       "channel.stem.push", "channel.stem.cursor", "aux-return.stem.mode", "core.here",
+       "device.hello", "channel.stem.turn",
+       "aux-return.stem.push", "channel.stem",
+       "channel.stem.push", "channel.stem.cursor", "core.here",
        "aux-return.cue.led")
 
 #: What Core adds in engine mode (Plan 4e): the channel's source and its ring
@@ -117,12 +117,8 @@ ANALOG_METERS = ("analog1_L", "analog1_R", "analog2_L", "analog2_R",
 STEM_METERS = ("stem_a1", "stem_a2", "stem_a3", "stem_a4",
                "stem_b1", "stem_b2", "stem_b3", "stem_b4")
 
-#: The analog return's meter, left and right: the return display's ANALOG.
+#: The FX Return's meter, left and right: the return display's one bar (P47).
 AUX_METERS = ("aux_L", "aux_R")
-
-#: StemDeck's AUX bus, left and right: the return display's STEM (2026-10-04).
-#: A truth from before has no such names, and the desk falls back.
-STEM_AUX_METERS = ("stem_aux_L", "stem_aux_R")
 
 
 class TruthMissing(Exception):
@@ -263,14 +259,9 @@ class MixerOsc:
         return STEM_METERS.index(name) + 1 if name in STEM_METERS else None
 
     def aux_side(self, number):
-        """0 for the analog return's left meter (aux_L), 1 for its right
-        (aux_R), None for any other /vu/<number> (spec desk-stem-grid-2)."""
+        """0 for the FX Return's left meter (aux_L), 1 for its right
+        (aux_R), None for any other /vu/<number>."""
         return self._side(number, AUX_METERS)
-
-    def stem_aux_side(self, number):
-        """0 for StemDeck's AUX bus left meter (stem_aux_L), 1 for its right
-        (stem_aux_R), None for any other /vu/<number>."""
-        return self._side(number, STEM_AUX_METERS)
 
     def _side(self, number, names):
         meters = self._data.get("vu_meters", [])
@@ -305,8 +296,7 @@ class MixerOsc:
 
     def _lights_something(self, number):
         return any(found is not None for found in (
-            self.stem_pair(number), self.aux_side(number),
-            self.stem_aux_side(number), self.input_side(number),
+            self.stem_pair(number), self.aux_side(number), self.input_side(number),
             self.analog_side(number), self.vu_slot(number)))
 
     @property

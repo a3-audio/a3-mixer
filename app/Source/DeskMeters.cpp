@@ -10,7 +10,7 @@ namespace
 {
 std::vector<std::string> shownNames()
 {
-    std::vector<std::string> names { "main_sub", "aux_L", "aux_R", "stem_aux_L", "stem_aux_R" };
+    std::vector<std::string> names { "main_sub", "aux_L", "aux_R" };
     for (int top = 1; top <= 7; ++top)
         names.push_back ("main_top" + std::to_string (top));
     for (int ch = 1; ch <= 4; ++ch)
@@ -88,8 +88,7 @@ DeskMeters::Reading DeskMeters::analog (int ch, std::int64_t now) const
     return louder (analogName (ch) + "_L", analogName (ch) + "_R", now);
 }
 
-DeskMeters::Reading DeskMeters::returnStem (std::int64_t now) const { return louder ("stem_aux_L", "stem_aux_R", now); }
-DeskMeters::Reading DeskMeters::returnAnalog (std::int64_t now) const { return louder ("aux_L", "aux_R", now); }
+DeskMeters::Reading DeskMeters::fxReturn (std::int64_t now) const { return louder ("aux_L", "aux_R", now); }
 
 float DeskMeters::takenPeak (const std::string& name) const
 {
@@ -104,6 +103,5 @@ float DeskMeters::louderTaken (const std::string& left, const std::string& right
 
 float DeskMeters::stemPeak (int pair) const { return takenPeak (stemName (pair)); }
 float DeskMeters::analogPeak (int ch) const { return louderTaken (analogName (ch) + "_L", analogName (ch) + "_R"); }
-float DeskMeters::returnStemPeak() const { return louderTaken ("stem_aux_L", "stem_aux_R"); }
-float DeskMeters::returnAnalogPeak() const { return louderTaken ("aux_L", "aux_R"); }
+float DeskMeters::fxReturnPeak() const { return louderTaken ("aux_L", "aux_R"); }
 }

@@ -60,9 +60,6 @@ TEST (DeskWire, TurnsAndPushesAreInt32)
     EXPECT_EQ (turn.message.getAddressPattern().toString(), osc().address ("channel.stem.turn", 4));
     EXPECT_EQ (turn.message[0].getInt32(), -2);
     EXPECT_TRUE (turn.message[0].isInt32());
-    EXPECT_EQ (wire.returnTurn (1).message[0].getInt32(), 1);
-    EXPECT_TRUE (wire.returnTurn (1).message[0].isInt32());
-    EXPECT_EQ (wire.returnTurn (1).message.getAddressPattern().toString(), osc().address ("aux-return.stem.turn"));
     EXPECT_EQ (wire.channelPush (1).message[0].getInt32(), 1);
     EXPECT_TRUE (wire.channelPush (1).message[0].isInt32());
     EXPECT_TRUE (wire.returnPush().message[0].isInt32());

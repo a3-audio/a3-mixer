@@ -67,7 +67,7 @@ PANELS = (
     Panel(channel=3, port=I2C_BUS, address=0x3D, rotate=2, label="Deck 2"),
     Panel(channel=4, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 3"),
     Panel(channel=5, port=I2C_BUS, address=0x3C, rotate=2, label="Deck 4"),
-    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="Aux Return"),
+    Panel(channel=6, port=I2C_BUS, address=0x3C, rotate=0, label="FX Return"),
 )
 
 
@@ -135,17 +135,6 @@ def channel_announcement(args):
     return args[0]
 
 
-def return_announcement(args):
-    """(cursor, plays) out of `/aux-return/stem`'s arguments -- the option
-    the encoder is on (0 = analog, 1 = stem, 2 = cue), then for pairs 1-8
-    whether it plays on the return -- or None if damaged."""
-    if len(args) != 1 + PAIRS or not _is_count(args[0], CUE_CURSOR):
-        return None
-    if not all(_is_count(flag, 1) for flag in args[1:]):
-        return None
-    return args[0], tuple(bool(flag) for flag in args[1:])
-
-
 #: A channel's selector, in a3_core_stems' numbers: 0-7 the stem pairs 1-8
 #: (D1's four, then D2's), 8 A, the channel's analog input (2026-10-07).
 ANALOG_INPUT = PAIRS
@@ -153,7 +142,7 @@ ANALOG_INPUT = PAIRS
 STEMS_PER_DECK = 4
 #: Headings over the channel's meters: the name, the first and the last
 #: slot of the grid (_channel_columns) it spans. A heads the ninth slot.
-CHANNEL_GROUPS = (("D1", 0, 3), ("D2", 4, 7), ("A", ANALOG_INPUT, ANALOG_INPUT))
+CHANNEL_GROUPS = (("A", 0, 3), ("B", 4, 7), ("ST", ANALOG_INPUT, ANALOG_INPUT))
 
 
 def channel_ring(index):
@@ -183,15 +172,10 @@ def playing_slot(index, mask):
         return 1
     return 2
 
-#: The aux return's modes -- a3_core_stems' numbers -- left to right on its
-#: display, each a mono meter under its name and nothing between them: an
-#: AUX title there irritated (maintainer, 2026-10-04).
-ANALOG_MODE, STEM_MODE = 0, 1
-RETURN_OPTIONS = (STEM_MODE, ANALOG_MODE)
-RETURN_NAMES = {STEM_MODE: "STEM", ANALOG_MODE: "ANALOG"}
-#: The return's third cursor position (2026-10-04): its CUE field, right
-#: of the two modes. A cursor, never a mode.
-CUE_CURSOR = 2
+#: The FX Return, the master of the delay channel (P47): one mono meter under
+#: its name, shortened to fit the heading (P42), and its CUE field. It has no
+#: source to choose, so no cursor and no active bracket.
+RETURN_NAME = "FX RTN"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -489,8 +473,8 @@ def channel_picture(index, cursor, levels, mask, width, height, clips=(), holds=
 #: deck two stem slots, A the ninth slot as in the interim. A deck that is
 #: not there reads ABSENT_NAME and has no bar.
 ANALOG_SOURCE = 0
-ENGINE_GROUPS = (("1", 1, 0, 1), ("2", 2, 2, 3), ("3", 3, 4, 5), ("4", 4, 6, 7),
-                 ("A", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
+ENGINE_GROUPS = (("A", 1, 0, 1), ("B", 2, 2, 3), ("C", 3, 4, 5), ("D", 4, 6, 7),
+                 ("ST", ANALOG_SOURCE, ANALOG_INPUT, ANALOG_INPUT))
 ENGINE_SOURCES = tuple(source for _, source, _, _ in ENGINE_GROUPS)
 #: Core numbers decks 1-4.
 CORE_DECKS = 4
@@ -551,20 +535,18 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
                    _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
 
-#: The return's heading over each meter as a share of the panel's width --
-#: wide enough for ANALOG --, and its meter as a share of its heading: as
-#: slim as the channels' bars look beside their neighbours.
+#: The return's heading as a share of the panel's width, and its meter as a
+#: share of its heading: as slim as the channels' bars look beside their
+#: neighbours.
 RETURN_HEADING_OF_WIDTH = 0.34
 RETURN_METER_OF_HEADING = 0.5
 
 
-def return_picture(cursor, mode, cue, levels, width, height, clips=(), holds=()):
-    """The aux return: STEM and ANALOG as mono meters under their names, the
-    active bracket over the playing mode's meter, the CUE toggle behind a
-    divider at the right edge -- on while the return is cued --, and the
-    cursor as the arrow over one of the three. `levels`, `clips` and
-    `holds` are STEM, ANALOG."""
-    (h0, h1), arrow, (m0, m1) = _bands(height)
+def return_picture(cue, level, width, height, clip=False, hold=0.0):
+    """The FX Return: one mono meter under FX RTN, centred left of the
+    divider, and the CUE field behind it at the right edge -- on while the
+    return is cued. No arrow and no bracket: there is nothing to choose."""
+    (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
     channel = _channel_columns(width)
@@ -572,24 +554,14 @@ def return_picture(cursor, mode, cue, levels, width, height, clips=(), holds=())
     room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(heading * RETURN_METER_OF_HEADING)
-    spans = ((0, heading - 1), (room - heading, room - 1))
-    names = tuple(Heading((x0, h0, x1, h1), RETURN_NAMES[option])
-                  for option, (x0, x1) in zip(RETURN_OPTIONS, spans))
-    boxes = []
-    for x0, x1 in spans:
-        left = x0 + (x1 - x0 + 1 - meter) // 2
-        boxes.append((left, m0, left + meter - 1, m1))
-    meters = _meters(boxes, levels, clips, holds)
+    x0 = (room - heading) // 2
+    x1 = x0 + heading - 1
+    left = x0 + (heading - meter) // 2
+    meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
-    if cursor == CUE_CURSOR:
-        selected = toggle_slot
-    else:
-        box = boxes[RETURN_OPTIONS.index(cursor)]
-        selected = (box[0], box[2])
-    active = _bracket(boxes[RETURN_OPTIONS.index(mode)])
-    return Picture(names, meters, _arrow(selected, arrow), (divider,), toggle, active,
-                   _marks(meters))
+    return Picture((Heading((x0, h0, x1, h1), RETURN_NAME),), meters, None, (divider,), toggle,
+                   None, _marks(meters))
 
 
 def cursor_announcement(args):
@@ -626,10 +598,3 @@ def cue_announcement(args):
     if value not in (0, 1):
         return None
     return value == 1
-
-
-def mode_announcement(args):
-    """The return's mode out of `/aux-return/stem/mode`, or None."""
-    if len(args) != 1 or not _is_count(args[0], 1):
-        return None
-    return args[0]

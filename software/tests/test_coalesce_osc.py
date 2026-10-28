@@ -23,8 +23,9 @@ import a3_mixer_osc  # noqa: E402
 from a3_mixer_latest import coalesce, drain, serve  # noqa: E402
 from test_osc_truth import made_up, real_truth_path  # noqa: E402
 
+# 49-50 (StemDeck's AUX bus) are no meter of the desk's since P47.
 SHOWN_IN_THE_REAL_TRUTH = set(range(1, 9)) | set(range(11, 19)) | {35, 36} \
-    | set(range(41, 59))
+    | set(range(41, 49)) | set(range(51, 59))
 
 
 def _padded(raw):
@@ -59,7 +60,7 @@ class TheDeskShowsTheseMeters(unittest.TestCase):
         osc = made_up(vu_meters=["free", "stem_a1", "main_sub", "aux_R",
                                  "stem_aux_L", "in1_pre"] + list(a3_mixer_osc.INPUT_METERS))
         self.assertEqual([osc.shows_meter(n) for n in range(1, 8)],
-                         [False, True, True, True, True, False, True])
+                         [False, True, True, True, False, False, True])
 
     def test_an_analog_input_is_shown(self):
         self.assertTrue(made_up(vu_meters=["analog3_R"]).shows_meter(1))

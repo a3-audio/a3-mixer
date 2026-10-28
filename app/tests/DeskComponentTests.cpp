@@ -285,8 +285,8 @@ TEST (DeskComponent, ControlForCoversEveryControlWithAKey)
     EXPECT_TRUE (is ("channel.stem.turn", 3, (DeskEncoder*) nullptr));
     EXPECT_TRUE (is ("channel.stem.push", 3, (DeskEncoder*) nullptr));
     EXPECT_EQ (desk->controlFor ("channel.stem.turn", 3), desk->controlFor ("channel.stem.push", 3));
-    EXPECT_TRUE (is ("aux-return.stem.turn", 0, (DeskEncoder*) nullptr));
     EXPECT_TRUE (is ("aux-return.stem.push", 0, (DeskEncoder*) nullptr));
+    EXPECT_EQ (desk->controlFor ("aux-return.stem.turn", 0), nullptr);   // P47: the turn chooses nothing
     EXPECT_TRUE (is ("filter.mode", 1, (DeskKey*) nullptr));   // 1 = HPF, 2 = LPF: one word, two keys
     EXPECT_TRUE (is ("filter.mode", 2, (DeskKey*) nullptr));
     EXPECT_NE (desk->controlFor ("filter.mode", 1), desk->controlFor ("filter.mode", 2));
@@ -711,6 +711,37 @@ TEST (DeskComponent, TheChannelEncoderSendsTheHardwaresTurnAndPush)
     EXPECT_EQ (c.sent[2].message[0].getInt32(), -1);
 }
 
+// P47: the FX Return has nothing to choose. Its encoder's turn sends nothing, its press the cue
+// (aux-return.stem.push 1); on its display only the CUE field answers a tap, with the same word.
+TEST (DeskComponent, TheReturnEncoderOnlyCues)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* encoder = nthChild<DeskEncoder> (*desk, numChannels);   // SELECT, after the four channels'
+    ASSERT_NE (encoder, nullptr);
+    const juce::Point<float> start { encoder->getWidth() * 0.5f, encoder->getHeight() * 0.5f };
+    const float click = turns::dragPerClickOfKnob * static_cast<float> (encoder->getHeight());
+    encoder->mouseDown (clickOn (*encoder, start, start, false));
+    encoder->mouseDrag (clickOn (*encoder, start.translated (0.f, -2.5f * click), start, true));
+    encoder->mouseUp (clickOn (*encoder, start.translated (0.f, -2.5f * click), start, true));
+    encoder->mouseWheelMove (clickOn (*encoder, start, start, false), juce::MouseWheelDetails { 0.f, -0.1f, false, false, false });
+    EXPECT_TRUE (c.sent.empty());
+    encoder->mouseDown (clickOn (*encoder, start, start, false));
+    encoder->mouseUp (clickOn (*encoder, start, start, false));
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("aux-return.stem.push"));
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
+
+    auto* display = nthChild<OledView> (*desk, numChannels);
+    ASSERT_NE (display, nullptr);
+    c.sent.clear();
+    display->onSlot (0);   // the meter
+    EXPECT_TRUE (c.sent.empty());
+    display->onSlot (1);   // the CUE field, after the one meter
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("aux-return.stem.push"));
+}
+
 // The display shows the selection Core reports, not the desk's own count of clicks.
 TEST (DeskComponent, TheChannelDisplayFollowsCoresCursor)
 {
@@ -789,6 +820,25 @@ void hearEngine (DeskComponent& desk, const char* key, int number, int value, do
 {
     desk.receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (key, number)), value), t);
 }
+}
+
+// The return display is the same before and after Core's first source report, and after a new Core takes the
+// desk out of engine mode (the display is the fifth OledView, after the four channels).
+TEST (DeskRing, TheReturnDisplayIsTheSameInEveryMode)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->step (140);
+    const auto reaper = displayShot (*desk, 4);
+    hearEngine (*desk, "channel.source", 1, 1, 200);
+    desk->step (220);
+    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 4)));
+
+    desk->announced ({ "http://core/a3-osc.json", test::truth().digest(), "boot-2" }, 9000);
+    desk->step (9020);
+    answer (*desk, 9100);
+    desk->step (9120);
+    EXPECT_TRUE (samePixels (reaper, displayShot (*desk, 4)));
 }
 
 // Without Core's source reports (REAPER mode) the display is the interim's, whatever else arrives; a new

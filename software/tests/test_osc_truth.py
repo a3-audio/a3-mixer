@@ -184,20 +184,14 @@ class StemMetersByName(unittest.TestCase):
         self.assertIsNone(osc.aux_side(1))
         self.assertIsNone(osc.aux_side(9))
 
-    def test_the_stemdecks_aux_bus_is_the_returns_sa(self):
-        """2026-10-04: SA meters StemDeck's AUX bus, stem_aux_L and
-        stem_aux_R (/vu/49, /vu/50 in Core's truth), found by name."""
-        osc = made_up(vu_meters=["aux_L", "aux_R", "stem_aux_L", "stem_aux_R"])
-        self.assertEqual((osc.stem_aux_side(3), osc.stem_aux_side(4)), (0, 1))
-        self.assertIsNone(osc.stem_aux_side(1))
-        self.assertIsNone(osc.stem_aux_side(5))
-        self.assertIsNone(osc.stem_aux_side(0))
-
-    def test_a_truth_without_the_bus_meters_has_none(self):
-        """The truth installed before them: SA falls back on the desk."""
-        osc = made_up()
-        self.assertTrue(all(osc.stem_aux_side(n) is None
-                            for n in range(len(osc._data["vu_meters"]) + 2)))
+    def test_the_desk_reads_no_return_source(self):
+        """P47: the FX Return has no source, mode or cursor; the desk
+        neither sends nor hears one, and StemDeck's AUX bus is no meter of
+        the desk's any more (the return's meter is aux_L/aux_R)."""
+        for gone in ("aux-return.stem", "aux-return.stem.mode", "aux-return.stem.turn"):
+            self.assertNotIn(gone, a3_mixer_osc.KEYS_USED)
+        self.assertIn("aux-return.stem.push", a3_mixer_osc.KEYS_USED)
+        self.assertFalse(hasattr(a3_mixer_osc.MixerOsc, "stem_aux_side"))
 
     def test_a_truth_without_stems_has_no_stem_meters(self):
         osc = made_up(vu_meters=["in1_pre", "in2_pre"])

@@ -29,8 +29,7 @@ struct Indicators
     std::array<bool, numChannels> fx {}, cue {};
     std::optional<bool> highPass;
     std::array<int, numChannels> stemMask {}, cursor {};
-    int returnCursor = display::stemMode, returnMode = display::stemMode;
-    bool returnCue = false;
+    bool returnCue = false;   // the FX Return has no source, mode or cursor (P47)
     /** Engine mode (Plan 4e): from Core's first `channel.source` report until a new Core. Each channel's
         source and cursor in the ring 1 2 3 4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
     bool engine = false;

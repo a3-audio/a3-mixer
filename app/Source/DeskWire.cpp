@@ -42,13 +42,6 @@ Outgoing DeskWire::channelTurn (int channel, int clicks) const
     return { Outgoing::To::core, m };
 }
 
-Outgoing DeskWire::returnTurn (int clicks) const
-{
-    auto m = to ("aux-return.stem.turn");
-    m.addInt32 (clicks);
-    return { Outgoing::To::core, m };
-}
-
 Outgoing DeskWire::channelPush (int channel) const
 {
     auto m = to ("channel.stem.push", channel);

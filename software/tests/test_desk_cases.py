@@ -34,8 +34,10 @@ class TheFixture(unittest.TestCase):
         self.assertEqual({c["cursor"] for c in cases["channel_pictures"]}, set(range(9)))
         self.assertEqual(len(cases["channel_pictures"]), 80)
         self.assertEqual({c["channel"] for c in cases["channel_pictures"]}, set(range(4)))
-        self.assertEqual({(c["cursor"], c["mode"], c["cue"]) for c in cases["return_pictures"]},
-                         {(c, m, q) for c in (0, 1, 2) for m in (0, 1) for q in (False, True)})
+        self.assertEqual([c["cue"] for c in cases["return_pictures"]], [False, True])
+        for case in cases["return_pictures"]:
+            self.assertNotIn("cursor", case)
+            self.assertNotIn("mode", case)
 
 
 if __name__ == "__main__":

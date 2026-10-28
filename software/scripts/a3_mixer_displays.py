@@ -23,13 +23,12 @@ A's bar is the channel's analog input (analog<N>_L/R, the louder side),
 whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
-The return's display is drawn the same way: two mono meters, STEM (StemDeck's
-aux bus) and ANALOG (the analog return), the louder side of each, under
-plain headings and nothing between them; the mode that plays carries the
-same active bracket. At its right edge, behind a divider, sits the CUE field
+The return's display is the FX Return, the master of the delay channel
+(P47): one mono meter under FX RTN -- aux_L/aux_R, the return after RETURN,
+the louder side -- and, at its right edge behind a divider, the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
-is cued. The cursor is the same arrow, over STEM, ANALOG or CUE; the
-bracket never stands on CUE.
+is cued. Its encoder's push toggles the cue; with nothing to choose there is
+no arrow and no bracket.
 
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
 Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
@@ -93,13 +92,13 @@ import functools  # noqa: E402
 from a3_mixer_meters import (DEFAULT_METER_TIMING, MeterBallistics,  # noqa: E402
                              bar_fraction, peak_db)
 
-from display_panel import (channel_announcement, return_announcement,  # noqa: E402,F401
-                           cursor_announcement, mode_announcement, cue_announcement,
+from display_panel import (channel_announcement,  # noqa: E402,F401
+                           cursor_announcement, cue_announcement,
                            present_announcement, source_announcement,
                            channel_picture, engine_channel_picture, engine_levels, DECKS,
                            return_picture, panel_for_channel, return_panel,
                            pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
-                           STEM_MODE, STEMS_PER_DECK,
+                           STEMS_PER_DECK,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
 #: A meter not heard for this long is silence: StemDeck or the analyzer
@@ -258,7 +257,8 @@ def paint(image, picture):
         _toggle(image, draw, picture.toggle)
     if picture.active is not None:
         _bracket(draw, picture.active)
-    _arrow(draw, picture.cursor)
+    if picture.cursor is not None:
+        _arrow(draw, picture.cursor)
 
 
 MULTIPLEXER_ADDRESS = 0x70
@@ -380,8 +380,7 @@ class Displays:
         # draws a second (2026-10-04), and ten steps on five panels is 50.
         self._drawn = {}
         # What the displays show: what plays on each channel, each channel's
-        # cursor, the return's cursor and what plays there, its mode, and
-        # whether it is cued.
+        # cursor, and whether the return is cued.
         self._channel_masks = [0] * (len(PANELS) - 1)
         self._cursors = [ANALOG_INPUT] * (len(PANELS) - 1)
         # Engine mode (Plan 4e), once Core has reported a channel's source:
@@ -390,16 +389,13 @@ class Displays:
         self._sources = [None] * (len(PANELS) - 1)
         self._source_cursors = [0] * (len(PANELS) - 1)
         self._decks_present = [False] * DECKS
-        self._return = (STEM_MODE, (False,) * PAIRS)
-        self._return_mode = STEM_MODE
         self._return_cue = False
         # The meters: (loudest peak since the last step, when last heard)
-        # per stem pair, per side of the analog return and per side of
-        # StemDeck's aux bus; each meter's ballistics; and the levels each
-        # panel shows, stepped on the displays' clock.
+        # per stem pair and per side of the FX Return; each meter's
+        # ballistics; and the levels each panel shows, stepped on the
+        # displays' clock.
         self._stem_peaks = {}
         self._aux_peaks = {}
-        self._stem_aux_peaks = {}
         self._analog_peaks = {}  # per channel, then per side: {index: {side: held}}
         self._timing = timing
         self._ballistics = {}
@@ -420,7 +416,8 @@ class Displays:
             self._hold(self._stem_peaks, pair, peak)
 
     def note_aux(self, side, peak):
-        """The analog return's peak, L (0) or R (1), from the OSC thread."""
+        """The FX Return's peak (aux_L/aux_R), L (0) or R (1), from the OSC
+        thread."""
         with self._wake:
             self._hold(self._aux_peaks, side, peak)
 
@@ -429,12 +426,6 @@ class Displays:
         thread: its display's A."""
         with self._wake:
             self._hold(self._analog_peaks.setdefault(index, {}), side, peak)
-
-    def note_stem_aux(self, side, peak):
-        """StemDeck's aux bus peak, L (0) or R (1), from the OSC thread.
-        Only a truth with stem_aux_L/R sends it; once heard, it is STEM."""
-        with self._wake:
-            self._hold(self._stem_aux_peaks, side, peak)
 
     def _hold(self, peaks, key, peak):
         if not isinstance(peak, (int, float)) or isinstance(peak, bool):
@@ -458,8 +449,7 @@ class Displays:
             dt = self._step_seconds()
             stems = [self._move(("stem", pair), self._fresh(self._stem_peaks, pair), dt)
                      for pair in range(1, PAIRS + 1)]
-            ret = [self._move("stem return", self._stem_return_peak(), dt),
-                   self._move("analog return", self._louder_side(self._aux_peaks), dt)]
+            ret = [self._move("fx return", self._louder_side(self._aux_peaks), dt)]
             for panel in PANELS:
                 if panel == return_panel():
                     levels_and_clips = ret
@@ -472,7 +462,7 @@ class Displays:
                 self._clips[panel] = tuple(clip for _, _, clip in levels_and_clips)
                 if self._pixels_now(panel) != self._drawn.get(panel):
                     self._meters_due.add(panel)
-            held = [self._stem_peaks, self._aux_peaks, self._stem_aux_peaks]
+            held = [self._stem_peaks, self._aux_peaks]
             for peaks in held + list(self._analog_peaks.values()):
                 for key, (_, heard) in peaks.items():
                     peaks[key] = (0.0, heard)
@@ -506,18 +496,6 @@ class Displays:
     def _analog_peak(self, index):
         """A's raw peak on channel `index`: its analog input's louder side."""
         return self._louder_side(self._analog_peaks.get(index, {}))
-
-    def _stem_return_peak(self):
-        """STEM's raw peak: StemDeck's aux bus once the desk has heard it.
-        A truth without stem_aux_L/R never sends it, and then STEM is the
-        loudest stem playing on the return, so the desk works with either
-        truth."""
-        if self._stem_aux_peaks:
-            return self._louder_side(self._stem_aux_peaks)
-        plays = self._return[1]
-        return max((self._fresh(self._stem_peaks, pair)
-                    for pair, playing in zip(range(1, PAIRS + 1), plays) if playing),
-                   default=0.0)
 
     def _pixels_now(self, panel):
         """The panel's meters in pixels, laid out for its display's size."""
@@ -588,16 +566,6 @@ class Displays:
         for index in range(len(PANELS) - 1):
             self._post(panel_for_channel(index))
 
-    def show_return(self, cursor, plays):
-        with self._wake:
-            self._return = (cursor, tuple(plays))
-        self._post(return_panel())
-
-    def show_return_mode(self, mode):
-        with self._wake:
-            self._return_mode = mode
-        self._post(return_panel())
-
     def show_return_cue(self, on):
         """Whether the return is cued: its CUE field, filled while on."""
         with self._wake:
@@ -605,11 +573,10 @@ class Displays:
         self._post(return_panel())
 
     def blank_all(self):
-        """Until Core speaks: no stem on any channel -- A plays --, nothing
-        on the return and no cue on it."""
+        """Until Core speaks: no stem on any channel -- A plays -- and no
+        cue on the return."""
         for index in range(len(PANELS) - 1):
             self.show_channel(index, 0)
-        self.show_return(STEM_MODE, (False,) * PAIRS)
         self.show_return_cue(False)
         self._post_all()
 
@@ -633,11 +600,11 @@ class Displays:
         the display turns out to be."""
         with self._wake:
             if panel == return_panel():
-                cursor, mode, cue = self._return[0], self._return_mode, self._return_cue
-                levels = self._levels[panel] or (0.0, 0.0)
-                clips, holds = self._clips[panel], self._holds[panel]
-                return lambda width, height: return_picture(cursor, mode, cue, levels,
-                                                            width, height, clips, holds)
+                cue = self._return_cue
+                level = (self._levels[panel] or (0.0,))[0]
+                clip = (self._clips[panel] or (False,))[0]
+                hold = (self._holds[panel] or (0.0,))[0]
+                return lambda width, height: return_picture(cue, level, width, height, clip, hold)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
@@ -750,19 +717,10 @@ class NoDisplays:
     def show_deck_present(self, deck, present):
         pass
 
-    def show_return(self, cursor, plays):
-        pass
-
-    def show_return_mode(self, mode):
-        pass
-
     def show_return_cue(self, on):
         pass
 
     def note_aux(self, side, peak):
-        pass
-
-    def note_stem_aux(self, side, peak):
         pass
 
     def note_analog(self, index, side, peak):

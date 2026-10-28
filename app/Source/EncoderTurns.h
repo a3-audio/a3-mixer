@@ -28,5 +28,4 @@ private:
 int channelTurnsTo (int channel, int cursor, int slot);
 /** Engine mode: turns from the cursor (Core's numbers) to place `slot` in the ring 1 2 3 4 A. */
 int engineTurnsTo (int cursor, int slot);
-int returnTurnsTo (int cursor, int target);
 }

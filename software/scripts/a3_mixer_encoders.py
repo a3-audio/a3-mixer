@@ -90,9 +90,9 @@ def encoder_message(osc, encoder, clicks):
     if target is None or clicks == 0:
         return None
     kind, index = target
-    if kind == "channel":
-        return osc.channel_address("channel.stem.turn", index), clicks
-    return osc.address("aux-return.stem.turn"), clicks
+    if kind != "channel":
+        return None   # P47: the FX Return has nothing to choose; only its push counts
+    return osc.channel_address("channel.stem.turn", index), clicks
 
 
 def push_message(osc, encoder, pressed):

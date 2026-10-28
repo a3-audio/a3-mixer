@@ -50,11 +50,11 @@ def _picture(picture):
     return {"headings": [[*h.box, h.text] for h in picture.headings],
             "meters": [[*m.box, m.pixels(), m.hatched(),
                         -1 if m.hold_row() is None else m.hold_row()] for m in picture.meters],
-            "cursor": list(picture.cursor),
+            "cursor": None if picture.cursor is None else list(picture.cursor),
             "dividers": [list(d) for d in picture.dividers],
             "toggle": None if picture.toggle is None
             else [*picture.toggle.box, bool(picture.toggle.on), picture.toggle.text],
-            "active": list(picture.active),
+            "active": None if picture.active is None else list(picture.active),
             "marks": [list(m) for m in picture.marks]}
 
 
@@ -78,12 +78,11 @@ def channel_cases():
 
 
 def return_cases():
-    levels, clips, holds = [0.5, 0.875], [False, True], [0.75, 1.0]
-    return [{"cursor": cursor, "mode": mode, "cue": cue, "levels": levels, "clips": clips,
-             "holds": holds, "width": WIDTH, "height": HEIGHT,
-             "picture": _picture(panel.return_picture(cursor, mode, cue, levels, WIDTH, HEIGHT,
-                                                      clips, holds))}
-            for cursor in (0, 1, 2) for mode in (0, 1) for cue in (False, True)]
+    """The FX Return (P47): one meter and the CUE field, off and on."""
+    level, clip, hold = 0.875, True, 1.0
+    return [{"cue": cue, "level": level, "clip": clip, "hold": hold, "width": WIDTH, "height": HEIGHT,
+             "picture": _picture(panel.return_picture(cue, level, WIDTH, HEIGHT, clip, hold))}
+            for cue in (False, True)]
 
 
 def engine_channel_cases():
