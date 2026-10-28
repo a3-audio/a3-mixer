@@ -173,9 +173,9 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, written out in a wide heading box (2026-10-28), and its CUE field. It has no
+#: its name, AUX-RTN (maintainer, 2026-10-28), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
-RETURN_NAME = "AUX-RETURN"
+RETURN_NAME = "AUX-RTN"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -524,18 +524,16 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
                    _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
 
 
-#: The return's heading as a share of the panel's width, and its meter as a
-#: share of its heading: as slim as the channels' bars look beside their
-#: neighbours.
-# AUX-RETURN is written out on one line, so its box is wide (0.75 of the panel,
-# left of the divider); the meter keeps the width it had under the short form
-# (0.34 * 0.5 of the panel = 0.2267 of the box).
-RETURN_HEADING_OF_WIDTH = 0.75
-RETURN_METER_OF_HEADING = 0.2267
+#: The return's heading and its meter, each as a share of the panel's width.
+#: The heading holds AUX-RTN at the displays' one text size (58 of 60 columns
+#: at 128); the meter is as slim as the channels' bars look beside their
+#: neighbours -- 22 columns, the width it had under FX RTN.
+RETURN_HEADING_OF_WIDTH = 0.47
+RETURN_METER_OF_WIDTH = 0.17
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0):
-    """The FX Return: one mono meter under AUX-RETURN, centred left of the
+    """The FX Return: one mono meter under AUX-RTN, centred left of the
     divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose."""
     (h0, h1), _, (m0, m1) = _bands(height)
@@ -545,7 +543,7 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0):
     last_meter, toggle_slot = channel[PAIRS - 1], channel[ANALOG_INPUT]
     room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
-    meter = round(heading * RETURN_METER_OF_HEADING)
+    meter = round(width * RETURN_METER_OF_WIDTH)
     x0 = (room - heading) // 2
     x1 = x0 + heading - 1
     left = x0 + (heading - meter) // 2

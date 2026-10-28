@@ -24,7 +24,7 @@ whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
 The return's display is the FX Return, the master of the delay channel
-(P47): one mono meter under AUX-RETURN -- aux_L/aux_R, the return after RETURN,
+(P47): one mono meter under AUX-RTN -- aux_L/aux_R, the return after RETURN,
 the louder side -- and, at its right edge behind a divider, the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
 is cued. Its encoder's push toggles the cue; with nothing to choose there is
@@ -111,6 +111,13 @@ METER_STALE_SECONDS = 0.5
 #: to read on the real OLED at 0.9).
 TEXT_OF_HEADING = 1.4
 
+#: Every text on the displays is drawn one caption step below the size its
+#: box gives it: the designer's type scale (caption = body x 0.8), applied
+#: in _fit so headings and the CUE letters shrink alike (maintainer,
+#: 2026-10-28: "make the letters on all displays a bit smaller"). At 128x64
+#: the headings go from 17 to 14 (capitals 12 -> 10 rows), CUE from 12 to 10.
+TEXT_STEP = 0.8
+
 
 @functools.lru_cache(maxsize=8)
 def _font(size):
@@ -122,10 +129,10 @@ def _font(size):
 
 
 def _fit(draw, box, text, size):
-    """(font, at) of `text` centred in `box`, as large as `size` and no
-    larger than fits."""
+    """(font, at) of `text` centred in `box`, one TEXT_STEP below `size`
+    and no larger than fits."""
     x0, y0, x1, y1 = box
-    size = max(6, size)
+    size = max(6, round(size * TEXT_STEP))
     while True:
         font = _font(size)
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)

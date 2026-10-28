@@ -385,7 +385,7 @@ class ActiveBracket(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """P47: the FX Return is the master of the delay channel. Its display is
-    one mono meter under AUX-RETURN -- the return after RETURN -- and the CUE
+    one mono meter under AUX-RTN -- the return after RETURN -- and the CUE
     field: no source to choose, so no second meter, no arrow and no active
     bracket."""
 
@@ -395,19 +395,22 @@ class ReturnMeter(unittest.TestCase):
 
     def test_one_meter_under_one_name(self):
         p = self.picture(level=0.4)
-        self.assertEqual([h.text for h in p.headings], ["AUX-RETURN"])
+        self.assertEqual([h.text for h in p.headings], ["AUX-RTN"])
         self.assertEqual([m.level for m in p.meters], [0.4])
         heading, meter = p.headings[0].box, p.meters[0].box
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
         self.assertLess(heading[3], meter[1])
 
-    def test_the_name_has_a_box_wide_enough_for_one_legible_line(self):
-        """AUX-RETURN is never cut and never shrunk into 43 px: its box is
-        wide, the meter keeps its width."""
+    def test_the_meter_stands_where_it_stood_under_fx_rtn(self):
+        """AUX-RTN takes the box it needs, and the meter is main's: 22
+        columns at 39-60 on the 128-wide panel."""
         p = self.picture()
-        heading, meter = p.headings[0].box, p.meters[0].box
-        self.assertGreaterEqual(heading[2] - heading[0] + 1, 80)
-        self.assertLessEqual(meter[2] - meter[0] + 1, 24)
+        meter = p.meters[0].box
+        self.assertEqual((meter[0], meter[2]), (39, 60))
+
+    def test_the_name_box_is_no_wider_than_aux_rtn_needs(self):
+        heading = self.picture().headings[0].box
+        self.assertLessEqual(heading[2] - heading[0] + 1, 64)
 
     def test_no_arrow_and_no_bracket(self):
         p = self.picture()
@@ -423,11 +426,10 @@ class ReturnMeter(unittest.TestCase):
         self.assertLessEqual(abs(heading[0] - (line - 1 - heading[2])), 3)
 
     def test_the_meter_keeps_its_look(self):
-        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_HEADING
-        heading = round(W * RETURN_HEADING_OF_WIDTH)
+        from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_WIDTH
         p = self.picture()
-        self.assertEqual(p.headings[0].box[2] - p.headings[0].box[0] + 1, heading)
-        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, round(heading * RETURN_METER_OF_HEADING))
+        self.assertEqual(p.headings[0].box[2] - p.headings[0].box[0] + 1, round(W * RETURN_HEADING_OF_WIDTH))
+        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, round(W * RETURN_METER_OF_WIDTH))
 
     def test_the_headings_are_plain(self):
         from display_panel import Heading

@@ -13,7 +13,7 @@ namespace
 {
 constexpr int innerGap = 2, groupGap = 7, edge = 1, lastSlotMeters = 2;
 constexpr int arrowRows = 5, arrowWidth = 2 * arrowRows, bracketRows = 4;
-constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.75, returnMeterOfHeading = 0.2267;
+constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.47, returnMeterOfWidth = 0.17;
 constexpr std::array<double, 2> markedFractions { 4.0 / 8.0, 6.0 / 8.0 };   // first yellow, first red LED
 constexpr int channelMarkLength = innerGap - 1;
 
@@ -266,12 +266,12 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     const auto lastMeter = channel[pairs - 1], toggleSlot = channel[analogInput];
     const int room = lastMeter.x1 + 1;
     const int heading = pyRound (width * returnHeadingOfWidth);
-    const int meter = pyRound (heading * returnMeterOfHeading);
+    const int meter = pyRound (width * returnMeterOfWidth);
     const int x0 = floorDiv (room - heading, 2);
     const int left = x0 + floorDiv (heading - meter, 2);
 
     Picture p;
-    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RETURN" });
+    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RTN" });
     p.meters = metersFor (std::vector<Box> { { left, meterRows.top, left + meter - 1, meterRows.bottom } },
                           std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
     p.toggle = Toggle { { toggleSlot.x0, meterRows.top, toggleSlot.x1, meterRows.bottom }, cue, "CUE" };

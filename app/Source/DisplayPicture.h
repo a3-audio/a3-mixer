@@ -85,7 +85,7 @@ int engineSlot (int source);
 Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
                        const std::array<double, engineSlots>& levels, int width, int height,
                        const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds);
-/** The FX Return, the delay channel's master (P47): one meter under AUX-RETURN, centred left of the divider, and
+/** The FX Return, the delay channel's master (P47): one meter under AUX-RTN, centred left of the divider, and
     the CUE field behind it. Nothing to choose, so no arrow and no bracket (noBox). */
 Picture returnPicture (bool cue, double level, int width, int height, bool clip, double hold);
 
