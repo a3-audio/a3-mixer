@@ -417,13 +417,27 @@ class ReturnMeter(unittest.TestCase):
         self.assertIsNone(p.cursor)
         self.assertIsNone(p.active)
 
-    def test_the_meter_is_centred_under_its_name_left_of_the_divider(self):
+    def test_the_name_stands_at_the_left_margin_like_the_channel_headings(self):
+        """Maintainer, 2026-10-28: "aux-rtn linksbündig"."""
+        from display_panel import engine_channel_picture
+        channel = engine_channel_picture(0, 0, (True,) * 4, (0.0,) * 5, W, H)
         p = self.picture()
-        line = p.dividers[0][0]
-        meter, heading = p.meters[0].box, p.headings[0].box
-        self.assertLessEqual(abs((meter[0] + meter[2]) - (heading[0] + heading[2])), 1)
-        self.assertLess(heading[2], line - 1)
-        self.assertLessEqual(abs(heading[0] - (line - 1 - heading[2])), 3)
+        self.assertEqual(p.headings[0].box[0], channel.headings[0].box[0])
+        self.assertLess(p.headings[0].box[2], p.dividers[0][0] - 1)
+
+    def test_the_name_is_painted_from_the_left_margin(self):
+        from PIL import Image
+        from a3_mixer_displays import paint
+        p = self.picture(level=0.0)
+        image = Image.new("1", (W, H))
+        paint(image, p)
+        x0, y0, x1, y1 = p.headings[0].box
+        lit = [x for x in range(W) for y in range(y0, y1 + 1) if image.getpixel((x, y))]
+        self.assertLessEqual(min(lit) - x0, 2)
+
+    def test_the_meter_stays_left_of_the_divider(self):
+        p = self.picture()
+        self.assertLess(p.meters[0].box[2], p.dividers[0][0] - 1)
 
     def test_the_meter_keeps_its_look(self):
         from display_panel import RETURN_HEADING_OF_WIDTH, RETURN_METER_OF_WIDTH

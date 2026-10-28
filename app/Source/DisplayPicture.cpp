@@ -267,8 +267,9 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     const int room = lastMeter.x1 + 1;
     const int heading = pyRound (width * returnHeadingOfWidth);
     const int meter = pyRound (width * returnMeterOfWidth);
-    const int x0 = floorDiv (room - heading, 2);
-    const int left = x0 + floorDiv (heading - meter, 2);
+    // The name at the left margin, as a channel's first heading; the meter keeps its place.
+    const int x0 = channel[0].x0;
+    const int left = floorDiv (room - heading, 2) + floorDiv (heading - meter, 2);
 
     Picture p;
     p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RTN" });
