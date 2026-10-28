@@ -95,8 +95,11 @@ TEST (DisplayPicture, TheReturnIsOneMeterNamedAuxRtn)
     EXPECT_EQ (picture.headings[0].text, "AUX-RTN");
     ASSERT_EQ (picture.meters.size(), 1u);
     EXPECT_LE (picture.headings[0].box.x1 - picture.headings[0].box.x0 + 1, 64);
-    EXPECT_EQ (picture.meters[0].box.x0, 39);
-    EXPECT_EQ (picture.meters[0].box.x1, 60);
+    // At the left margin, where a channel's first meter starts; its width is main's 22 columns.
+    const auto channel = enginePicture (1, 1, { true, true, true, true }, {}, 128, 64, {}, {});
+    EXPECT_EQ (picture.meters[0].box.x0, channel.meters[0].box.x0);
+    EXPECT_EQ (picture.meters[0].box.x1 - picture.meters[0].box.x0 + 1, 22);
+    EXPECT_LE (picture.headings[0].box.x0, picture.meters[0].box.x0);
     EXPECT_TRUE (isEmpty (picture.cursor));
     EXPECT_TRUE (isEmpty (picture.active));
     ASSERT_TRUE (picture.toggle.has_value());

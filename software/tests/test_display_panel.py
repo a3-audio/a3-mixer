@@ -401,12 +401,11 @@ class ReturnMeter(unittest.TestCase):
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
         self.assertLess(heading[3], meter[1])
 
-    def test_the_meter_stands_where_it_stood_under_fx_rtn(self):
-        """AUX-RTN takes the box it needs, and the meter is main's: 22
-        columns at 39-60 on the 128-wide panel."""
-        p = self.picture()
-        meter = p.meters[0].box
-        self.assertEqual((meter[0], meter[2]), (39, 60))
+    def test_the_meter_keeps_its_width_from_fx_rtn(self):
+        """The meter is main's: 22 columns on the 128-wide panel (it stood at
+        39-60 before it moved to the left margin)."""
+        meter = self.picture().meters[0].box
+        self.assertEqual(meter[2] - meter[0] + 1, 22)
 
     def test_the_name_box_is_no_wider_than_aux_rtn_needs(self):
         heading = self.picture().headings[0].box
@@ -434,6 +433,16 @@ class ReturnMeter(unittest.TestCase):
         x0, y0, x1, y1 = p.headings[0].box
         lit = [x for x in range(W) for y in range(y0, y1 + 1) if image.getpixel((x, y))]
         self.assertLessEqual(min(lit) - x0, 2)
+
+    def test_the_meter_starts_where_a_channels_first_meter_starts(self):
+        """Maintainer, 2026-10-28: "aux-rtn vu meter auch linksbündig". Not at
+        the heading's own column: the scale marks need the one left of the bar."""
+        from display_panel import engine_channel_picture
+        channel = engine_channel_picture(0, 0, (True,) * 4, (0.0,) * 5, W, H)
+        p = self.picture()
+        self.assertEqual(p.meters[0].box[0], channel.meters[0].box[0])
+        self.assertLessEqual(p.headings[0].box[0], p.meters[0].box[0])
+        self.assertLessEqual(p.meters[0].box[2], p.headings[0].box[2])
 
     def test_the_meter_stays_left_of_the_divider(self):
         p = self.picture()

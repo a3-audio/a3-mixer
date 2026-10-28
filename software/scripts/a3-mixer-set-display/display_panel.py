@@ -533,23 +533,24 @@ RETURN_METER_OF_WIDTH = 0.17
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0):
-    """The FX Return: AUX-RTN at the left margin, one mono meter centred
-    left of the divider, and the CUE field behind it at the right edge -- on while the
+    """The FX Return: AUX-RTN at the left margin, one mono meter under it,
+    both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
     channel = _channel_columns(width)
     last_meter, toggle_slot = channel[PAIRS - 1], channel[ANALOG_INPUT]
-    room = last_meter[1] + 1
     heading = round(width * RETURN_HEADING_OF_WIDTH)
     meter = round(width * RETURN_METER_OF_WIDTH)
-    # The name stands at the left margin, as a channel's first heading does
-    # (maintainer, 2026-10-28: "aux-rtn linksbündig"); the meter keeps its
-    # place, centred left of the divider.
+    # The name and its meter stand at the left margin, as a channel's first
+    # heading and meter do (maintainer, 2026-10-28: "aux-rtn linksbündig",
+    # "aux-rtn vu meter auch linksbündig").
     x0 = channel[0][0]
     x1 = x0 + heading - 1
-    left = (room - heading) // 2 + (heading - meter) // 2
+    # Not at x0 itself: the scale marks stand in the column left of the bar.
+    stem_width = channel[0][1] - channel[0][0] + 1
+    left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))

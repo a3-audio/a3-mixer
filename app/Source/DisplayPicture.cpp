@@ -264,12 +264,12 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
     const auto channel = channelColumns (width);
     const auto lastMeter = channel[pairs - 1], toggleSlot = channel[analogInput];
-    const int room = lastMeter.x1 + 1;
     const int heading = pyRound (width * returnHeadingOfWidth);
     const int meter = pyRound (width * returnMeterOfWidth);
-    // The name at the left margin, as a channel's first heading; the meter keeps its place.
+    // Name and meter at the left margin, as a channel's first heading and meter do.
     const int x0 = channel[0].x0;
-    const int left = floorDiv (room - heading, 2) + floorDiv (heading - meter, 2);
+    // Not at x0 itself: the scale marks stand in the column left of the bar.
+    const int left = centred ({ channel[0].x0, channel[1].x1 }, channel[0].x1 - channel[0].x0 + 1).x0;
 
     Picture p;
     p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RTN" });
