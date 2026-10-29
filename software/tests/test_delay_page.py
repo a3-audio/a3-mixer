@@ -189,6 +189,14 @@ class Values(unittest.TestCase):
         self.assertEqual(delay.PAGES, ("beat", "feedback", "color", "spread"))
 
 
+class TheDisplaysStartLikeTheState(unittest.TestCase):
+    def test_the_first_delay_page_is_beat_with_no_values(self):
+        from test_displays import Rig
+        displays = Rig().displays()
+        self.assertEqual(displays.delay_page,
+                         ("beat", {page: None for page in delay.PAGES}))
+
+
 class ValueAnnouncement(unittest.TestCase):
     def test_a_float_is_a_value(self):
         self.assertEqual(delay.value_announcement((0.25,)), 0.25)

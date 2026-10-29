@@ -104,6 +104,7 @@ from display_panel import (channel_announcement,  # noqa: E402,F401
 from a3_mixer_calibration_display import (CalibrationPicture,  # noqa: E402
                                           calibration_picture, paint_calibration)
 from a3_mixer_calibration_run import RUNNING  # noqa: E402
+from a3_mixer_delay import PAGES as DELAY_PAGES  # noqa: E402
 
 #: How long the end of a calibration (CALIBRATED / CANCELLED) stays on the
 #: displays before the desk's own pictures come back.
@@ -413,7 +414,7 @@ class Displays:
         self._return_cue = False
         # The delay page on the return (a3_mixer_delay): the page and the
         # last value of each. Kept for the picture; nothing draws it yet.
-        self.delay_page = ("beat", {})
+        self.delay_page = ("beat", {page: None for page in DELAY_PAGES})
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair and per side of the FX Return; each meter's
         # ballistics; and the levels each panel shows, stepped on the

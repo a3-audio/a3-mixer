@@ -137,6 +137,15 @@ class Messages(unittest.TestCase):
     def test_the_fifth_turn_is_a_delay_turn(self):
         self.assertEqual(enc.encoder_message(made_up(), 4, 1), ("/t/aux-return.delay.beat.turn", 1))
 
+    def test_a_truth_without_the_delay_page_has_no_return_turn(self):
+        """Older truth: a KeyError here would end the serial reader."""
+        import a3_mixer_osc
+        addresses = {k: v for k, v in made_up()._data["addresses"].items()
+                     if k not in a3_mixer_osc.DELAY_KEYS}
+        old = made_up(addresses=addresses)
+        self.assertIsNone(enc.encoder_message(old, 4, 1))
+        self.assertEqual(enc.encoder_message(old, 1, 1), ("/t/channel.stem.turn/2", 1))
+
     def test_no_click_no_message(self):
         self.assertIsNone(enc.encoder_message(made_up(), 0, 0))
 

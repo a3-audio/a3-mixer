@@ -93,6 +93,9 @@ def encoder_message(osc, encoder, clicks, page="beat"):
         return None
     kind, index = target
     if kind == "return":
+        # A truth from before the delay page has no such word: nothing to say.
+        if not osc.has_delay_page():
+            return None
         return osc.address("aux-return.delay.%s.turn" % page), clicks
     return osc.channel_address("channel.stem.turn", index), clicks
 
