@@ -113,6 +113,16 @@ class Table(unittest.TestCase):
                            lambda text: None)
         self.assertEqual(sorted(sent), [("/a", "3"), ("/b", "2")])
 
+    def test_a_value_is_new_until_it_was_noted(self):
+        # A calibrated fader resting in a dead zone reads 0.0 again and
+        # again; Core needs it once.
+        positions = Positions()
+        self.assertTrue(positions.is_new("/a", 0.0))
+        positions.note("/a", 0.0)
+        self.assertFalse(positions.is_new("/a", 0.0))
+        self.assertTrue(positions.is_new("/a", 0.5))
+        self.assertTrue(positions.is_new("/b", 0.0))
+
     def test_an_empty_table_sends_nothing_and_says_so_once(self):
         positions, sent, said = Positions(), [], []
         for _ in range(3):

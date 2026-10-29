@@ -27,6 +27,8 @@ import threading
 #: rest of the line in that firmware's buffer and garble every line after it.
 ASK_THE_PANEL = "VU:-1:0:0"
 
+_NOTHING = object()
+
 
 class Positions:
     def __init__(self):
@@ -39,6 +41,13 @@ class Positions:
         with self._lock:
             self._values[address] = value
             self._said_empty = False
+
+    def is_new(self, address, value):
+        """Whether `value` differs from what `address` last sent: a
+        calibrated control resting in a dead zone reads the same value
+        again and again, and Core needs it once."""
+        with self._lock:
+            return self._values.get(address, _NOTHING) != value
 
     def send_all(self, send, report, ask_panel=lambda: None):
         """`send(address, value)` for every position. With none known -- the

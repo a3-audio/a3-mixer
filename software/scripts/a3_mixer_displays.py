@@ -101,6 +101,14 @@ from display_panel import (channel_announcement,  # noqa: E402,F401
                            STEMS_PER_DECK,
                            METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
 
+from a3_mixer_calibration_display import (CalibrationPicture,  # noqa: E402
+                                          calibration_picture, paint_calibration)
+from a3_mixer_calibration_run import RUNNING  # noqa: E402
+
+#: How long the end of a calibration (CALIBRATED / CANCELLED) stays on the
+#: displays before the desk's own pictures come back.
+CALIBRATION_END_SECONDS = 2.0
+
 #: A meter not heard for this long is silence: StemDeck or the analyzer
 #: stopped, and the last peak must not stand on the display for ever.
 METER_STALE_SECONDS = 0.5
@@ -249,9 +257,12 @@ def _toggle(image, draw, toggle):
 def paint(image, picture):
     """Draw `picture` onto a 1-bit PIL image: headings (cached), dividers,
     the yellow and red marks, meters, the toggle, the active bracket and the
-    cursor's arrow."""
+    cursor's arrow. A calibration's picture has a painter of its own."""
     from PIL import ImageDraw
 
+    if isinstance(picture, CalibrationPicture):
+        paint_calibration(image, picture)
+        return
     image.paste(headings_image(tuple(picture.headings), image.width, image.height), (0, 0))
     draw = ImageDraw.Draw(image)
     for divider in picture.dividers:
@@ -419,6 +430,9 @@ class Displays:
         self._last_step = None
         self._later = later
         self._wake = threading.Condition()
+        # A running calibration's CalibrationView: while set, every panel
+        # shows it instead of the desk (a3_mixer_calibration_display).
+        self._calibration = None
 
     def note_peak(self, pair, peak):
         """A stem's peak, from the OSC thread: noted, never drawn here.
@@ -523,7 +537,7 @@ class Displays:
         """The panel's meters in pixels, laid out for its display's size."""
         device = self._devices.get(panel)
         width, height = (device.width, device.height) if device else (128, 64)
-        return pixel_key(self._picture_for(panel)(width, height))
+        return _pixels_of(self._picture_for(panel)(width, height))
 
     def _fresh(self, peaks, key):
         peak, heard = peaks.get(key, (0.0, None))
@@ -629,10 +643,30 @@ class Displays:
                 self._meters_due.discard(panel)
             self._draw(panel, self._picture_for(panel))
 
+    def show_calibration(self, view):
+        """A calibration's CalibrationView on every panel. Once it has
+        ended, the end stays CALIBRATION_END_SECONDS, then the desk's own
+        pictures come back -- unless another calibration began meanwhile."""
+        with self._wake:
+            self._calibration = view
+        self._post_all()
+        if view.state != RUNNING:
+            self._later(CALIBRATION_END_SECONDS, lambda: self._end_calibration(view))
+
+    def _end_calibration(self, view):
+        with self._wake:
+            if self._calibration is not view:
+                return
+            self._calibration = None
+        self._post_all()
+
     def _picture_for(self, panel):
         """The picture of `panel` from its state, laid out for whatever size
         the display turns out to be."""
         with self._wake:
+            if self._calibration is not None:
+                view, index = self._calibration, PANELS.index(panel)
+                return lambda width, height: calibration_picture(view, index, width, height)
             if panel == return_panel():
                 cue = self._return_cue
                 level = (self._levels[panel] or (0.0,))[0]
@@ -715,7 +749,7 @@ class Displays:
         # Noted before the write: a failed draw is retried whole through
         # _retry, and meter steps must not hammer a display that is not there.
         with self._wake:
-            self._drawn[panel] = pixel_key(picture)
+            self._drawn[panel] = _pixels_of(picture)
         self._draw_fields(device, picture)
 
     def _complain(self, panel, error):
@@ -727,6 +761,12 @@ class Displays:
         self._report("display '%s' (mux channel %d, bus %d, address 0x%02x) "
                      "did not answer: %s" % (panel.label, panel.channel, panel.port,
                                              panel.address, error))
+
+
+def _pixels_of(picture):
+    """What a redraw is decided on: a desk picture's pixel_key; a
+    calibration's picture is its own key."""
+    return picture if isinstance(picture, CalibrationPicture) else pixel_key(picture)
 
 
 class NoDisplays:
@@ -773,6 +813,9 @@ class NoDisplays:
         pass
 
     def blank_all(self):
+        pass
+
+    def show_calibration(self, view):
         pass
 
 
