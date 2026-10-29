@@ -24,11 +24,46 @@ whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
 The return's display is the FX Return, the master of the delay channel
-(P47): one mono meter under AUX-RTN -- aux_L/aux_R, the return after RETURN,
+(P47): one mono meter under the heading DELAY (AUX-RTN until 2026-10-29) -- aux_L/aux_R, the return after RETURN,
 the louder side -- and, at its right edge behind a divider, the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
 is cued. Its encoder's push toggles the cue; with nothing to choose there is
 no arrow and no bracket.
+
+The return's encoder carries the delay's four parameters (2026-10-29, spec
+delay-params). First design: one parameter at a time, a page, its name over
+a big value beside the meter, a CUE field behind a divider. Round 2, the same
+day, after the maintainer had it on the rig: the four stand one under the
+other and CUE is a fifth row (a3_mixer_delay, rulings R22-R25): BEAT, FEEDBK,
+COLOR, SPREAD, CUE, each its name at the left and its value at the right, in
+the room right of the meter. A press of the encoder toggles select and edit,
+and the display says which at a glance by what is lit: selecting, the whole
+row under the cursor (a bar, as a menu's highlight); editing, only its value
+-- what the turn changes is what is lit. DELAY and the meter stay in their
+boxes (a test pins them); the CUE field and its divider are gone with the
+CUE row. The rows are 10 of the panel's 64 rows high and set in one size,
+the one the longest name beside the longest value fits (a digit does not
+grow or shrink between clicks) -- smaller than the page's big value (R14
+wanted it read from the booth), the price of five rows under a heading;
+without the heading and with a thin meter they would be 12 rows high, the
+alternative left as a picture (smoke-test/delay-params/list-layout-*). The
+texts are those of a deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1
+2 (what Core announces plays, whatever the tempo), FEEDBK as a percentage,
+COLOR as filter steps from the centre (0, HP 1-10 left, LP 1-10 right -- the
+knob's own direction), SPREAD in degrees, CUE ON or OFF; "--" until Core has
+said a value. On a truth without the delay words (R25) the return is as it
+always was: DELAY, the meter, the CUE field, and the push cues at once.
+
+Round 3 (2026-10-29, "passt" for round 2, then): the return with the list is
+two sections with a vertical divider -- left AUX over the meter, right DELAY
+over the rows -- both headings in the band and size of every other heading of
+the desk, top-aligned with them (a test compares their ink). The divider runs
+the panel's whole height so the headings are separated too. The rows kept
+their 10 px and their size (11): the right section is 92 columns where the
+list had 96, the room the AUX heading and the meter now take on the left
+(options rendered: smoke-test/delay-params/r3-*). Every channel display draws
+the yellow and red scale marks on every slot, an absent deck's too (a044daf
+had dropped them there): the letter stays, the bar is empty.
 
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
 Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
@@ -99,11 +134,13 @@ from display_panel import (channel_announcement,  # noqa: E402,F401
                            return_picture, panel_for_channel, return_panel,
                            pixel_key, playing_slot, ClipHold, ANALOG_INPUT,
                            STEMS_PER_DECK,
-                           METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture)
+                           METER_STEPS_PER_SECOND, PAIRS, PANELS, Picture,
+                           LIST_NAME_SAMPLES, LIST_VALUE_SAMPLES)
 
 from a3_mixer_calibration_display import (CalibrationPicture,  # noqa: E402
                                           calibration_picture, paint_calibration)
 from a3_mixer_calibration_run import RUNNING  # noqa: E402
+from a3_mixer_delay import DELAY_ROWS, SELECT  # noqa: E402
 
 #: How long the end of a calibration (CALIBRATED / CANCELLED) stays on the
 #: displays before the desk's own pictures come back.
@@ -164,6 +201,61 @@ def headings_image(headings, width, height):
         font, at = _fit(draw, heading.box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
         draw.text(at, heading.text, fill="white", font=font)
     return image
+
+
+#: Dark columns inside a list row at either end of its text, so an inverted
+#: row's letters do not touch its edge.
+ROW_PAD = 2
+#: The least dark columns between a row's name and its value.
+ROW_TEXT_GAP = 4
+
+
+def _row_font(draw, rows):
+    """The one font all of a list's rows are set in: the size the row height
+    gives it (as a heading's), shrunk until the capitals leave a row of
+    dark above and below and the longest name and the longest value fit side
+    by side -- so a digit does not grow or shrink between clicks."""
+    x0, y0, x1, y1 = rows[0].box
+    size = max(6, round((y1 - y0 + 1) * TEXT_OF_HEADING * TEXT_STEP))
+    while size > 6:
+        font = _font(size)
+        _, cap_top, _, cap_bottom = draw.textbbox((0, 0), "H", font=font)
+        names = max(draw.textlength(text, font=font) for text in LIST_NAME_SAMPLES)
+        values = max(draw.textlength(text, font=font) for text in LIST_VALUE_SAMPLES)
+        fits_up = cap_bottom - cap_top <= y1 - y0 + 1 - 2
+        fits_across = names + ROW_TEXT_GAP + values <= x1 - x0 + 1 - 2 * ROW_PAD
+        if fits_up and fits_across:
+            break
+        size -= 1
+    return _font(size)
+
+
+@functools.lru_cache(maxsize=64)
+def list_mask(rows, width, height):
+    """The delay list as a mask the size of the panel, painted once per
+    state: names at the left of their rows, values at the right, and the
+    inverted part (the whole row, or its value) as lit ground with the
+    letters cut out of it."""
+    from PIL import Image, ImageDraw
+
+    mask = Image.new("1", (width, height))
+    draw = ImageDraw.Draw(mask)
+    font = _row_font(draw, rows)
+    _, cap_top, _, cap_bottom = draw.textbbox((0, 0), "H", font=font)
+    for row in rows:
+        x0, y0, x1, y1 = row.box
+        y = y0 + (y1 - y0 + 1 - (cap_bottom - cap_top)) // 2 - cap_top
+        value_width = draw.textlength(row.value, font=font)
+        value_at = x1 + 1 - ROW_PAD - value_width
+        if row.inverted == "row":
+            draw.rectangle(row.box, fill="white")
+        elif row.inverted == "value":
+            draw.rectangle((round(value_at) - ROW_PAD, y0, x1, y1), fill="white")
+        name_ink = "black" if row.inverted == "row" else "white"
+        value_ink = "black" if row.inverted else "white"
+        draw.text((x0 + ROW_PAD, y), row.name, fill=name_ink, font=font)
+        draw.text((value_at, y), row.value, fill=value_ink, font=font)
+    return mask
 
 
 #: The CUE letters sit this far inside the toggle's field, clear of its
@@ -271,6 +363,8 @@ def paint(image, picture):
         draw.line(mark, fill="white")
     for meter in picture.meters:
         _meter(draw, meter)
+    if picture.rows:
+        image.paste(1, (0, 0), list_mask(tuple(picture.rows), image.width, image.height))
     if picture.toggle is not None:
         _toggle(image, draw, picture.toggle)
     if picture.active is not None:
@@ -381,8 +475,9 @@ class Displays:
 
     def __init__(self, select, make_device, draw_fields, report=report,
                  clock=time.monotonic, every=500, later=_later,
-                 timing=DEFAULT_METER_TIMING):
+                 timing=DEFAULT_METER_TIMING, has_delay_page=True):
         self._select = select
+        self._has_delay_page = has_delay_page
         self._make_device = make_device
         self._draw_fields = draw_fields
         self._report = report
@@ -411,6 +506,9 @@ class Displays:
         self._source_cursors = [0] * (len(PANELS) - 1)
         self._decks_present = [False] * DECKS
         self._return_cue = False
+        # The delay page on the return (a3_mixer_delay): the page and the
+        # last value of each. Drawn on the return strip.
+        self.delay_view = (SELECT, 0, {row: None for row in DELAY_ROWS})
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair and per side of the FX Return; each meter's
         # ballistics; and the levels each panel shows, stepped on the
@@ -620,6 +718,15 @@ class Displays:
             self._return_cue = bool(on)
         self._post(return_panel())
 
+    def show_delay(self, mode, cursor, values):
+        """The return encoder's delay list: its mode and cursor, and the
+        values Core last gave (None for one it has not)."""
+        with self._wake:
+            if self.delay_view == (mode, cursor, values):
+                return
+            self.delay_view = (mode, cursor, dict(values))
+        self._post(return_panel())
+
     def blank_all(self):
         """Until Core speaks: no stem on any channel -- A plays -- and no
         cue on the return."""
@@ -672,7 +779,11 @@ class Displays:
                 level = (self._levels[panel] or (0.0,))[0]
                 clip = (self._clips[panel] or (False,))[0]
                 hold = (self._holds[panel] or (0.0,))[0]
-                return lambda width, height: return_picture(cue, level, width, height, clip, hold)
+                # An older truth has no delay words: the push is the old cue
+                # push and the return looks as it always did.
+                delay = self.delay_view if self._has_delay_page else None
+                return lambda width, height: return_picture(cue, level, width, height, clip,
+                                                            hold, delay)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]
@@ -797,6 +908,9 @@ class NoDisplays:
     def show_return_cue(self, on):
         pass
 
+    def show_delay(self, mode, cursor, values):
+        pass
+
     def note_aux(self, side, peak):
         pass
 
@@ -819,10 +933,11 @@ class NoDisplays:
         pass
 
 
-def open_displays(timing=DEFAULT_METER_TIMING):
-    """The live displays, their meters on `timing` (Core's)."""
+def open_displays(timing=DEFAULT_METER_TIMING, has_delay_page=True):
+    """The live displays, their meters on `timing` (Core's); the return
+    shows the delay page only where the truth has it."""
     try:
-        displays = Displays(*_hardware(), timing=timing)
+        displays = Displays(*_hardware(), timing=timing, has_delay_page=has_delay_page)
     except Exception as error:  # noqa: BLE001 -- ImportError, font, anything
         report("displays unavailable, the desk runs without them: %s" % error)
         return NoDisplays()

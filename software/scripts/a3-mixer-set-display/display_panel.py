@@ -173,9 +173,10 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, AUX-RTN (maintainer, 2026-10-28), and its CUE field. It has no
+#: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29 (with the
+#: delay list: AUX over the meter | DELAY over the rows, round 3), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
-RETURN_NAME = "AUX-RTN"
+RETURN_NAME = "DELAY"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -271,15 +272,26 @@ def pixel_key(picture):
     return (tuple((meter.pixels(), meter.hatched(), meter.hold_row())
                   for meter in picture.meters),
             picture.cursor, toggle,
-            picture.active, tuple(picture.headings), tuple(picture.marks))
+            picture.active, tuple(picture.headings), tuple(picture.marks),
+            tuple(picture.rows))
 
 
 #: What a panel shows: headings over meters, the cursor -- the box of the
 #: down arrow over the selected slot --, divider lines, a channel's toggle,
 #: and the box of the active bracket over the meter that plays, or None.
 Heading = namedtuple("Heading", "box text")
-Picture = namedtuple("Picture", "headings meters cursor dividers toggle active marks",
-                     defaults=((), None, None, ()))
+#: The mode of the delay list in which the whole cursor row is inverted; the
+#: other mode inverts its value only. The same word as the desk logic's SELECT
+#: (a test says so): the display does not import the desk's logic.
+SELECT_MODE = "select"
+
+#: One row of the return's delay list: `name` at the left of `box`, `value`
+#: at its right. `inverted` says what the encoder is standing on: "row" (the
+#: whole box lit, dark letters -- select mode), "value" (only the value's
+#: end of it -- edit mode) or None.
+Row = namedtuple("Row", "box name value inverted")
+Picture = namedtuple("Picture", "headings meters cursor dividers toggle active marks rows",
+                     defaults=((), None, None, (), ()))
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
 #: wide enough for a divider line in its middle with three dark columns on
@@ -521,21 +533,92 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
     return Picture(headings, meters, _arrow(columns[engine_slot(cursor)], arrow),
                    (_divider(*divider, (m0, m1)),), None,
                    _bracket(meters[engine_slot(source)].box),
-                   _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
+                   _marks(meters, CHANNEL_MARK_LENGTH))
 
 
 #: The return's heading and its meter, each as a share of the panel's width.
-#: The heading holds AUX-RTN at the displays' one text size (58 of 60 columns
-#: at 128); the meter is as slim as the channels' bars look beside their
+#: The heading's box is as wide as its name needs at the displays' one text size
+#: (DELAY: 43 of 45 columns at 128; AUX-RTN needed 58, so the box was 60 and
+#: DELAY centred in it would have left the left margin); the meter is as slim as the channels' bars look beside their
 #: neighbours -- 22 columns, the width it had under FX RTN.
-RETURN_HEADING_OF_WIDTH = 0.47
+RETURN_HEADING_OF_WIDTH = 0.35
 RETURN_METER_OF_WIDTH = 0.17
 
 
-def return_picture(cue, level, width, height, clip=False, hold=0.0):
-    """The FX Return: AUX-RTN at the left margin, one mono meter under it,
+#: The delay list's row names on the return, in the order they stand.
+DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread": "SPREAD",
+               "cue": "CUE"}
+#: What the longest name and the longest values of a row can be: the painter
+#: sizes every row by them, so a digit does not grow or shrink between clicks.
+LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
+LIST_VALUE_SAMPLES = ("HP 10", "LP 10", "100%", "180\u00b0", "1/8", "3/4", "OFF")
+#: The two sections of the return with a delay list (round 3, 2026-10-29):
+#: AUX (heading and meter) | DELAY (heading and rows), a vertical divider
+#: between. The divider's column as a share of the width: 33 of 128, which
+#: leaves AUX (28 columns at the displays' text size) and the 22-column meter
+#: with its marks on the left, and 92 columns on the right -- the rows'
+#: widest name and value (SPREAD ... HP 10) still fit them at the size the
+#: rows had when they stood beside the meter, 10 rows high.
+RETURN_SECTION_OF_WIDTH = 0.26
+AUX_NAME = "AUX"
+#: Dark columns between the divider and the list.
+LIST_GAP = 2
+#: Dark rows between the heading and the first row.
+LIST_HEADING_GAP = 2
+
+_BEATS = {0.125: "1/8", 0.25: "1/4", 0.5: "1/2", 0.75: "3/4"}
+
+
+def _number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) \
+        and math.isfinite(value)
+
+
+def delay_text(row, value):
+    """What a delay row's value reads on the display; `--` while it is not
+    known. Beat in the fractions a deck's loop control shows, colour as
+    filter steps from the centre: HP (high-pass) left of it, LP right. CUE is
+    a switch: ON or OFF."""
+    if row == "cue":
+        return "--" if value is None else "ON" if value else "OFF"
+    if not _number(value):
+        return "--"
+    if row == "beat":
+        return _BEATS.get(value) or f"{value:g}"
+    if row == "feedback":
+        return f"{round(value * 100)}%"
+    if row == "color":
+        step = round(value * 10)
+        return "0" if step == 0 else f"HP {-step}" if step < 0 else f"LP {step}"
+    return f"{round(value)}\u00b0"
+
+
+def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
+    """The five rows, equal and stacked up to the panel's last row, under the
+    heading, within `free` = (x0, x1) of columns. The one under the cursor is
+    inverted: all of it while selecting, its value while editing."""
+    x0, x1 = free
+    names = tuple(DELAY_NAMES)
+    top = heading_bottom + 1 + LIST_HEADING_GAP
+    height = max(1, (bottom + 1 - top) // len(names))
+    top = bottom + 1 - height * len(names)
+    inverted = "row" if mode == SELECT_MODE else "value"
+    rows = []
+    for index, name in enumerate(names):
+        value = cue if name == "cue" else values.get(name)
+        y0 = top + index * height
+        rows.append(Row((x0, y0, x1, y0 + height - 1), DELAY_NAMES[name],
+                        delay_text(name, value), inverted if index == cursor else None))
+    return tuple(rows)
+
+
+def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
+    """The FX Return: DELAY (once AUX-RTN) at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
-    return is cued. No arrow and no bracket: there is nothing to choose."""
+    return is cued. No arrow and no bracket: there is nothing to choose.
+    `delay` = (mode, cursor, values) makes two sections instead: AUX with the
+    meter at the left, a divider, DELAY with the five rows -- CUE one of
+    them, so no CUE field -- at the right."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -552,10 +635,20 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0):
     stem_width = channel[0][1] - channel[0][0] + 1
     left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
+    headings = (Heading((x0, h0, x1, h1), RETURN_NAME),)
+    if delay is not None:
+        # Two sections, the same band and the same text size for both
+        # headings (the rule of every other heading of the desk).
+        divider = round(width * RETURN_SECTION_OF_WIDTH)
+        first = divider + 1 + LIST_GAP
+        aux = Heading((x0, h0, divider - 2, h1), AUX_NAME)
+        delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME)
+        rows = _rows(*delay, cue, h1, height - 1, (first, width - 1))
+        return Picture((aux, delay_heading), meters, None, ((divider, 0, divider, height - 1),),
+                       None, None, _marks(meters), rows)
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
-    return Picture((Heading((x0, h0, x1, h1), RETURN_NAME),), meters, None, (divider,), toggle,
-                   None, _marks(meters))
+    return Picture(headings, meters, None, (divider,), toggle, None, _marks(meters))
 
 
 def cursor_announcement(args):

@@ -16,7 +16,7 @@ import neopixel
 
 import socket
 import threading
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Value
 
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc import osc_server
@@ -33,6 +33,8 @@ from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery
                              RecallRequest, StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour, panel_fields)
+from a3_mixer_delay import (RETURN_ENCODER, VALUE_KEYS, DelayList,
+                             DelayState, value_announcement)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
@@ -420,9 +422,17 @@ def ask_the_panel():
     sendData(ASK_THE_PANEL)
 
 
-def serial_handler(views, calibrate): # dispatch from serial stream and send to osc
+def serial_handler(views, calibrate, delay_views, cue_shown): # dispatch from serial stream and send to osc
 
     global calibration
+    # The return encoder's mode and cursor live in this process; the displays,
+    # in the parent, are told through `delay_views`. The cue lamp the displays
+    # show comes back the other way, in the shared `cue_shown`: the CUE row
+    # pushes Core's toggle only when it differs from the way the turn points.
+    delay_list = (DelayList(osc, to_core, lambda mode, cursor: delay_views.put((mode, cursor)),
+                            lambda: bool(cue_shown.value & 1),
+                            cue_answers=lambda: cue_shown.value >> 1)
+                  if osc.has_delay_page() else None)
     calibration = open_calibration(views)
     ask_the_panel()
     be_in_front_of_core()
@@ -457,14 +467,28 @@ def serial_handler(views, calibrate): # dispatch from serial stream and send to 
             position = parse_int(value)
             if position is not None:
                 turned = clicks.feed(int(track), position)
-                msg = encoder_message(osc, int(track), turned)
-                if not calibration.turned(turned) and msg:
-                    to_core(*msg)
+                if int(track) == RETURN_ENCODER and delay_list is not None:
+                    # The return moves the delay list's cursor or changes its
+                    # row (a3_mixer_delay).
+                    if not calibration.turned(turned):
+                        delay_list.turn(turned)
+                else:
+                    msg = encoder_message(osc, int(track), turned)
+                    if not calibration.turned(turned) and msg:
+                        to_core(*msg)
         if mode == "EB" and track.isdigit():
             pressed = pushes.feed(int(track), value == "1")
-            msg = push_message(osc, int(track), pressed)
-            if not (pressed and calibration.pushed()) and msg:
-                to_core(*msg)
+            if int(track) == RETURN_ENCODER and delay_list is not None:
+                # A press toggles select and edit, on the edge; the release
+                # means nothing. A press the calibration took is not one.
+                if pressed and not calibration.pushed():
+                    delay_list.press()
+            else:
+                msg = push_message(osc, int(track), pressed)
+                if msg is None and pressed and int(track) == RETURN_ENCODER:
+                    msg = (osc.address("aux-return.stem.push"), 1)   # a truth without the delay page
+                if not (pressed and calibration.pushed()) and msg:
+                    to_core(*msg)
 
         # Buttons
         #
@@ -541,7 +565,12 @@ if __name__ == '__main__':
     # The calibration's pictures, from the serial reader to the displays,
     # which this process draws.
     calibration_views = Queue()
-    proc1 = Process(target=serial_handler, args=(calibration_views, args.calibrate))
+    delay_views = Queue()
+    # The shown cue lamp for the serial reader: bit 0 is on/off, the rest counts
+    # announcements (a3_mixer_delay: a push is answered once one has come).
+    cue_shown = Value("i", 0)
+    proc1 = Process(target=serial_handler,
+                    args=(calibration_views, args.calibrate, delay_views, cue_shown))
     proc1.start()
 
     # Stirbt der serielle Leser, geht dieser Prozess mit.
@@ -575,7 +604,7 @@ if __name__ == '__main__':
 
     # The displays show what Core announces; until it does, a dash. A failing
     # display is reported inside Displays and never reaches this server.
-    displays = open_displays(osc.meters())
+    displays = open_displays(osc.meters(), has_delay_page=osc.has_delay_page())
     # With the engine's words in the truth the displays are on the ring A B C
     # D ST from the start: no interim picture that jumps once Core speaks.
     if "channel.source" in osc.engine_keys():
@@ -587,6 +616,16 @@ if __name__ == '__main__':
             displays.show_calibration(calibration_views.get())
 
     threading.Thread(target=show_calibrations, daemon=True, name="calibration").start()
+
+    # The delay list: mode and cursor come from the serial reader, the values
+    # from Core. Both end in the displays; a value received is never sent back.
+    delay_state = DelayState(displays.show_delay)
+
+    def show_delay_views():
+        while True:
+            delay_state.show_view(*delay_views.get())
+
+    threading.Thread(target=show_delay_views, daemon=True, name="delay list").start()
 
     # A new Core: the displays forget engine mode, then the desk asks for
     # the state again (ForgetThenAsk) -- the first announcement comes after
@@ -660,8 +699,20 @@ if __name__ == '__main__':
         on = cue_announcement(args)
         if osc.is_address("aux-return.cue.led", address) and on is not None:
             displays.show_return_cue(on)
+            cue_shown.value = ((cue_shown.value >> 1) + 1) << 1 | (1 if on else 0)
 
     dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
+
+    # The delay values Core announces (the page's own key each; python-osc
+    # hands a wildcard map every address it is a prefix of).
+    def delay_handler(address, *args):
+        value = value_announcement(args)
+        for key in VALUE_KEYS:
+            if value is not None and osc.is_address(key, address):
+                delay_state.set_value(key.rsplit(".", 1)[1], value)
+
+    for key in VALUE_KEYS if osc.has_delay_page() else ():
+        dispatcher.map(osc.subscription(key), delay_handler)
 
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen

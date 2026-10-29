@@ -385,7 +385,7 @@ class ActiveBracket(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """P47: the FX Return is the master of the delay channel. Its display is
-    one mono meter under AUX-RTN -- the return after RETURN -- and the CUE
+    one mono meter under DELAY -- the return after RETURN -- and the CUE
     field: no source to choose, so no second meter, no arrow and no active
     bracket."""
 
@@ -395,7 +395,7 @@ class ReturnMeter(unittest.TestCase):
 
     def test_one_meter_under_one_name(self):
         p = self.picture(level=0.4)
-        self.assertEqual([h.text for h in p.headings], ["AUX-RTN"])
+        self.assertEqual([h.text for h in p.headings], ["DELAY"])
         self.assertEqual([m.level for m in p.meters], [0.4])
         heading, meter = p.headings[0].box, p.meters[0].box
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
@@ -517,6 +517,167 @@ class ReturnCue(unittest.TestCase):
         for box in [m.box for m in p.meters] + [h.box for h in p.headings]:
             self.assertTrue(box[3] < 32, box)
         self.assertTrue(p.toggle.box[3] < 32)
+
+
+class DelayList(unittest.TestCase):
+    """The return's delay list (spec delay-params, round 2): five rows --
+    BEAT FEEDBK COLOR SPREAD CUE -- in a section of their own;
+    the CUE field is gone, CUE is a row. Round 3: two sections, AUX (heading
+    and meter) | DELAY (heading and rows), a vertical divider between."""
+
+    VALUES = {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0}
+
+    def picture(self, mode="select", cursor=0, values=None, cue=False, height=H):
+        from display_panel import return_picture
+        values = self.VALUES if values is None else values
+        return return_picture(cue, 0.5, W, height, delay=(mode, cursor, values))
+
+    def test_two_sections_aux_left_delay_right(self):
+        p = self.picture()
+        self.assertEqual([h.text for h in p.headings], ["AUX", "DELAY"])
+        aux, delay = p.headings
+        # Same band: the same top and height, as every other heading of the desk.
+        self.assertEqual((aux.box[1], aux.box[3]), (delay.box[1], delay.box[3]))
+        self.assertEqual(aux.box[1], 0)
+        (divider,) = p.dividers
+        self.assertEqual(divider[0], divider[2])
+        self.assertEqual((divider[1], divider[3]), (0, H - 1))
+        self.assertLess(aux.box[2], divider[0])
+        self.assertGreater(delay.box[0], divider[0])
+        meter = p.meters[0].box
+        self.assertLess(meter[2], divider[0])
+        self.assertLess(aux.box[0], meter[0])
+
+    def test_the_meter_keeps_its_size_and_its_scale_marks(self):
+        from display_panel import return_picture
+        plain = return_picture(False, 0.5, W, H)
+        p = self.picture()
+        self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters])
+        self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
+        self.assertEqual(p.marks, plain.marks)
+        self.assertEqual(len(p.marks), 2)
+
+    def test_the_rows_start_right_of_the_divider_and_stay_ten_rows_high(self):
+        p = self.picture()
+        (divider,) = p.dividers
+        for row in p.rows:
+            self.assertGreater(row.box[0], divider[0])
+            self.assertEqual(row.box[3] - row.box[1] + 1, 10)
+
+    def test_the_delay_heading_stands_over_the_names_of_the_rows(self):
+        p = self.picture()
+        self.assertLessEqual(abs(p.headings[1].box[0] - p.rows[0].box[0]), 2)
+
+    def test_no_delay_is_todays_return_with_no_rows(self):
+        from display_panel import return_picture
+        p = return_picture(False, 0.5, W, H)
+        self.assertEqual(p.rows, ())
+        self.assertIsNotNone(p.toggle)
+
+    def test_five_rows_one_under_the_other_in_order(self):
+        p = self.picture(cue=True)
+        self.assertEqual([r.name for r in p.rows], ["BEAT", "FEEDBK", "COLOR", "SPREAD", "CUE"])
+        self.assertEqual([r.value for r in p.rows], ["1/4", "70%", "HP 5", "60\u00b0", "ON"])
+
+    def test_the_rows_are_equal_stacked_and_clear_of_heading_and_meter(self):
+        p = self.picture()
+        heading, meter = p.headings[0].box, p.meters[0].box
+        heights = {r.box[3] - r.box[1] for r in p.rows}
+        self.assertEqual(len(heights), 1)
+        for upper, lower in zip(p.rows, p.rows[1:]):
+            self.assertEqual(lower.box[1], upper.box[3] + 1)
+        self.assertGreater(p.rows[0].box[1], heading[3])
+        self.assertEqual(p.rows[-1].box[3], H - 1)
+        for row in p.rows:
+            self.assertGreater(row.box[0], meter[2] + 1)
+            self.assertEqual(row.box[2], W - 1)
+            self.assertGreater(row.box[1], p.headings[1].box[3])
+
+    def test_cue_reads_on_or_off_and_unknown_reads_dashes(self):
+        self.assertEqual(self.picture(cue=False).rows[4].value, "OFF")
+        self.assertEqual(self.picture(cue=True).rows[4].value, "ON")
+        p = self.picture(values={})
+        self.assertEqual([r.value for r in p.rows[:4]], ["--"] * 4)
+
+    def test_select_inverts_the_cursor_row_edit_only_its_value(self):
+        for cursor in range(5):
+            select = self.picture("select", cursor)
+            edit = self.picture("edit", cursor)
+            self.assertEqual([r.inverted for r in select.rows],
+                             ["row" if i == cursor else None for i in range(5)])
+            self.assertEqual([r.inverted for r in edit.rows],
+                             ["value" if i == cursor else None for i in range(5)])
+
+    def test_the_mode_and_cursor_and_values_are_pixels(self):
+        from display_panel import pixel_key
+        keys = {pixel_key(self.picture(mode, cursor))
+                for mode in ("select", "edit") for cursor in range(5)}
+        self.assertEqual(len(keys), 10)
+        self.assertNotEqual(pixel_key(self.picture(values={"beat": 0.5})),
+                            pixel_key(self.picture(values={"beat": 0.25})))
+        self.assertNotEqual(pixel_key(self.picture(cue=True)), pixel_key(self.picture(cue=False)))
+        self.assertEqual(pixel_key(self.picture()), pixel_key(self.picture()))
+
+    def test_it_lays_out_on_a_short_panel_too(self):
+        p = self.picture(height=32)
+        for row in p.rows:
+            self.assertLess(row.box[3], 32)
+            self.assertLessEqual(row.box[1], row.box[3])
+
+    def test_a_cursor_out_of_range_inverts_nothing(self):
+        self.assertEqual([r.inverted for r in self.picture(cursor=9).rows], [None] * 5)
+
+
+class DelayText(unittest.TestCase):
+    def text(self, page, value):
+        from display_panel import delay_text
+        return delay_text(page, value)
+
+    def test_beat_is_a_fraction_of_a_bar_as_on_a_deck(self):
+        shown = [self.text("beat", b) for b in (0.125, 0.25, 0.5, 0.75, 1, 2)]
+        self.assertEqual(shown, ["1/8", "1/4", "1/2", "3/4", "1", "2"])
+
+    def test_a_beat_outside_the_list_still_reads_plainly(self):
+        # Core announces what plays; the desk has no beat logic of its own.
+        self.assertEqual(self.text("beat", 4), "4")
+        self.assertEqual(self.text("beat", 0.3), "0.3")
+
+    def test_feedback_is_a_percentage(self):
+        self.assertEqual(self.text("feedback", 0.7), "70%")
+        self.assertEqual(self.text("feedback", 0.95), "95%")
+        self.assertEqual(self.text("feedback", 0.0), "0%")
+        self.assertEqual(self.text("feedback", 0.35), "35%")
+
+    def test_color_counts_filter_steps_from_the_centre(self):
+        self.assertEqual(self.text("color", 0.0), "0")
+        self.assertEqual(self.text("color", -0.5), "HP 5")
+        self.assertEqual(self.text("color", 0.5), "LP 5")
+        self.assertEqual(self.text("color", -1.0), "HP 10")
+        self.assertEqual(self.text("color", 1.0), "LP 10")
+        self.assertEqual(self.text("color", -0.3), "HP 3")
+        self.assertEqual(self.text("color", 0.1), "LP 1")
+        self.assertEqual(self.text("color", -0.0), "0")
+
+    def test_spread_is_degrees(self):
+        self.assertEqual(self.text("spread", 60.0), "60\u00b0")
+        self.assertEqual(self.text("spread", 0.0), "0\u00b0")
+        self.assertEqual(self.text("spread", 180.0), "180\u00b0")
+
+    def test_unknown_is_two_dashes(self):
+        for page in ("beat", "feedback", "color", "spread"):
+            self.assertEqual(self.text(page, None), "--", page)
+            self.assertEqual(self.text(page, float("nan")), "--", page)
+            self.assertEqual(self.text(page, "x"), "--", page)
+
+    def test_cue_is_on_off_or_unknown(self):
+        self.assertEqual(self.text("cue", True), "ON")
+        self.assertEqual(self.text("cue", False), "OFF")
+        self.assertEqual(self.text("cue", None), "--")
+
+    def test_names(self):
+        from display_panel import DELAY_NAMES
+        self.assertEqual(DELAY_NAMES, {"beat": "BEAT", "feedback": "FEEDBK",
+                                       "color": "COLOR", "spread": "SPREAD", "cue": "CUE"})
 
 
 class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):

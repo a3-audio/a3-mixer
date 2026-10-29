@@ -140,7 +140,8 @@ class DeckRing(unittest.TestCase):
         self.assertEqual(len(self.rig.drawn), 1)
 
     def test_absent_deck_is_drawn_dim(self):
-        # Its letter and its place stay; no bar and no scale marks.
+        # Its letter and its place stay, no bar; the scale marks stay too
+        # (round 3: marks on every slot, always).
         self.displays.show_source(0, 0)
         self.decks_there()
         self.displays.note_deck(0, 1.0)
@@ -150,7 +151,8 @@ class DeckRing(unittest.TestCase):
         picture = self.picture_of(0)
         self.assertEqual(self.names(picture), ["A", "B", "C", "D", "ST"])
         self.assertEqual(picture.meters[0].level, 0.0)
-        self.assertEqual(len(picture.marks), marks_present - 2)
+        self.assertEqual(len(picture.marks), marks_present)
+        self.assertEqual(len(picture.marks), 10)
         self.displays.show_deck_present(0, True)
         self.assertEqual(self.names(self.picture_of(0)), ["A", "B", "C", "D", "ST"])
 

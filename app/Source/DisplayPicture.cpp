@@ -13,7 +13,7 @@ namespace
 {
 constexpr int innerGap = 2, groupGap = 7, edge = 1, lastSlotMeters = 2;
 constexpr int arrowRows = 5, arrowWidth = 2 * arrowRows, bracketRows = 4;
-constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.47, returnMeterOfWidth = 0.17;
+constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.35, returnMeterOfWidth = 0.17;
 constexpr std::array<double, 2> markedFractions { 4.0 / 8.0, 6.0 / 8.0 };   // first yellow, first red LED
 constexpr int channelMarkLength = innerGap - 1;
 
@@ -251,11 +251,7 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     p.dividers.push_back (divider (slots[(size_t) analogInput - 1], slots[(size_t) analogInput], rows[2]));
     p.active = bracket (p.meters[(size_t) engineSlot (source)].box);
     p.cursor = arrowBox (columns[(size_t) engineSlot (cursor)], rows[1]);
-    std::vector<Meter> shown;
-    for (size_t i = 0; i < engineSlots; ++i)
-        if (there[i])
-            shown.push_back (p.meters[i]);
-    addMarks (p.marks, shown, channelMarkLength);
+    addMarks (p.marks, p.meters, channelMarkLength);
     return p;
 }
 
@@ -272,7 +268,7 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     const int left = centred ({ channel[0].x0, channel[1].x1 }, channel[0].x1 - channel[0].x0 + 1).x0;
 
     Picture p;
-    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "AUX-RTN" });
+    p.headings.push_back ({ { x0, headingRows.top, x0 + heading - 1, headingRows.bottom }, "DELAY" });
     p.meters = metersFor (std::vector<Box> { { left, meterRows.top, left + meter - 1, meterRows.bottom } },
                           std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
     p.toggle = Toggle { { toggleSlot.x0, meterRows.top, toggleSlot.x1, meterRows.bottom }, cue, "CUE" };

@@ -147,13 +147,14 @@ class WhatIsDrawn(unittest.TestCase):
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_its_one_meter(self):
-        """P47: AUX-RTN, one meter, no arrow and no bracket."""
+        """P47: one meter, no arrow and no bracket; with the delay list the
+        return has two sections, AUX (the meter) and DELAY (the rows)."""
         rig = Rig()
         displays = rig.displays()
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["AUX-RTN"])
+        self.assertEqual([h.text for h in picture.headings], ["AUX", "DELAY"])
         self.assertEqual(len(picture.meters), 1)
         self.assertIsNone(picture.active)
         self.assertIsNone(picture.cursor)
@@ -165,8 +166,9 @@ class WhatIsDrawn(unittest.TestCase):
             self.assertFalse(hasattr(displays, gone), gone)
 
     def test_the_return_cue_fills_the_cue_field(self):
+        # On a truth without the delay list (R25); with it CUE is a row.
         rig = Rig()
-        displays = rig.displays()
+        displays = rig.displays(has_delay_page=False)
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
@@ -190,7 +192,7 @@ class WhatIsDrawn(unittest.TestCase):
 
     def test_until_core_speaks_the_return_is_not_cued(self):
         rig = Rig()
-        displays = rig.displays()
+        displays = rig.displays(has_delay_page=False)
         displays.show_return_cue(True)
         displays.blank_all()
         displays.drain()
@@ -639,11 +641,11 @@ class WhatPlaysWhere(unittest.TestCase):
         return [h.text for h in picture.headings]
 
     def test_the_return_is_the_same_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["AUX-RTN"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["AUX-RTN"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["AUX-RTN"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
@@ -726,6 +728,9 @@ class WhatPlaysWhere(unittest.TestCase):
             self.assertFalse(hasattr(self.displays, gone), gone)
 
 
+LIST_VALUES = {"beat": 0.25, "feedback": 0.7, "color": -1.0, "spread": 180.0}
+
+
 class Painting(unittest.TestCase):
     """The painter on a real 128x64 1-bit image (rule: a page test must
     paint). A3_SNAPSHOTS=<dir> saves each state as a PNG."""
@@ -797,6 +802,16 @@ class Painting(unittest.TestCase):
             "return-hold-line": return_picture(False, 0.5, 128, 64, hold=0.8),
             "return-cue-on": return_picture(True, 0.8, 128, 64),
             "return-cue-off": return_picture(False, 0.4, 128, 64),
+            "return-list-select-beat": return_picture(False, 0.4, 128, 64,
+                                                      delay=("select", 0, LIST_VALUES)),
+            "return-list-select-cue": return_picture(True, 0.4, 128, 64,
+                                                     delay=("select", 4, LIST_VALUES)),
+            "return-list-edit-spread": return_picture(False, 0.4, 128, 64,
+                                                      delay=("edit", 3, LIST_VALUES)),
+            "return-list-edit-cue": return_picture(True, 0.4, 128, 64,
+                                                   delay=("edit", 4, LIST_VALUES)),
+            "return-list-unknown": return_picture(False, 0.4, 128, 64,
+                                                  delay=("edit", 2, {})),
         }
 
     def test_each_state_paints_its_headings(self):
@@ -828,6 +843,7 @@ class Painting(unittest.TestCase):
                 image = self.paint_state(name, picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
                 boxes += list(picture.dividers) + list(picture.marks)
+                boxes += [r.box for r in picture.rows]
                 if picture.cursor is not None:
                     boxes.append(picture.cursor)
                 if picture.active is not None:
@@ -839,6 +855,43 @@ class Painting(unittest.TestCase):
                 spilled = [(x, y) for x in range(128) for y in range(64)
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
+
+    def test_every_list_row_paints_and_keeps_a_dark_column_from_the_divider(self):
+        for name, picture in self.states().items():
+            for row in picture.rows:
+                with self.subTest(name, text=row.name):
+                    image = self.paint_state(name, picture)
+                    self.assertTrue(self.lit(image, row.box))
+                    divider = picture.dividers[0][0]
+                    gap = [(x, y) for x in range(divider + 1, row.box[0])
+                           for y in range(row.box[1], row.box[3] + 1)]
+                    self.assertTrue(self.none_lit(image, gap))
+
+    def test_select_lights_the_cursor_row_edit_only_its_value(self):
+        """The mode must be seen at a glance: a whole lit bar is "choosing",
+        a lit value alone is "turning it"."""
+        def lit_share(image, box):
+            x0, y0, x1, y1 = box
+            return len(self.lit(image, box)) / ((x1 - x0 + 1) * (y1 - y0 + 1))
+
+        def halves(picture, image, index):
+            x0, y0, x1, y1 = picture.rows[index].box
+            mid = (x0 + x1) // 2
+            return lit_share(image, (x0, y0, mid - 4, y1)), lit_share(image, (mid + 5, y0, x1, y1))
+
+        select = self.states()["return-list-select-beat"]
+        image = self.paint_state("return-list-select-beat", select)
+        left, right = halves(select, image, 0)
+        self.assertGreater(left, 0.35)
+        self.assertGreater(right, 0.35)
+        for other in range(1, 5):
+            self.assertLess(max(halves(select, image, other)), 0.3)
+
+        edit = self.states()["return-list-edit-spread"]
+        image = self.paint_state("return-list-edit-spread", edit)
+        left, right = halves(edit, image, 3)
+        self.assertLess(left, 0.3)
+        self.assertGreater(right, 0.35)
 
     def test_the_dividers_are_painted_full_length(self):
         picture = self.states()["channel-silent-cursor-on-stem-1"]
@@ -1209,6 +1262,22 @@ class OneTextSize(unittest.TestCase):
         heights = {name: self.ink_height(picture) for name, picture in self.pictures().items()}
         self.assertEqual(len(set(heights.values())), 1, heights)
 
+    def test_the_two_return_headings_share_size_and_top(self):
+        from display_panel import return_picture
+        delay = return_picture(False, 0.5, 128, 64, delay=("select", 0, {}))
+        ring = self.pictures()["ring"]
+        names = {}
+        for name, picture in (("AUX", delay._replace(headings=delay.headings[:1])),
+                              ("DELAY", delay._replace(headings=delay.headings[1:])),
+                              ("A", ring._replace(headings=ring.headings[:1]))):
+            from PIL import Image
+            image = Image.new("1", (128, 64))
+            paint(image, picture._replace(meters=(), marks=(), dividers=(), cursor=None,
+                                          active=None, toggle=None, rows=()))
+            rows = [y for y in range(64) if any(image.getpixel((x, y)) for x in range(128))]
+            names[name] = (rows[0], rows[-1])
+        self.assertEqual(len(set(names.values())), 1, names)
+
     def test_the_return_name_is_whole_inside_its_box(self):
         from PIL import Image
         picture = self.pictures()["return"]
@@ -1313,6 +1382,101 @@ class TheMultiplexer(unittest.TestCase):
             mux(0x70, 2)
         mux(0x70, 3)
         self.assertEqual(log, [(0x70, 0b1000)])
+
+
+
+
+class TheDelayListIsHandedOver(unittest.TestCase):
+    """The displays keep what they are given and draw it on the return."""
+
+    ALL = {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0}
+
+    def test_show_delay_keeps_mode_cursor_and_values(self):
+        displays = Rig().displays()
+        displays.show_delay("edit", 2, dict(self.ALL, feedback=None))
+        self.assertEqual(displays.delay_view, ("edit", 2, dict(self.ALL, feedback=None)))
+
+    def rows(self, displays):
+        from display_panel import return_panel
+        picture = displays._picture_for(return_panel())(128, 64)
+        return [(r.name, r.value, r.inverted) for r in picture.rows]
+
+    def test_the_return_shows_the_five_rows(self):
+        displays = Rig().displays()
+        displays.show_delay("select", 1, self.ALL)
+        self.assertEqual(self.rows(displays), [
+            ("BEAT", "1/4", None), ("FEEDBK", "70%", "row"), ("COLOR", "HP 5", None),
+            ("SPREAD", "60\u00b0", None), ("CUE", "OFF", None)])
+
+    def test_the_cue_row_follows_the_cue_lamp(self):
+        displays = Rig().displays()
+        displays.show_delay("edit", 4, self.ALL)
+        displays.show_return_cue(True)
+        self.assertEqual(self.rows(displays)[4], ("CUE", "ON", "value"))
+        displays.show_return_cue(False)
+        self.assertEqual(self.rows(displays)[4], ("CUE", "OFF", "value"))
+
+    def test_the_cue_lamp_redraws_the_return(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.blank_all()
+        displays.drain()
+        rig.drawn.clear()
+        displays.show_return_cue(True)
+        displays.drain()
+        self.assertEqual(len(rig.drawn), 1)
+
+    def test_before_core_speaks_it_shows_dashes_and_cue_off(self):
+        displays = Rig().displays()
+        self.assertEqual(self.rows(displays), [
+            ("BEAT", "--", "row"), ("FEEDBK", "--", None), ("COLOR", "--", None),
+            ("SPREAD", "--", None), ("CUE", "OFF", None)])
+
+    def test_until_core_speaks_the_cue_row_is_off(self):
+        displays = Rig().displays()
+        displays.show_return_cue(True)
+        displays.blank_all()
+        self.assertEqual(self.rows(displays)[4][:2], ("CUE", "OFF"))
+
+    def test_a_new_cursor_redraws_the_return_and_only_it(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.blank_all()
+        displays.drain()
+        rig.drawn.clear()
+        displays.show_delay("select", 3, {"spread": 60.0})
+        displays.drain()
+        self.assertEqual(len(rig.drawn), 1)
+        self.assertEqual(rig.drawn[0][1].rows[3].inverted, "row")
+
+    def test_the_same_view_again_draws_nothing(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.show_delay("select", 0, {"beat": 0.25})
+        displays.drain()
+        rig.drawn.clear()
+        displays.show_delay("select", 0, {"beat": 0.25})
+        displays.drain()
+        self.assertEqual(rig.drawn, [])
+
+    def test_a_truth_without_the_delay_page_keeps_todays_return(self):
+        # Ruling R13/R25: there the push is the old cue push, nothing to show.
+        from display_panel import return_panel, return_picture
+        rig = Rig()
+        displays = rig.displays(has_delay_page=False)
+        picture = displays._picture_for(return_panel())(128, 64)
+        self.assertEqual(picture, return_picture(False, 0.0, 128, 64))
+        self.assertEqual(picture.rows, ())
+
+    def test_a_truth_without_it_shows_nothing_even_if_told(self):
+        from display_panel import return_panel
+        displays = Rig().displays(has_delay_page=False)
+        displays.show_delay("select", 0, {"beat": 0.25})
+        self.assertEqual(displays._picture_for(return_panel())(128, 64).rows, ())
+
+    def test_no_displays_take_it_too(self):
+        from a3_mixer_displays import NoDisplays
+        NoDisplays().show_delay("select", 0, {})
 
 
 if __name__ == "__main__":
