@@ -797,6 +797,14 @@ class Painting(unittest.TestCase):
             "return-hold-line": return_picture(False, 0.5, 128, 64, hold=0.8),
             "return-cue-on": return_picture(True, 0.8, 128, 64),
             "return-cue-off": return_picture(False, 0.4, 128, 64),
+            "return-delay-beat": return_picture(False, 0.4, 128, 64, delay=("beat", 0.25)),
+            "return-delay-feedback-cue": return_picture(True, 0.4, 128, 64,
+                                                        delay=("feedback", 0.7)),
+            "return-delay-color-widest": return_picture(False, 0.4, 128, 64,
+                                                        delay=("color", -1.0)),
+            "return-delay-spread-widest": return_picture(False, 0.4, 128, 64,
+                                                         delay=("spread", 180.0)),
+            "return-delay-unknown": return_picture(False, 0.4, 128, 64, delay=("beat", None)),
         }
 
     def test_each_state_paints_its_headings(self):
@@ -828,6 +836,7 @@ class Painting(unittest.TestCase):
                 image = self.paint_state(name, picture)
                 boxes = [h.box for h in picture.headings] + [m.box for m in picture.meters]
                 boxes += list(picture.dividers) + list(picture.marks)
+                boxes += [r.box for r in picture.readouts]
                 if picture.cursor is not None:
                     boxes.append(picture.cursor)
                 if picture.active is not None:
@@ -839,6 +848,17 @@ class Painting(unittest.TestCase):
                 spilled = [(x, y) for x in range(128) for y in range(64)
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
+
+    def test_every_readout_paints_and_keeps_a_dark_column_from_the_meter(self):
+        for name, picture in self.states().items():
+            for readout in picture.readouts:
+                with self.subTest(name, text=readout.text):
+                    image = self.paint_state(name, picture)
+                    self.assertTrue(self.lit(image, readout.box))
+                    meter = picture.meters[0].box
+                    gap = [(x, y) for x in range(meter[2] + 1, readout.box[0])
+                           for y in range(meter[1], meter[3] + 1)]
+                    self.assertTrue(self.none_lit(image, gap))
 
     def test_the_dividers_are_painted_full_length(self):
         picture = self.states()["channel-silent-cursor-on-stem-1"]
@@ -1318,13 +1338,50 @@ class TheMultiplexer(unittest.TestCase):
 
 
 class TheDelayPageIsHandedOver(unittest.TestCase):
-    """Task 5 draws it; for now the displays keep what they are given."""
+    """The displays keep what they are given and draw it on the return."""
 
     def test_show_delay_keeps_page_and_values(self):
         displays = Rig().displays()
         displays.show_delay("color", {"beat": 0.25, "feedback": None, "color": -0.2, "spread": 60.0})
         self.assertEqual(displays.delay_page, ("color", {"beat": 0.25, "feedback": None,
                                                         "color": -0.2, "spread": 60.0}))
+
+    def readouts(self, displays):
+        from display_panel import return_panel
+        return [(r.text) for r in displays._picture_for(return_panel())(128, 64).readouts]
+
+    def test_the_return_shows_the_page_and_its_value(self):
+        displays = Rig().displays()
+        displays.show_delay("feedback", {"beat": 0.25, "feedback": 0.7, "color": 0.0, "spread": 60.0})
+        self.assertEqual(self.readouts(displays), ["FEEDBK", "70%"])
+        displays.show_delay("color", {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0})
+        self.assertEqual(self.readouts(displays), ["COLOR", "HP 5"])
+
+    def test_before_core_speaks_it_shows_dashes(self):
+        displays = Rig().displays()
+        self.assertEqual(self.readouts(displays), ["BEAT", "--"])
+
+    def test_a_new_page_redraws_the_return_and_only_it(self):
+        from display_panel import return_panel
+        rig = Rig()
+        displays = rig.displays()
+        displays.blank_all()
+        displays.drain()
+        rig.drawn.clear()
+        displays.show_delay("spread", {"spread": 60.0})
+        displays.drain()
+        self.assertEqual(len(rig.drawn), 1)
+        self.assertEqual([r.text for r in rig.drawn[0][1].readouts], ["SPREAD", "60\u00b0"])
+
+    def test_the_same_page_and_value_again_draws_nothing(self):
+        rig = Rig()
+        displays = rig.displays()
+        displays.show_delay("beat", {"beat": 0.25})
+        displays.drain()
+        rig.drawn.clear()
+        displays.show_delay("beat", {"beat": 0.25})
+        displays.drain()
+        self.assertEqual(rig.drawn, [])
 
     def test_no_displays_take_it_too(self):
         from a3_mixer_displays import NoDisplays

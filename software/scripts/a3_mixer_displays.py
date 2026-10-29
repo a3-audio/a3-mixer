@@ -30,6 +30,22 @@ the louder side -- and, at its right edge behind a divider, the CUE field
 is cued. Its encoder's push toggles the cue; with nothing to choose there is
 no arrow and no bracket.
 
+The return's encoder carries the delay's four parameters (2026-10-29, spec
+delay-params): BEAT, FEEDBK, COLOR, SPREAD, one page at a time
+(a3_mixer_delay). The page shows in the room the return left free, between
+the meter and the divider: the parameter's name at the headings' size, under
+the AUX-RTN band's height, and its value below it as large as the room
+allows. AUX-RTN, the meter and the CUE field stay in their boxes -- a test
+pins them. No new size: the value is drawn at the size the widest text of
+any page ("HP 10") fits, so a digit does not grow or shrink between clicks
+-- the eye finds the value in the same place at the same size, which a
+glance in the dark needs more than a larger "70%". The texts are those of a
+deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1 2 4, FEEDBK as a
+percentage, COLOR as filter steps from the centre (0, HP 1-10 left, LP 1-10
+right -- the knob's own direction), SPREAD in degrees; "--" until Core has
+said the value. The font has a degree sign, so SPREAD reads 60 with the
+sign.
+
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
 Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
 and the held peak as a one-row line over the bar, 1.5 s and then falling.
@@ -167,6 +183,26 @@ def headings_image(headings, width, height):
     return image
 
 
+@functools.lru_cache(maxsize=64)
+def readouts_mask(readouts, width, height):
+    """The big texts of a picture as a mask the size of the panel, painted
+    once per value. The name takes the headings' size; a value takes the
+    size its page's widest text fits, so the digits do not jump between
+    clicks."""
+    from PIL import Image, ImageDraw
+
+    mask = Image.new("1", (width, height))
+    draw = ImageDraw.Draw(mask)
+    for readout in readouts:
+        x0, y0, x1, y1 = readout.box
+        font, _ = _fit(draw, readout.box, readout.widest, round((y1 - y0 + 1) * TEXT_OF_HEADING))
+        left, top, right, bottom = draw.textbbox((0, 0), readout.text, font=font)
+        at = (x0 + (x1 - x0 + 1 - (right - left)) // 2 - left,
+              y0 + (y1 - y0 + 1 - (bottom - top)) // 2 - top)
+        draw.text(at, readout.text, fill="white", font=font)
+    return mask
+
+
 #: The CUE letters sit this far inside the toggle's field, clear of its
 #: one-pixel outline.
 FRAME = 1
@@ -272,6 +308,8 @@ def paint(image, picture):
         draw.line(mark, fill="white")
     for meter in picture.meters:
         _meter(draw, meter)
+    if picture.readouts:
+        image.paste(1, (0, 0), readouts_mask(tuple(picture.readouts), image.width, image.height))
     if picture.toggle is not None:
         _toggle(image, draw, picture.toggle)
     if picture.active is not None:
@@ -628,7 +666,10 @@ class Displays:
         """The return encoder's delay page and the values Core last gave
         (None for one it has not)."""
         with self._wake:
+            if self.delay_page == (page, values):
+                return
             self.delay_page = (page, dict(values))
+        self._post(return_panel())
 
     def blank_all(self):
         """Until Core speaks: no stem on any channel -- A plays -- and no
@@ -682,7 +723,10 @@ class Displays:
                 level = (self._levels[panel] or (0.0,))[0]
                 clip = (self._clips[panel] or (False,))[0]
                 hold = (self._holds[panel] or (0.0,))[0]
-                return lambda width, height: return_picture(cue, level, width, height, clip, hold)
+                page, values = self.delay_page
+                delay = (page, values.get(page))
+                return lambda width, height: return_picture(cue, level, width, height, clip,
+                                                            hold, delay)
             index = PANELS.index(panel)
             cursor = self._cursors[index]
             mask = self._channel_masks[index]

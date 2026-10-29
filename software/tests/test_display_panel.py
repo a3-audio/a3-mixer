@@ -519,6 +519,115 @@ class ReturnCue(unittest.TestCase):
         self.assertTrue(p.toggle.box[3] < 32)
 
 
+class DelayReadout(unittest.TestCase):
+    """The return's delay page (spec delay-params): the page's name and its
+    value under the unchanged AUX-RTN, beside the unchanged meter."""
+
+    def picture(self, delay=None, cue=False, height=H):
+        from display_panel import return_picture
+        return return_picture(cue, 0.5, W, height, delay=delay)
+
+    def test_heading_meter_and_cue_stay_where_they_were(self):
+        plain = self.picture()
+        for delay in (("beat", 0.25), ("color", None), ("spread", 60.0)):
+            p = self.picture(delay)
+            self.assertEqual(p.headings, plain.headings, delay)
+            self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters], delay)
+            self.assertEqual(p.toggle, plain.toggle, delay)
+            self.assertEqual(p.dividers, plain.dividers, delay)
+
+    def test_the_stored_geometry_has_not_moved(self):
+        p = self.picture(("beat", 0.25))
+        self.assertEqual(p.headings[0].box, (1, 0, 60, 11))
+        self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
+        self.assertEqual(p.toggle.box, (107, 19, 127, 63))
+
+    def test_no_delay_no_readout(self):
+        self.assertEqual(self.picture().readouts, ())
+
+    def test_name_over_value_between_meter_and_divider(self):
+        p = self.picture(("feedback", 0.7))
+        name, value = p.readouts
+        self.assertEqual((name.text, value.text), ("FEEDBK", "70%"))
+        meter, divider = p.meters[0].box, p.dividers[0]
+        for box in (name.box, value.box):
+            self.assertGreater(box[0], meter[2])
+            self.assertLess(box[2], divider[0])
+            self.assertGreaterEqual(box[1], meter[1])
+            self.assertLessEqual(box[3], meter[3])
+        self.assertLess(name.box[3], value.box[1])
+
+    def test_the_name_is_the_headings_height_and_the_value_gets_the_rest(self):
+        p = self.picture(("beat", 0.25))
+        name, value = p.readouts
+        heading = p.headings[0].box
+        self.assertEqual(name.box[3] - name.box[1], heading[3] - heading[1])
+        self.assertGreater(value.box[3] - value.box[1], 2 * (name.box[3] - name.box[1]))
+
+    def test_every_value_of_a_page_shares_one_size(self):
+        from display_panel import DELAY_WIDEST
+        for page, values in (("beat", (0.125, 1, 4)), ("color", (-1.0, 0.0, 1.0))):
+            widest = {self.picture((page, v)).readouts[1].widest for v in values}
+            self.assertEqual(widest, {DELAY_WIDEST})
+
+    def test_it_lays_out_on_a_short_panel_too(self):
+        p = self.picture(("color", -0.5), height=32)
+        for readout in p.readouts:
+            self.assertLess(readout.box[3], 32)
+            self.assertLessEqual(readout.box[1], readout.box[3])
+
+    def test_a_new_value_is_a_new_picture(self):
+        from display_panel import pixel_key
+        self.assertNotEqual(pixel_key(self.picture(("beat", 0.25))),
+                            pixel_key(self.picture(("beat", 0.5))))
+        self.assertNotEqual(pixel_key(self.picture(("beat", 0.25))),
+                            pixel_key(self.picture(("feedback", 0.25))))
+        self.assertEqual(pixel_key(self.picture(("beat", 0.25))),
+                         pixel_key(self.picture(("beat", 0.25))))
+
+
+class DelayText(unittest.TestCase):
+    def text(self, page, value):
+        from display_panel import delay_text
+        return delay_text(page, value)
+
+    def test_beat_is_a_fraction_of_a_bar_as_on_a_deck(self):
+        shown = [self.text("beat", b) for b in (0.125, 0.25, 0.5, 0.75, 1, 2, 4)]
+        self.assertEqual(shown, ["1/8", "1/4", "1/2", "3/4", "1", "2", "4"])
+
+    def test_feedback_is_a_percentage(self):
+        self.assertEqual(self.text("feedback", 0.7), "70%")
+        self.assertEqual(self.text("feedback", 0.95), "95%")
+        self.assertEqual(self.text("feedback", 0.0), "0%")
+        self.assertEqual(self.text("feedback", 0.35), "35%")
+
+    def test_color_counts_filter_steps_from_the_centre(self):
+        self.assertEqual(self.text("color", 0.0), "0")
+        self.assertEqual(self.text("color", -0.5), "HP 5")
+        self.assertEqual(self.text("color", 0.5), "LP 5")
+        self.assertEqual(self.text("color", -1.0), "HP 10")
+        self.assertEqual(self.text("color", 1.0), "LP 10")
+        self.assertEqual(self.text("color", -0.3), "HP 3")
+        self.assertEqual(self.text("color", 0.1), "LP 1")
+        self.assertEqual(self.text("color", -0.0), "0")
+
+    def test_spread_is_degrees(self):
+        self.assertEqual(self.text("spread", 60.0), "60\u00b0")
+        self.assertEqual(self.text("spread", 0.0), "0\u00b0")
+        self.assertEqual(self.text("spread", 180.0), "180\u00b0")
+
+    def test_unknown_is_two_dashes(self):
+        for page in ("beat", "feedback", "color", "spread"):
+            self.assertEqual(self.text(page, None), "--", page)
+            self.assertEqual(self.text(page, float("nan")), "--", page)
+            self.assertEqual(self.text(page, "x"), "--", page)
+
+    def test_names(self):
+        from display_panel import DELAY_NAMES
+        self.assertEqual(DELAY_NAMES, {"beat": "BEAT", "feedback": "FEEDBK",
+                                       "color": "COLOR", "spread": "SPREAD"})
+
+
 class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):
     """Since 2026-10-07 every meter on the desk moves by one ballistics
     (a3_mixer_meters.MeterBallistics) on Core's timing; the displays' own
