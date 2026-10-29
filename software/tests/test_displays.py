@@ -1362,7 +1362,6 @@ class TheDelayPageIsHandedOver(unittest.TestCase):
         self.assertEqual(self.readouts(displays), ["BEAT", "--"])
 
     def test_a_new_page_redraws_the_return_and_only_it(self):
-        from display_panel import return_panel
         rig = Rig()
         displays = rig.displays()
         displays.blank_all()
@@ -1382,6 +1381,21 @@ class TheDelayPageIsHandedOver(unittest.TestCase):
         displays.show_delay("beat", {"beat": 0.25})
         displays.drain()
         self.assertEqual(rig.drawn, [])
+
+    def test_a_truth_without_the_delay_page_keeps_todays_return(self):
+        # Ruling R13: there the push is the old cue push, nothing to show.
+        from display_panel import return_panel, return_picture
+        rig = Rig()
+        displays = rig.displays(has_delay_page=False)
+        picture = displays._picture_for(return_panel())(128, 64)
+        self.assertEqual(picture, return_picture(False, 0.0, 128, 64))
+        self.assertEqual(picture.readouts, ())
+
+    def test_a_truth_without_it_shows_nothing_even_if_told(self):
+        from display_panel import return_panel
+        displays = Rig().displays(has_delay_page=False)
+        displays.show_delay("beat", {"beat": 0.25})
+        self.assertEqual(displays._picture_for(return_panel())(128, 64).readouts, ())
 
     def test_no_displays_take_it_too(self):
         from a3_mixer_displays import NoDisplays

@@ -36,8 +36,11 @@ delay-params): BEAT, FEEDBK, COLOR, SPREAD, one page at a time
 the meter and the divider: the parameter's name at the headings' size, under
 the AUX-RTN band's height, and its value below it as large as the room
 allows. AUX-RTN, the meter and the CUE field stay in their boxes -- a test
-pins them. No new size: the value is drawn at the size the widest text of
-any page ("HP 10") fits, so a digit does not grow or shrink between clicks
+pins them. The name is at the headings' size. The value is NOT: it is a
+larger size, fitted to its box (about 31 rows high, a deliberate departure
+from "no new size" -- ruling R14: a value read from the booth must be big),
+the size the widest text of any page ("HP 10") fits, one size for all values
+of every page, so a digit does not grow or shrink between clicks
 -- the eye finds the value in the same place at the same size, which a
 glance in the dark needs more than a larger "70%". The texts are those of a
 deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1 2 4, FEEDBK as a
@@ -420,8 +423,9 @@ class Displays:
 
     def __init__(self, select, make_device, draw_fields, report=report,
                  clock=time.monotonic, every=500, later=_later,
-                 timing=DEFAULT_METER_TIMING):
+                 timing=DEFAULT_METER_TIMING, has_delay_page=True):
         self._select = select
+        self._has_delay_page = has_delay_page
         self._make_device = make_device
         self._draw_fields = draw_fields
         self._report = report
@@ -724,7 +728,9 @@ class Displays:
                 clip = (self._clips[panel] or (False,))[0]
                 hold = (self._holds[panel] or (0.0,))[0]
                 page, values = self.delay_page
-                delay = (page, values.get(page))
+                # An older truth has no delay words: the push is the old cue
+                # push and the return looks as it always did.
+                delay = (page, values.get(page)) if self._has_delay_page else None
                 return lambda width, height: return_picture(cue, level, width, height, clip,
                                                             hold, delay)
             index = PANELS.index(panel)
@@ -876,10 +882,11 @@ class NoDisplays:
         pass
 
 
-def open_displays(timing=DEFAULT_METER_TIMING):
-    """The live displays, their meters on `timing` (Core's)."""
+def open_displays(timing=DEFAULT_METER_TIMING, has_delay_page=True):
+    """The live displays, their meters on `timing` (Core's); the return
+    shows the delay page only where the truth has it."""
     try:
-        displays = Displays(*_hardware(), timing=timing)
+        displays = Displays(*_hardware(), timing=timing, has_delay_page=has_delay_page)
     except Exception as error:  # noqa: BLE001 -- ImportError, font, anything
         report("displays unavailable, the desk runs without them: %s" % error)
         return NoDisplays()

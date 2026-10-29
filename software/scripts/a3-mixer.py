@@ -598,7 +598,7 @@ if __name__ == '__main__':
 
     # The displays show what Core announces; until it does, a dash. A failing
     # display is reported inside Displays and never reaches this server.
-    displays = open_displays(osc.meters())
+    displays = open_displays(osc.meters(), has_delay_page=osc.has_delay_page())
     # With the engine's words in the truth the displays are on the ring A B C
     # D ST from the start: no interim picture that jumps once Core speaks.
     if "channel.source" in osc.engine_keys():
