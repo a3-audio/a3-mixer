@@ -14,8 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from a3_mixer_calibration import Calibration, Range  # noqa: E402
 from a3_mixer_calibration_run import (CANCELLED, CENTRE_END, CONTROLS, DONE,  # noqa: E402
                                       DOWN, RUNNING, START_HOLD_SECONDS, UP,
-                                      CalibrationRun, DeskCalibration, steps_of)
+                                      CalibrationRun, DeskCalibration, address_of,
+                                      steps_of)
 from a3_mixer_osc import CHANNEL_POTS, MASTER_POTS  # noqa: E402
+from test_osc_truth import made_up  # noqa: E402
 
 
 def control(control_id):
@@ -52,6 +54,24 @@ class Order(unittest.TestCase):
         self.assertEqual(centred, {f"{t}:{i}" for t in "0123" for i in ("2", "3", "4")})
         eq = [s.end for s in steps_of(CONTROLS) if s.control.id == "0:2"]
         self.assertEqual(eq, [UP, DOWN, CENTRE_END])
+
+
+class Addresses(unittest.TestCase):
+    """A control's id to the address its value goes to -- the same for a
+    moved pot and for the values sent once after a calibration."""
+
+    def test_a_channel_control(self):
+        osc = made_up()
+        self.assertEqual(address_of(osc, "0:5"), osc.channel_address("channel.volume", 0))
+        self.assertEqual(address_of(osc, "3:2"), osc.channel_address("channel.eq.high", 3))
+
+    def test_a_master_control(self):
+        osc = made_up()
+        self.assertEqual(address_of(osc, "master:0"), osc.address("master.volume"))
+
+    def test_an_unmapped_pot_has_none(self):
+        for unmapped in ("0:7", "master:7", "fx:0", "5:1", "nonsense"):
+            self.assertIsNone(address_of(made_up(), unmapped), unmapped)
 
 
 class Run(unittest.TestCase):

@@ -105,6 +105,19 @@ def _controls():
 CONTROLS = _controls()
 
 
+def address_of(osc, control):
+    """Where control `control` ("<track>:<index>") sends its value, or None
+    for a pot nothing is mapped to."""
+    track, _, index = control.partition(":")
+    if track == "master":
+        key = MASTER_POTS.get(index)
+        return osc.address(key) if key else None
+    key = CHANNEL_POTS.get(index)
+    if key is None or track not in ("0", "1", "2", "3"):
+        return None
+    return osc.channel_address(key, int(track))
+
+
 def steps_of(controls):
     steps = []
     for control in controls:

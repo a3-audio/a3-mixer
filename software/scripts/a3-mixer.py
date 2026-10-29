@@ -16,7 +16,7 @@ import neopixel
 
 import socket
 import threading
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc import osc_server
@@ -25,6 +25,10 @@ from pythonosc import dispatcher
 from typing import List, Any
 
 from a3_mixer_positions import ASK_THE_PANEL, Positions
+from a3_mixer_calibration import (calibration_path, counts_of,
+                                  load as load_calibration,
+                                  save as save_calibration)
+from a3_mixer_calibration_run import DeskCalibration, address_of
 from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery,
                              RecallRequest, StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
@@ -40,8 +44,8 @@ from a3_mixer_latest import serve
 from a3_mixer_watchdog import watch_child
 from a3_mixer_truth import (ANNOUNCE_PORT, cache_path, follows_core, hear,
                             keep, wait_for_truth)
-from a3_mixer_osc import (CHANNEL_KEYS, CHANNEL_POTS, FIRST_OUTPUT_SLOT, LAMPS,
-                          MASTER_POTS, OUTPUT_METERS, MixerOsc, TruthMissing,
+from a3_mixer_osc import (CHANNEL_KEYS, FIRST_OUTPUT_SLOT, LAMPS,
+                          OUTPUT_METERS, MixerOsc, TruthMissing,
                           load as load_osc_truth)
 
 pixel_pin = board.D12
@@ -332,10 +336,49 @@ def beat_handler(address: str,
 ser = serial.Serial('/dev/ttyACM0', 4608000)
 ser.flush()
 
-def send_position(address, value):
-    """A pot or fader value: remembered for Core's next arrival, then sent."""
+def send_position(address, value, again=False):
+    """A pot or fader value, already calibrated: remembered for Core's next
+    arrival, then sent -- unless it is the value last sent and not to be
+    sent `again`: a control resting in a dead zone reads 0.0 over and over."""
+    if not again and not positions.is_new(address, value):
+        return
     positions.note(address, value)
     osc_core.send_message(address, value)
+
+
+# The calibration (a3_mixer_calibration_run), made in the serial reader's
+# process, which owns the pots, keys and positions. While it runs, nothing
+# from the controls goes to Core: every send below asks it first.
+calibration = None
+
+
+def to_core(*message):
+    """A control's message to Core -- held back while calibrating."""
+    if calibration is not None and calibration.active:
+        return
+    osc_core.send_message(*message)
+
+
+def to_beatclock(*message):
+    if calibration is not None and calibration.active:
+        return
+    osc_beatclock.send_message(*message)
+
+
+def send_every_value(values):
+    """After a calibration, done or cancelled: every control's current value
+    once, the way the desk says everything when Core appears."""
+    for control, value in values.items():
+        address = address_of(osc, control)
+        if address is not None:
+            send_position(address, value, again=True)
+
+
+def open_calibration(views):
+    path = calibration_path()
+    return DeskCalibration(load_calibration(path, say),
+                           lambda done: save_calibration(path, done),
+                           views.put, send_every_value, say)
 
 
 def say_hello():
@@ -358,8 +401,7 @@ def be_in_front_of_core():
     reaction = DeskInFront(
         CoreArrival(),
         lambda kind: say_hello(),
-        lambda: positions.send_all(osc_core.send_message, say,
-                                   ask_panel=ask_the_panel),
+        lambda: positions.send_all(to_core, say, ask_panel=ask_the_panel),
         say)
     threading.Thread(
         target=hear, daemon=True, name="core arrival",
@@ -378,10 +420,14 @@ def ask_the_panel():
     sendData(ASK_THE_PANEL)
 
 
-def serial_handler(): # dispatch from serial stream and send to osc
+def serial_handler(views, calibrate): # dispatch from serial stream and send to osc
 
+    global calibration
+    calibration = open_calibration(views)
     ask_the_panel()
     be_in_front_of_core()
+    if calibrate:
+        calibration.start()
     while True:
         raw = ser.readline()
 
@@ -406,18 +452,19 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # exception here ends the serial reader. The edges are the
         # firmware's -- it prints EB on every change of a switch it reads
         # raw, so a bouncing contact is taken apart here (PushHoldOff).
+        # While calibrating, a turn skips or goes back and a push takes.
         if mode == "ENC" and track.isdigit():
             position = parse_int(value)
             if position is not None:
-                msg = encoder_message(osc, int(track),
-                                      clicks.feed(int(track), position))
-                if msg:
-                    osc_core.send_message(*msg)
+                turned = clicks.feed(int(track), position)
+                msg = encoder_message(osc, int(track), turned)
+                if not calibration.turned(turned) and msg:
+                    to_core(*msg)
         if mode == "EB" and track.isdigit():
             pressed = pushes.feed(int(track), value == "1")
             msg = push_message(osc, int(track), pressed)
-            if msg:
-                osc_core.send_message(*msg)
+            if not (pressed and calibration.pushed()) and msg:
+                to_core(*msg)
 
         # Buttons
         #
@@ -440,15 +487,16 @@ def serial_handler(): # dispatch from serial stream and send to osc
                     # the TAP branch below, which this deliberately mirrors
                     # rather than reimplements.
                     if value == "1":
-                        osc_beatclock.send_message(osc.address("tap"), 1)
+                        to_beatclock(osc.address("tap"), 1)
                 elif function in CHANNEL_KEYS:
-                    osc_core.send_message(
-                        osc.channel_address(CHANNEL_KEYS[function], int(track)),
-                        value)
-            elif track == "fx" and value == "1":
-                if index in button_fx_to_mode_name:
-                    osc_core.send_message(osc.address("filter.mode"),
-                                          button_fx_to_mode_name[index])
+                    to_core(osc.channel_address(CHANNEL_KEYS[function], int(track)),
+                            value)
+            # Both filter keys held three seconds start a calibration; while
+            # one runs, either cancels it.
+            elif track == "fx" and not calibration.fx_key(index, value == "1"):
+                if value == "1" and index in button_fx_to_mode_name:
+                    to_core(osc.address("filter.mode"),
+                            button_fx_to_mode_name[index])
 
         # The tap key. Press only -- a tap is the moment the finger goes
         # down, and sending the release as well would tap twice per press and
@@ -463,28 +511,37 @@ def serial_handler(): # dispatch from serial stream and send to osc
         # int 1, not the string off the serial line: the analyzer reads
         # /tap [i] as the beat within the bar and only understands i or f.
         if mode == "TAP" and value == "1":
-            osc_beatclock.send_message(osc.address("tap"), 1)
+            to_beatclock(osc.address("tap"), 1)
 
         
-        # Potis
+        # Pots and faders: the panel's reading through the calibration
+        # (a3_mixer_calibration), so the bottom is 0 and the top 1 on the
+        # wire. None while calibrating: nothing goes out.
         if mode == "P":
-            # the 4 channel strips
-            channel_names = map(str, range(4))
-            if track in channel_names:
-                if index in CHANNEL_POTS:
-                    send_position(
-                        osc.channel_address(CHANNEL_POTS[index], int(track)),
-                        value)
-
-            # pots in the master section
-            elif track == "master":
-                if index in MASTER_POTS:
-                    send_position(osc.address(MASTER_POTS[index]), value)
+            control = f"{track}:{index}"
+            counts = counts_of(value)
+            address = address_of(osc, control)
+            if counts is not None:
+                calibrated = calibration.pot(control, counts)
+                if calibrated is not None and address is not None:
+                    send_position(address, calibrated)
 
 
 if __name__ == '__main__':
 
-    proc1 = Process(target=serial_handler)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ip", default="0.0.0.0", help="The ip to listen on for VU meter messages")
+    parser.add_argument("--port", type=int,
+                        default=osc_vu_receive_port, help="The port to listen on for VU meter messages")
+    parser.add_argument("--calibrate", action="store_true",
+                        help="start into calibrating every pot and fader (the desk "
+                             "starts one itself when both filter keys are held 3 s)")
+    args = parser.parse_args()
+
+    # The calibration's pictures, from the serial reader to the displays,
+    # which this process draws.
+    calibration_views = Queue()
+    proc1 = Process(target=serial_handler, args=(calibration_views, args.calibrate))
     proc1.start()
 
     # Stirbt der serielle Leser, geht dieser Prozess mit.
@@ -509,12 +566,6 @@ if __name__ == '__main__':
         daemon=True,
     ).start()
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ip", default="0.0.0.0", help="The ip to listen on for VU meter messages")
-    parser.add_argument("--port", type=int,
-                        default=osc_vu_receive_port, help="The port to listen on for VU meter messages")
-    args = parser.parse_args()
-
     dispatcher = dispatcher.Dispatcher()
     dispatcher.map(osc.subscription("vu"), vu_handler)
     for lamp in LAMPS:
@@ -530,6 +581,12 @@ if __name__ == '__main__':
     if "channel.source" in osc.engine_keys():
         displays.start_on_ring()
     displays.blank_all()
+
+    def show_calibrations():
+        while True:
+            displays.show_calibration(calibration_views.get())
+
+    threading.Thread(target=show_calibrations, daemon=True, name="calibration").start()
 
     # A new Core: the displays forget engine mode, then the desk asks for
     # the state again (ForgetThenAsk) -- the first announcement comes after
