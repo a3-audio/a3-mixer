@@ -162,10 +162,10 @@ def load(path, report):
         controls = data["controls"]
         ranges = {str(control): _range_of(entry) for control, entry in controls.items()}
     except FileNotFoundError:
-        report(f"a3-mixer: no calibration at {path}, the raw range for every control")
+        report(f"no calibration at {path}, the raw range for every control")
         return Calibration()
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as problem:
-        report(f"a3-mixer: calibration {path} unreadable ({problem!r}), "
+        report(f"calibration {path} unreadable ({problem!r}), "
                "the raw range for every control")
         return Calibration()
     usable = {}
@@ -173,7 +173,7 @@ def load(path, report):
         if span.usable():
             usable[control] = span
         else:
-            report(f"a3-mixer: calibration of {control} unusable ({span}), its raw range")
+            report(f"calibration of {control} unusable ({span}), its raw range")
     return Calibration(usable)
 
 

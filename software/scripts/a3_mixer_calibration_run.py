@@ -328,7 +328,7 @@ class DeskCalibration:
 
     def start(self):
         self._run = CalibrationRun(self.calibration, self._readings, self._controls)
-        self._report("a3-mixer: calibration started -- nothing goes to Core until it ends")
+        self._report("calibration started -- nothing goes to Core until it ends")
         self._show(self._run.view())
 
     def _after_input(self):
@@ -342,7 +342,7 @@ class DeskCalibration:
         if run.state == DONE:
             self._apply(*run.result())
         else:
-            self._report("a3-mixer: calibration cancelled, the stored one stays")
+            self._report("calibration cancelled, the stored one stays")
         self._show(run.view())
         self._resend({control: self.calibration.value(control, counts)
                       for control, counts in self._readings.items()})
@@ -350,11 +350,11 @@ class DeskCalibration:
     def _apply(self, calibration, refused):
         self.calibration = calibration
         if refused:
-            self._report("a3-mixer: calibration refused for " + ", ".join(refused)
+            self._report("calibration refused for " + ", ".join(refused)
                          + " (not moved end to end), their stored range stays")
         try:
             self._save(calibration)
         except OSError as problem:
-            self._report(f"a3-mixer: calibration applied but not saved: {problem!r}")
+            self._report(f"calibration applied but not saved: {problem!r}")
             return
-        self._report("a3-mixer: calibration saved and applied")
+        self._report("calibration saved and applied")
