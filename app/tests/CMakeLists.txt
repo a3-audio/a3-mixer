@@ -13,6 +13,7 @@ target_sources(a3-desk-tests PRIVATE
     DeskLayoutTests.cpp
     EncoderTurnsTests.cpp
     DeskOscTests.cpp
+    DeskPromoSnapshotTests.cpp
     DeskStateTests.cpp
     DeskUiTests.cpp
     DeskWireTests.cpp
