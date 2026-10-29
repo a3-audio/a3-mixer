@@ -59,9 +59,9 @@ MASTER = (
     ("master.volume", "MASTER", "MAIN"),
     ("filter.resonance", "FILTER RES", "RES"),
     ("filter.frequency", "FILTER FREQ", "FREQ"),
-    ("master.booth", "BOOTH", "BOOTH"),
+    ("master.booth", "BOOTH", "BTH"),
     ("master.phones-mix", "CUE MIX", "MIX"),
-    ("master.phones-volume", "PHONES", "PHONES"),
+    ("master.phones-volume", "PHONES", "PHN"),
     ("master.aux-return", "RETURN", "RTN"),
 )
 
