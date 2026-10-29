@@ -251,11 +251,7 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     p.dividers.push_back (divider (slots[(size_t) analogInput - 1], slots[(size_t) analogInput], rows[2]));
     p.active = bracket (p.meters[(size_t) engineSlot (source)].box);
     p.cursor = arrowBox (columns[(size_t) engineSlot (cursor)], rows[1]);
-    std::vector<Meter> shown;
-    for (size_t i = 0; i < engineSlots; ++i)
-        if (there[i])
-            shown.push_back (p.meters[i]);
-    addMarks (p.marks, shown, channelMarkLength);
+    addMarks (p.marks, p.meters, channelMarkLength);
     return p;
 }
 

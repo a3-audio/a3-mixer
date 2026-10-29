@@ -257,6 +257,8 @@ TEST (DeskRing, EngineModeLabelsOnThePicture)
     // An absent deck keeps cursor, bracket (they are Core's) and its letter: five fixed slots.
     const auto absent = enginePicture (4, 3, { true, true, true, false }, {}, oledWidth, oledHeight, {}, {});
     EXPECT_EQ (absent.headings[3].text, "D");
+    // Round 3: the scale marks stand on every slot, an absent one too.
+    EXPECT_EQ (absent.marks.size(), 10u);
     EXPECT_EQ (absent.active.x0, absent.meters[3].box.x0 - 1);
     EXPECT_LE (std::abs (centre (absent.cursor) - centre (absent.meters[2].box)), 1);
 }

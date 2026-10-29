@@ -80,8 +80,8 @@ Picture channelPicture (int channel, int cursor, const std::array<double, channe
 int engineSlot (int source);
 /** A channel in engine mode: 1 2 3 4 A, analog last (Core's numbers 1-4 and 0), `source` under the
     active bracket, `cursor` under the arrow. `levels`, `clips` and `holds` are in that display order; `present`
-    says per deck (1-4) whether it is there: an absent deck keeps its letter over an empty slot, no bar and no scale
-    marks, and keeps its bracket and cursor (they are Core's). */
+    says per deck (1-4) whether it is there: an absent deck keeps its letter over an empty slot with no bar (its scale marks stay, as on
+    every slot), and keeps its bracket and cursor (they are Core's). */
 Picture enginePicture (int source, int cursor, const std::array<bool, engineDecks>& present,
                        const std::array<double, engineSlots>& levels, int width, int height,
                        const std::array<bool, engineSlots>& clips, const std::array<double, engineSlots>& holds);
