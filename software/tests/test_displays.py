@@ -147,13 +147,14 @@ class WhatIsDrawn(unittest.TestCase):
         self.assertTrue(all(m.box[3] < 32 for m in picture.meters))
 
     def test_the_return_shows_its_one_meter(self):
-        """P47: DELAY, one meter, no arrow and no bracket."""
+        """P47: one meter, no arrow and no bracket; with the delay list the
+        return has two sections, AUX (the meter) and DELAY (the rows)."""
         rig = Rig()
         displays = rig.displays()
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["DELAY"])
+        self.assertEqual([h.text for h in picture.headings], ["AUX", "DELAY"])
         self.assertEqual(len(picture.meters), 1)
         self.assertIsNone(picture.active)
         self.assertIsNone(picture.cursor)
@@ -640,11 +641,11 @@ class WhatPlaysWhere(unittest.TestCase):
         return [h.text for h in picture.headings]
 
     def test_the_return_is_the_same_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["DELAY"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["DELAY"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["DELAY"])
+        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
@@ -855,15 +856,15 @@ class Painting(unittest.TestCase):
                            if image.getpixel((x, y)) and (x, y) not in inside]
                 self.assertEqual(spilled, [])
 
-    def test_every_list_row_paints_and_keeps_a_dark_column_from_the_meter(self):
+    def test_every_list_row_paints_and_keeps_a_dark_column_from_the_divider(self):
         for name, picture in self.states().items():
             for row in picture.rows:
                 with self.subTest(name, text=row.name):
                     image = self.paint_state(name, picture)
                     self.assertTrue(self.lit(image, row.box))
-                    meter = picture.meters[0].box
-                    gap = [(x, y) for x in range(meter[2] + 1, row.box[0])
-                           for y in range(meter[1], meter[3] + 1)]
+                    divider = picture.dividers[0][0]
+                    gap = [(x, y) for x in range(divider + 1, row.box[0])
+                           for y in range(row.box[1], row.box[3] + 1)]
                     self.assertTrue(self.none_lit(image, gap))
 
     def test_select_lights_the_cursor_row_edit_only_its_value(self):
@@ -1260,6 +1261,22 @@ class OneTextSize(unittest.TestCase):
     def test_every_heading_has_the_same_height(self):
         heights = {name: self.ink_height(picture) for name, picture in self.pictures().items()}
         self.assertEqual(len(set(heights.values())), 1, heights)
+
+    def test_the_two_return_headings_share_size_and_top(self):
+        from display_panel import return_picture
+        delay = return_picture(False, 0.5, 128, 64, delay=("select", 0, {}))
+        ring = self.pictures()["ring"]
+        names = {}
+        for name, picture in (("AUX", delay._replace(headings=delay.headings[:1])),
+                              ("DELAY", delay._replace(headings=delay.headings[1:])),
+                              ("A", ring._replace(headings=ring.headings[:1]))):
+            from PIL import Image
+            image = Image.new("1", (128, 64))
+            paint(image, picture._replace(meters=(), marks=(), dividers=(), cursor=None,
+                                          active=None, toggle=None, rows=()))
+            rows = [y for y in range(64) if any(image.getpixel((x, y)) for x in range(128))]
+            names[name] = (rows[0], rows[-1])
+        self.assertEqual(len(set(names.values())), 1, names)
 
     def test_the_return_name_is_whole_inside_its_box(self):
         from PIL import Image

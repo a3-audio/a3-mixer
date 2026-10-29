@@ -173,7 +173,8 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29, and its CUE field. It has no
+#: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29 (with the
+#: delay list: AUX over the meter | DELAY over the rows, round 3), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
 RETURN_NAME = "DELAY"
 CUE_TEXT = "CUE"
@@ -532,7 +533,7 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
     return Picture(headings, meters, _arrow(columns[engine_slot(cursor)], arrow),
                    (_divider(*divider, (m0, m1)),), None,
                    _bracket(meters[engine_slot(source)].box),
-                   _marks([m for m, on in zip(meters, there) if on], CHANNEL_MARK_LENGTH))
+                   _marks(meters, CHANNEL_MARK_LENGTH))
 
 
 #: The return's heading and its meter, each as a share of the panel's width.
@@ -551,8 +552,17 @@ DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread":
 #: sizes every row by them, so a digit does not grow or shrink between clicks.
 LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
 LIST_VALUE_SAMPLES = ("HP 10", "LP 10", "100%", "180\u00b0", "1/8", "3/4", "OFF")
-#: Dark columns between the meter and the list.
-LIST_GAP = 3
+#: The two sections of the return with a delay list (round 3, 2026-10-29):
+#: AUX (heading and meter) | DELAY (heading and rows), a vertical divider
+#: between. The divider's column as a share of the width: 33 of 128, which
+#: leaves AUX (28 columns at the displays' text size) and the 22-column meter
+#: with its marks on the left, and 92 columns on the right -- the rows'
+#: widest name and value (SPREAD ... HP 10) still fit them at the size the
+#: rows had when they stood beside the meter, 10 rows high.
+RETURN_SECTION_OF_WIDTH = 0.26
+AUX_NAME = "AUX"
+#: Dark columns between the divider and the list.
+LIST_GAP = 2
 #: Dark rows between the heading and the first row.
 LIST_HEADING_GAP = 2
 
@@ -606,9 +616,9 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     """The FX Return: DELAY (once AUX-RTN) at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
-    `delay` = (mode, cursor, values) turns the right of the panel into the
-    delay list instead: five rows, CUE one of them (so no CUE field and no
-    divider), beside the same heading and meter."""
+    `delay` = (mode, cursor, values) makes two sections instead: AUX with the
+    meter at the left, a divider, DELAY with the five rows -- CUE one of
+    them, so no CUE field -- at the right."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -627,9 +637,15 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
     headings = (Heading((x0, h0, x1, h1), RETURN_NAME),)
     if delay is not None:
-        free = (left + meter - 1 + LIST_GAP + 1, width - 1)
-        rows = _rows(*delay, cue, h1, height - 1, free)
-        return Picture(headings, meters, None, (), None, None, _marks(meters), rows)
+        # Two sections, the same band and the same text size for both
+        # headings (the rule of every other heading of the desk).
+        divider = round(width * RETURN_SECTION_OF_WIDTH)
+        first = divider + 1 + LIST_GAP
+        aux = Heading((x0, h0, divider - 2, h1), AUX_NAME)
+        delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME)
+        rows = _rows(*delay, cue, h1, height - 1, (first, width - 1))
+        return Picture((aux, delay_heading), meters, None, ((divider, 0, divider, height - 1),),
+                       None, None, _marks(meters), rows)
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
     return Picture(headings, meters, None, (divider,), toggle, None, _marks(meters))

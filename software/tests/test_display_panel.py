@@ -521,8 +521,9 @@ class ReturnCue(unittest.TestCase):
 
 class DelayList(unittest.TestCase):
     """The return's delay list (spec delay-params, round 2): five rows --
-    BEAT FEEDBK COLOR SPREAD CUE -- right of the unchanged DELAY heading
-    and meter; the CUE field and its divider are gone, CUE is a row."""
+    BEAT FEEDBK COLOR SPREAD CUE -- in a section of their own;
+    the CUE field is gone, CUE is a row. Round 3: two sections, AUX (heading
+    and meter) | DELAY (heading and rows), a vertical divider between."""
 
     VALUES = {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0}
 
@@ -531,19 +532,41 @@ class DelayList(unittest.TestCase):
         values = self.VALUES if values is None else values
         return return_picture(cue, 0.5, W, height, delay=(mode, cursor, values))
 
-    def test_heading_and_meter_stay_where_they_were(self):
+    def test_two_sections_aux_left_delay_right(self):
+        p = self.picture()
+        self.assertEqual([h.text for h in p.headings], ["AUX", "DELAY"])
+        aux, delay = p.headings
+        # Same band: the same top and height, as every other heading of the desk.
+        self.assertEqual((aux.box[1], aux.box[3]), (delay.box[1], delay.box[3]))
+        self.assertEqual(aux.box[1], 0)
+        (divider,) = p.dividers
+        self.assertEqual(divider[0], divider[2])
+        self.assertEqual((divider[1], divider[3]), (0, H - 1))
+        self.assertLess(aux.box[2], divider[0])
+        self.assertGreater(delay.box[0], divider[0])
+        meter = p.meters[0].box
+        self.assertLess(meter[2], divider[0])
+        self.assertLess(aux.box[0], meter[0])
+
+    def test_the_meter_keeps_its_size_and_its_scale_marks(self):
         from display_panel import return_picture
         plain = return_picture(False, 0.5, W, H)
         p = self.picture()
-        self.assertEqual(p.headings, plain.headings)
         self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters])
-        self.assertEqual(p.headings[0].box, (1, 0, 45, 11))
         self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
+        self.assertEqual(p.marks, plain.marks)
+        self.assertEqual(len(p.marks), 2)
 
-    def test_the_cue_field_and_its_divider_are_gone(self):
+    def test_the_rows_start_right_of_the_divider_and_stay_ten_rows_high(self):
         p = self.picture()
-        self.assertIsNone(p.toggle)
-        self.assertEqual(p.dividers, ())
+        (divider,) = p.dividers
+        for row in p.rows:
+            self.assertGreater(row.box[0], divider[0])
+            self.assertEqual(row.box[3] - row.box[1] + 1, 10)
+
+    def test_the_delay_heading_stands_over_the_names_of_the_rows(self):
+        p = self.picture()
+        self.assertLessEqual(abs(p.headings[1].box[0] - p.rows[0].box[0]), 2)
 
     def test_no_delay_is_todays_return_with_no_rows(self):
         from display_panel import return_picture
@@ -568,6 +591,7 @@ class DelayList(unittest.TestCase):
         for row in p.rows:
             self.assertGreater(row.box[0], meter[2] + 1)
             self.assertEqual(row.box[2], W - 1)
+            self.assertGreater(row.box[1], p.headings[1].box[3])
 
     def test_cue_reads_on_or_off_and_unknown_reads_dashes(self):
         self.assertEqual(self.picture(cue=False).rows[4].value, "OFF")

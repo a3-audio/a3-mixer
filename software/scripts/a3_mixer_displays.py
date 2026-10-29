@@ -54,6 +54,17 @@ knob's own direction), SPREAD in degrees, CUE ON or OFF; "--" until Core has
 said a value. On a truth without the delay words (R25) the return is as it
 always was: DELAY, the meter, the CUE field, and the push cues at once.
 
+Round 3 (2026-10-29, "passt" for round 2, then): the return with the list is
+two sections with a vertical divider -- left AUX over the meter, right DELAY
+over the rows -- both headings in the band and size of every other heading of
+the desk, top-aligned with them (a test compares their ink). The divider runs
+the panel's whole height so the headings are separated too. The rows kept
+their 10 px and their size (11): the right section is 92 columns where the
+list had 96, the room the AUX heading and the meter now take on the left
+(options rendered: smoke-test/delay-params/r3-*). Every channel display draws
+the yellow and red scale marks on every slot, an absent deck's too (a044daf
+had dropped them there): the letter stays, the bar is empty.
+
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
 Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,
 and the held peak as a one-row line over the bar, 1.5 s and then falling.
