@@ -340,6 +340,14 @@ class Desk(unittest.TestCase):
         self.assertEqual(rig.desk.calibration.range_of("0:5"), Range(100, 900))
         self.assertTrue(any("not saved" in line for line in rig.lines))
 
+    def test_a_count_short_of_a_click_is_taken_and_changes_nothing(self):
+        rig = Rig()
+        rig.desk.start()
+        shown = len(rig.shown)
+        self.assertTrue(rig.desk.turned(0))
+        self.assertEqual(len(rig.shown), shown)
+        self.assertEqual(rig.desk.step.end, UP)
+
     def test_a_turn_or_push_outside_a_calibration_is_not_taken(self):
         rig = Rig()
         self.assertFalse(rig.desk.pushed())

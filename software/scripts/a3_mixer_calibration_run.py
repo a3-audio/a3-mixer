@@ -319,9 +319,11 @@ class DeskCalibration:
         """An encoder turn; True if the calibration took it."""
         if self._run is None:
             return False
+        if clicks == 0:
+            return True
         if clicks > 0:
             self._run.skip()
-        elif clicks < 0:
+        else:
             self._run.back()
         self._after_input()
         return True
