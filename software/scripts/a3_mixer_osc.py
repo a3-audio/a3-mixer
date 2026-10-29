@@ -95,6 +95,14 @@ KEYS_USED = tuple(CHANNEL_POTS.values()) + tuple(CHANNEL_KEYS.values()) \
 #: KEYS_USED (that list is what a truth must have).
 ENGINE_KEYS = ("channel.source", "channel.source.cursor", "stemdeck.present")
 
+#: The delay page's words (a3_mixer_delay): four turns out, four values in.
+#: Optional like ENGINE_KEYS -- a truth from before has none, and the return
+#: encoder is then the cue push alone, as it was.
+DELAY_KEYS = ("aux-return.delay.beat.turn", "aux-return.delay.feedback.turn",
+              "aux-return.delay.color.turn", "aux-return.delay.spread.turn",
+              "aux-return.delay.beat", "aux-return.delay.feedback",
+              "aux-return.delay.color", "aux-return.delay.spread")
+
 
 def _pattern_regex(pattern):
     """"/channel/{ch}/volume" as a regex with a named group per placeholder."""
@@ -226,6 +234,10 @@ class MixerOsc:
     def engine_keys(self):
         """The engine-mode words (ENGINE_KEYS) this truth has."""
         return tuple(key for key in ENGINE_KEYS if key in self._data["addresses"])
+
+    def has_delay_page(self):
+        """Whether this truth has all of the delay page's words."""
+        return all(key in self._data["addresses"] for key in DELAY_KEYS)
 
     def is_address(self, key, address):
         """Whether `address` is exactly `key`'s: channel_of() for an address

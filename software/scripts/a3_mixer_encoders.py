@@ -85,26 +85,29 @@ class PushHoldOff:
         return previous is None or now - previous >= self._hold_off
 
 
-def encoder_message(osc, encoder, clicks):
+def encoder_message(osc, encoder, clicks, page="beat"):
+    """A turn as a word: a channel's stem turn, or the return's turn of the
+    delay `page` it stands on (a3_mixer_delay)."""
     target = ENCODER_TARGETS.get(encoder)
     if target is None or clicks == 0:
         return None
     kind, index = target
-    if kind != "channel":
-        return None   # P47: the FX Return has nothing to choose; only its push counts
+    if kind == "return":
+        return osc.address("aux-return.delay.%s.turn" % page), clicks
     return osc.channel_address("channel.stem.turn", index), clicks
 
 
 def push_message(osc, encoder, pressed):
     """A press loads the selection (spec desk-stem-selector): on a channel
-    its selected input, on the aux return its selected stem. The cue is the
-    strip's key alone."""
+    its selected input. The return's push is not here: a short one steps the
+    delay page and a hold cues (a3_mixer_delay). The cue is the strip's key
+    alone."""
     target = ENCODER_TARGETS.get(encoder)
     if not pressed or target is None:
         return None
     kind, index = target
     if kind == "return":
-        return osc.address("aux-return.stem.push"), 1
+        return None
     return osc.channel_address("channel.stem.push", index), 1
 
 

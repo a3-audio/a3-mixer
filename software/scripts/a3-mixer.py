@@ -33,6 +33,8 @@ from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery
                              RecallRequest, StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour, panel_fields)
+from a3_mixer_delay import (RETURN_ENCODER, VALUE_KEYS, DelayPager,
+                             DelayState, value_announcement)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
 from a3_mixer_displays import (channel_announcement, cue_announcement,
@@ -420,9 +422,13 @@ def ask_the_panel():
     sendData(ASK_THE_PANEL)
 
 
-def serial_handler(views, calibrate): # dispatch from serial stream and send to osc
+def serial_handler(views, calibrate, delay_pages): # dispatch from serial stream and send to osc
 
     global calibration
+    # The return encoder's page lives in this process; the displays, in the
+    # parent, are told through `delay_pages`. Its cue goes through to_core, so
+    # a hold that outlasts the start of a calibration sends nothing.
+    pager = DelayPager(osc, to_core, delay_pages.put) if osc.has_delay_page() else None
     calibration = open_calibration(views)
     ask_the_panel()
     be_in_front_of_core()
@@ -457,14 +463,29 @@ def serial_handler(views, calibrate): # dispatch from serial stream and send to 
             position = parse_int(value)
             if position is not None:
                 turned = clicks.feed(int(track), position)
-                msg = encoder_message(osc, int(track), turned)
-                if not calibration.turned(turned) and msg:
-                    to_core(*msg)
+                if int(track) == RETURN_ENCODER and pager is not None:
+                    # The return turns the delay page's value (a3_mixer_delay).
+                    if not calibration.turned(turned):
+                        pager.turn(turned)
+                else:
+                    msg = encoder_message(osc, int(track), turned)
+                    if not calibration.turned(turned) and msg:
+                        to_core(*msg)
         if mode == "EB" and track.isdigit():
             pressed = pushes.feed(int(track), value == "1")
-            msg = push_message(osc, int(track), pressed)
-            if not (pressed and calibration.pushed()) and msg:
-                to_core(*msg)
+            if int(track) == RETURN_ENCODER and pager is not None:
+                # A short push steps the page, a hold cues; the release is
+                # the pager's too. A press the calibration took is no hold.
+                if value == "0":
+                    pager.release()
+                elif pressed and not calibration.pushed():
+                    pager.press()
+            else:
+                msg = push_message(osc, int(track), pressed)
+                if msg is None and pressed and int(track) == RETURN_ENCODER:
+                    msg = (osc.address("aux-return.stem.push"), 1)   # a truth without the delay page
+                if not (pressed and calibration.pushed()) and msg:
+                    to_core(*msg)
 
         # Buttons
         #
@@ -541,7 +562,9 @@ if __name__ == '__main__':
     # The calibration's pictures, from the serial reader to the displays,
     # which this process draws.
     calibration_views = Queue()
-    proc1 = Process(target=serial_handler, args=(calibration_views, args.calibrate))
+    delay_pages = Queue()
+    proc1 = Process(target=serial_handler,
+                    args=(calibration_views, args.calibrate, delay_pages))
     proc1.start()
 
     # Stirbt der serielle Leser, geht dieser Prozess mit.
@@ -587,6 +610,16 @@ if __name__ == '__main__':
             displays.show_calibration(calibration_views.get())
 
     threading.Thread(target=show_calibrations, daemon=True, name="calibration").start()
+
+    # The delay page: the page comes from the serial reader, the values from
+    # Core. Both end in the displays; a value received is never sent back.
+    delay_state = DelayState(displays.show_delay)
+
+    def show_delay_pages():
+        while True:
+            delay_state.show_page(delay_pages.get())
+
+    threading.Thread(target=show_delay_pages, daemon=True, name="delay page").start()
 
     # A new Core: the displays forget engine mode, then the desk asks for
     # the state again (ForgetThenAsk) -- the first announcement comes after
@@ -662,6 +695,17 @@ if __name__ == '__main__':
             displays.show_return_cue(on)
 
     dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
+
+    # The delay values Core announces (the page's own key each; python-osc
+    # hands a wildcard map every address it is a prefix of).
+    def delay_handler(address, *args):
+        value = value_announcement(args)
+        for key in VALUE_KEYS:
+            if value is not None and osc.is_address(key, address):
+                delay_state.set_value(key.rsplit(".", 1)[1], value)
+
+    for key in VALUE_KEYS if osc.has_delay_page() else ():
+        dispatcher.map(osc.subscription(key), delay_handler)
 
 
     # Nach dem Gesamtzustand fragen, bis er kommt: Core kann später hochkommen

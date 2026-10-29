@@ -1315,5 +1315,21 @@ class TheMultiplexer(unittest.TestCase):
         self.assertEqual(log, [(0x70, 0b1000)])
 
 
+
+
+class TheDelayPageIsHandedOver(unittest.TestCase):
+    """Task 5 draws it; for now the displays keep what they are given."""
+
+    def test_show_delay_keeps_page_and_values(self):
+        displays = Rig().displays()
+        displays.show_delay("color", {"beat": 0.25, "feedback": None, "color": -0.2, "spread": 60.0})
+        self.assertEqual(displays.delay_page, ("color", {"beat": 0.25, "feedback": None,
+                                                        "color": -0.2, "spread": 60.0}))
+
+    def test_no_displays_take_it_too(self):
+        from a3_mixer_displays import NoDisplays
+        NoDisplays().show_delay("beat", {})
+
+
 if __name__ == "__main__":
     unittest.main()

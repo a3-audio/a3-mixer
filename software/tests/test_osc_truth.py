@@ -39,7 +39,7 @@ MADE_UP = {
     "addresses": {
         key: {"pattern": "/t/" + key + ("/{ch}" if key.startswith("channel.") else ""),
               **({"ch": [1, 4]} if key.startswith("channel.") else {})}
-        for key in KEYS + ("device.hello",) if key != "vu"
+        for key in KEYS + a3_mixer_osc.DELAY_KEYS + ("device.hello",) if key != "vu"
     } | {"vu": {"pattern": "/t/vu/{n}", "n": [1, 40]}},
     "vu_meters": ["free", "main_top1", "in2_pre_L", "main_sub", "analog1_L",
                   "main_top2", "main_top3", "in4_pre_R", "main_top4", "analog3_R",

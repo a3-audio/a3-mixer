@@ -411,6 +411,9 @@ class Displays:
         self._source_cursors = [0] * (len(PANELS) - 1)
         self._decks_present = [False] * DECKS
         self._return_cue = False
+        # The delay page on the return (a3_mixer_delay): the page and the
+        # last value of each. Kept for the picture; nothing draws it yet.
+        self.delay_page = ("beat", {})
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair and per side of the FX Return; each meter's
         # ballistics; and the levels each panel shows, stepped on the
@@ -620,6 +623,12 @@ class Displays:
             self._return_cue = bool(on)
         self._post(return_panel())
 
+    def show_delay(self, page, values):
+        """The return encoder's delay page and the values Core last gave
+        (None for one it has not)."""
+        with self._wake:
+            self.delay_page = (page, dict(values))
+
     def blank_all(self):
         """Until Core speaks: no stem on any channel -- A plays -- and no
         cue on the return."""
@@ -795,6 +804,9 @@ class NoDisplays:
         pass
 
     def show_return_cue(self, on):
+        pass
+
+    def show_delay(self, page, values):
         pass
 
     def note_aux(self, side, peak):
