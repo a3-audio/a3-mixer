@@ -455,7 +455,7 @@ class Displays:
         self._decks_present = [False] * DECKS
         self._return_cue = False
         # The delay page on the return (a3_mixer_delay): the page and the
-        # last value of each. Kept for the picture; nothing draws it yet.
+        # last value of each. Drawn on the return strip.
         self.delay_page = ("beat", {page: None for page in DELAY_PAGES})
         # The meters: (loudest peak since the last step, when last heard)
         # per stem pair and per side of the FX Return; each meter's
