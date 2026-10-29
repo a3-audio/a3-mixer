@@ -566,7 +566,7 @@ class DelayReadout(unittest.TestCase):
 
     def test_every_value_of_a_page_shares_one_size(self):
         from display_panel import DELAY_WIDEST
-        for page, values in (("beat", (0.125, 1, 4)), ("color", (-1.0, 0.0, 1.0))):
+        for page, values in (("beat", (0.125, 1, 2)), ("color", (-1.0, 0.0, 1.0))):
             widest = {self.picture((page, v)).readouts[1].widest for v in values}
             self.assertEqual(widest, {DELAY_WIDEST})
 
@@ -592,8 +592,13 @@ class DelayText(unittest.TestCase):
         return delay_text(page, value)
 
     def test_beat_is_a_fraction_of_a_bar_as_on_a_deck(self):
-        shown = [self.text("beat", b) for b in (0.125, 0.25, 0.5, 0.75, 1, 2, 4)]
-        self.assertEqual(shown, ["1/8", "1/4", "1/2", "3/4", "1", "2", "4"])
+        shown = [self.text("beat", b) for b in (0.125, 0.25, 0.5, 0.75, 1, 2)]
+        self.assertEqual(shown, ["1/8", "1/4", "1/2", "3/4", "1", "2"])
+
+    def test_a_beat_outside_the_list_still_reads_plainly(self):
+        # Core announces what plays; the desk has no beat logic of its own.
+        self.assertEqual(self.text("beat", 4), "4")
+        self.assertEqual(self.text("beat", 0.3), "0.3")
 
     def test_feedback_is_a_percentage(self):
         self.assertEqual(self.text("feedback", 0.7), "70%")

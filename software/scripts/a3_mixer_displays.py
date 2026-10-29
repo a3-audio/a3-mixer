@@ -43,7 +43,7 @@ the size the widest text of any page ("HP 10") fits, one size for all values
 of every page, so a digit does not grow or shrink between clicks
 -- the eye finds the value in the same place at the same size, which a
 glance in the dark needs more than a larger "70%". The texts are those of a
-deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1 2 4, FEEDBK as a
+deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1 2 (what Core announces plays, whatever the tempo), FEEDBK as a
 percentage, COLOR as filter steps from the centre (0, HP 1-10 left, LP 1-10
 right -- the knob's own direction), SPREAD in degrees; "--" until Core has
 said the value. The font has a degree sign, so SPREAD reads 60 with the
