@@ -519,71 +519,89 @@ class ReturnCue(unittest.TestCase):
         self.assertTrue(p.toggle.box[3] < 32)
 
 
-class DelayReadout(unittest.TestCase):
-    """The return's delay page (spec delay-params): the page's name and its
-    value under the unchanged AUX-RTN, beside the unchanged meter."""
+class DelayList(unittest.TestCase):
+    """The return's delay list (spec delay-params, round 2): five rows --
+    BEAT FEEDBK COLOR SPREAD CUE -- right of the unchanged AUX-RTN heading
+    and meter; the CUE field and its divider are gone, CUE is a row."""
 
-    def picture(self, delay=None, cue=False, height=H):
+    VALUES = {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0}
+
+    def picture(self, mode="select", cursor=0, values=None, cue=False, height=H):
         from display_panel import return_picture
-        return return_picture(cue, 0.5, W, height, delay=delay)
+        values = self.VALUES if values is None else values
+        return return_picture(cue, 0.5, W, height, delay=(mode, cursor, values))
 
-    def test_heading_meter_and_cue_stay_where_they_were(self):
-        plain = self.picture()
-        for delay in (("beat", 0.25), ("color", None), ("spread", 60.0)):
-            p = self.picture(delay)
-            self.assertEqual(p.headings, plain.headings, delay)
-            self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters], delay)
-            self.assertEqual(p.toggle, plain.toggle, delay)
-            self.assertEqual(p.dividers, plain.dividers, delay)
-
-    def test_the_stored_geometry_has_not_moved(self):
-        p = self.picture(("beat", 0.25))
+    def test_heading_and_meter_stay_where_they_were(self):
+        from display_panel import return_picture
+        plain = return_picture(False, 0.5, W, H)
+        p = self.picture()
+        self.assertEqual(p.headings, plain.headings)
+        self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters])
         self.assertEqual(p.headings[0].box, (1, 0, 60, 11))
         self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
-        self.assertEqual(p.toggle.box, (107, 19, 127, 63))
 
-    def test_no_delay_no_readout(self):
-        self.assertEqual(self.picture().readouts, ())
+    def test_the_cue_field_and_its_divider_are_gone(self):
+        p = self.picture()
+        self.assertIsNone(p.toggle)
+        self.assertEqual(p.dividers, ())
 
-    def test_name_over_value_between_meter_and_divider(self):
-        p = self.picture(("feedback", 0.7))
-        name, value = p.readouts
-        self.assertEqual((name.text, value.text), ("FEEDBK", "70%"))
-        meter, divider = p.meters[0].box, p.dividers[0]
-        for box in (name.box, value.box):
-            self.assertGreater(box[0], meter[2])
-            self.assertLess(box[2], divider[0])
-            self.assertGreaterEqual(box[1], meter[1])
-            self.assertLessEqual(box[3], meter[3])
-        self.assertLess(name.box[3], value.box[1])
+    def test_no_delay_is_todays_return_with_no_rows(self):
+        from display_panel import return_picture
+        p = return_picture(False, 0.5, W, H)
+        self.assertEqual(p.rows, ())
+        self.assertIsNotNone(p.toggle)
 
-    def test_the_name_is_the_headings_height_and_the_value_gets_the_rest(self):
-        p = self.picture(("beat", 0.25))
-        name, value = p.readouts
-        heading = p.headings[0].box
-        self.assertEqual(name.box[3] - name.box[1], heading[3] - heading[1])
-        self.assertGreater(value.box[3] - value.box[1], 2 * (name.box[3] - name.box[1]))
+    def test_five_rows_one_under_the_other_in_order(self):
+        p = self.picture(cue=True)
+        self.assertEqual([r.name for r in p.rows], ["BEAT", "FEEDBK", "COLOR", "SPREAD", "CUE"])
+        self.assertEqual([r.value for r in p.rows], ["1/4", "70%", "HP 5", "60\u00b0", "ON"])
 
-    def test_every_value_of_a_page_shares_one_size(self):
-        from display_panel import DELAY_WIDEST
-        for page, values in (("beat", (0.125, 1, 2)), ("color", (-1.0, 0.0, 1.0))):
-            widest = {self.picture((page, v)).readouts[1].widest for v in values}
-            self.assertEqual(widest, {DELAY_WIDEST})
+    def test_the_rows_are_equal_stacked_and_clear_of_heading_and_meter(self):
+        p = self.picture()
+        heading, meter = p.headings[0].box, p.meters[0].box
+        heights = {r.box[3] - r.box[1] for r in p.rows}
+        self.assertEqual(len(heights), 1)
+        for upper, lower in zip(p.rows, p.rows[1:]):
+            self.assertEqual(lower.box[1], upper.box[3] + 1)
+        self.assertGreater(p.rows[0].box[1], heading[3])
+        self.assertEqual(p.rows[-1].box[3], H - 1)
+        for row in p.rows:
+            self.assertGreater(row.box[0], meter[2] + 1)
+            self.assertEqual(row.box[2], W - 1)
+
+    def test_cue_reads_on_or_off_and_unknown_reads_dashes(self):
+        self.assertEqual(self.picture(cue=False).rows[4].value, "OFF")
+        self.assertEqual(self.picture(cue=True).rows[4].value, "ON")
+        p = self.picture(values={})
+        self.assertEqual([r.value for r in p.rows[:4]], ["--"] * 4)
+
+    def test_select_inverts_the_cursor_row_edit_only_its_value(self):
+        for cursor in range(5):
+            select = self.picture("select", cursor)
+            edit = self.picture("edit", cursor)
+            self.assertEqual([r.inverted for r in select.rows],
+                             ["row" if i == cursor else None for i in range(5)])
+            self.assertEqual([r.inverted for r in edit.rows],
+                             ["value" if i == cursor else None for i in range(5)])
+
+    def test_the_mode_and_cursor_and_values_are_pixels(self):
+        from display_panel import pixel_key
+        keys = {pixel_key(self.picture(mode, cursor))
+                for mode in ("select", "edit") for cursor in range(5)}
+        self.assertEqual(len(keys), 10)
+        self.assertNotEqual(pixel_key(self.picture(values={"beat": 0.5})),
+                            pixel_key(self.picture(values={"beat": 0.25})))
+        self.assertNotEqual(pixel_key(self.picture(cue=True)), pixel_key(self.picture(cue=False)))
+        self.assertEqual(pixel_key(self.picture()), pixel_key(self.picture()))
 
     def test_it_lays_out_on_a_short_panel_too(self):
-        p = self.picture(("color", -0.5), height=32)
-        for readout in p.readouts:
-            self.assertLess(readout.box[3], 32)
-            self.assertLessEqual(readout.box[1], readout.box[3])
+        p = self.picture(height=32)
+        for row in p.rows:
+            self.assertLess(row.box[3], 32)
+            self.assertLessEqual(row.box[1], row.box[3])
 
-    def test_a_new_value_is_a_new_picture(self):
-        from display_panel import pixel_key
-        self.assertNotEqual(pixel_key(self.picture(("beat", 0.25))),
-                            pixel_key(self.picture(("beat", 0.5))))
-        self.assertNotEqual(pixel_key(self.picture(("beat", 0.25))),
-                            pixel_key(self.picture(("feedback", 0.25))))
-        self.assertEqual(pixel_key(self.picture(("beat", 0.25))),
-                         pixel_key(self.picture(("beat", 0.25))))
+    def test_a_cursor_out_of_range_inverts_nothing(self):
+        self.assertEqual([r.inverted for r in self.picture(cursor=9).rows], [None] * 5)
 
 
 class DelayText(unittest.TestCase):
@@ -627,10 +645,15 @@ class DelayText(unittest.TestCase):
             self.assertEqual(self.text(page, float("nan")), "--", page)
             self.assertEqual(self.text(page, "x"), "--", page)
 
+    def test_cue_is_on_off_or_unknown(self):
+        self.assertEqual(self.text("cue", True), "ON")
+        self.assertEqual(self.text("cue", False), "OFF")
+        self.assertEqual(self.text("cue", None), "--")
+
     def test_names(self):
         from display_panel import DELAY_NAMES
         self.assertEqual(DELAY_NAMES, {"beat": "BEAT", "feedback": "FEEDBK",
-                                       "color": "COLOR", "spread": "SPREAD"})
+                                       "color": "COLOR", "spread": "SPREAD", "cue": "CUE"})
 
 
 class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):

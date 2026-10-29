@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Raphael Eismann
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The AUX-RTN encoder's delay page: a turn changes the page's value (Core
-steps it), a short push steps the page, a hold of half a second cues the
-return, four quiet seconds go back to BEAT (rulings R6, R7)."""
+"""The AUX-RTN encoder's delay list: five rows, a push toggles select and edit,
+a turn moves the cursor (select) or changes the row (edit), four quiet seconds
+leave edit (rulings R22-R25)."""
 
 import sys
 import unittest
@@ -38,163 +38,230 @@ class FakeTime:
             then()
 
 
-class Pager(unittest.TestCase):
+class ListFixture(unittest.TestCase):
     def setUp(self):
         self.time = FakeTime()
         self.sent = []
-        self.pages = []
-        self.pager = delay.DelayPager(
-            made_up(), lambda *message: self.sent.append(message), self.pages.append,
-            clock=self.time.clock, later=self.time.later)
+        self.views = []
+        self.cue = [False]
+        self.list = delay.DelayList(
+            made_up(), lambda *message: self.sent.append(message),
+            lambda mode, cursor: self.views.append((mode, cursor)),
+            lambda: self.cue[0], clock=self.time.clock, later=self.time.later)
 
-    def test_it_starts_on_beat(self):
-        self.assertEqual(self.pager.page, "beat")
+    def edit(self, row):
+        """Select `row` and press into edit mode, sending nothing."""
+        self.list.turn(delay.ROWS.index(row))
+        self.list.press()
+        self.sent.clear()
+        self.views.clear()
 
-    def test_a_turn_goes_to_the_pages_turn_word(self):
-        self.pager.turn(-2)
-        self.assertEqual(self.sent, [("/t/aux-return.delay.beat.turn", -2)])
 
-    def test_no_clicks_no_message(self):
-        self.pager.turn(0)
+class Select(ListFixture):
+    def test_it_starts_in_select_on_beat(self):
+        self.assertEqual((self.list.mode, self.list.cursor), (delay.SELECT, 0))
+        self.assertEqual(delay.ROWS[0], "beat")
+
+    def test_the_rows_are_the_four_parameters_and_cue(self):
+        self.assertEqual(delay.ROWS, ("beat", "feedback", "color", "spread", "cue"))
+        self.assertEqual(delay.DELAY_ROWS, delay.ROWS[:4])
+
+    def test_a_turn_moves_the_cursor_and_sends_nothing(self):
+        self.list.turn(1)
+        self.assertEqual(self.list.cursor, 1)
+        self.list.turn(1)
+        self.assertEqual(self.list.cursor, 2)
+        self.list.turn(-1)
+        self.assertEqual(self.list.cursor, 1)
         self.assertEqual(self.sent, [])
+        self.assertEqual(self.views, [(delay.SELECT, 1), (delay.SELECT, 2), (delay.SELECT, 1)])
 
-    def test_a_short_push_steps_through_the_pages_and_round(self):
-        for expected in ("feedback", "color", "spread", "beat"):
-            self.pager.press()
-            self.time.advance(0.2)
-            self.pager.release()
-            self.assertEqual(self.pager.page, expected)
-        self.assertEqual(self.pages, ["feedback", "color", "spread", "beat"])
+    def test_the_cursor_stops_at_beat_and_at_cue_it_does_not_wrap(self):
+        self.list.turn(-1)
+        self.assertEqual(self.list.cursor, 0)
+        self.list.turn(9)
+        self.assertEqual(self.list.cursor, 4)
+        self.list.turn(1)
+        self.assertEqual(self.list.cursor, 4)
+
+    def test_a_turn_that_moves_nothing_shows_nothing(self):
+        self.list.turn(-1)
+        self.assertEqual(self.views, [])
+
+    def test_no_clicks_no_change(self):
+        self.list.turn(0)
+        self.assertEqual((self.views, self.sent), ([], []))
+
+    def test_select_never_falls_back_or_cues(self):
+        self.list.turn(2)
+        self.views.clear()
+        self.time.advance(60)
+        self.assertEqual((self.views, self.sent), ([], []))
+
+
+class Toggle(ListFixture):
+    def test_a_press_goes_into_edit_and_the_next_back(self):
+        self.list.turn(2)
+        self.list.press()
+        self.assertEqual((self.list.mode, self.list.cursor), (delay.EDIT, 2))
+        self.list.press()
+        self.assertEqual((self.list.mode, self.list.cursor), (delay.SELECT, 2))
+        self.assertEqual(self.views[-2:], [(delay.EDIT, 2), (delay.SELECT, 2)])
+
+    def test_a_press_is_the_edge_there_is_no_hold(self):
+        self.list.press()
+        self.time.advance(2)
         self.assertEqual(self.sent, [])
+        self.assertEqual(self.list.mode, delay.EDIT)
 
-    def test_a_turn_follows_the_page(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.pager.turn(1)
-        self.assertEqual(self.sent, [("/t/aux-return.delay.feedback.turn", 1)])
-
-    def test_a_hold_cues_at_half_a_second_and_the_release_does_nothing(self):
-        self.pager.press()
-        self.time.advance(0.49)
-        self.assertEqual(self.sent, [])
-        self.time.advance(0.02)
-        self.assertEqual(self.sent, [("/t/aux-return.stem.push", 1)])
-        self.time.advance(1.0)
-        self.pager.release()
-        self.assertEqual(self.pager.page, "beat")
-        self.assertEqual(self.pages, [])
-        self.assertEqual(len(self.sent), 1)
-
-    def test_a_short_push_never_cues(self):
-        self.pager.press()
-        self.time.advance(0.3)
-        self.pager.release()
-        self.time.advance(2.0)
-        self.assertEqual(self.sent, [])
-
-    def test_a_release_bounce_at_the_press_is_no_release(self):
-        self.pager.press()
-        self.time.advance(0.002)
-        self.pager.release()
-        self.assertEqual(self.pager.page, "beat")
-        self.time.advance(0.6)
-        self.assertEqual(self.sent, [("/t/aux-return.stem.push", 1)])
-
-    def test_a_release_without_a_press_does_nothing(self):
-        self.pager.release()
-        self.assertEqual(self.pager.page, "beat")
-        self.assertEqual(self.pages, [])
-
-    def test_a_second_release_after_a_bounce_does_nothing(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.pager.release()
-        self.assertEqual(self.pager.page, "feedback")
-
-    def test_four_quiet_seconds_go_back_to_beat(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
+    def test_edit_falls_back_to_select_after_four_seconds_cursor_stays(self):
+        self.list.turn(3)
+        self.list.press()
         self.time.advance(3.9)
-        self.assertEqual(self.pager.page, "feedback")
+        self.assertEqual(self.list.mode, delay.EDIT)
         self.time.advance(0.2)
-        self.assertEqual(self.pager.page, "beat")
-        self.assertEqual(self.pages, ["feedback", "beat"])
+        self.assertEqual((self.list.mode, self.list.cursor), (delay.SELECT, 3))
+        self.assertEqual(self.views[-1], (delay.SELECT, 3))
 
-    def test_a_turn_restarts_the_four_seconds(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.time.advance(3.0)
-        self.pager.turn(1)
-        self.time.advance(3.0)
-        self.assertEqual(self.pager.page, "feedback")
+    def test_a_turn_in_edit_restarts_the_four_seconds(self):
+        self.edit("beat")
+        self.time.advance(3)
+        self.list.turn(1)
+        self.time.advance(3)
+        self.assertEqual(self.list.mode, delay.EDIT)
         self.time.advance(1.1)
-        self.assertEqual(self.pager.page, "beat")
+        self.assertEqual(self.list.mode, delay.SELECT)
 
-    def test_a_push_restarts_the_four_seconds(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.time.advance(3.0)
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.time.advance(3.5)
-        self.assertEqual(self.pager.page, "color")
-
-    def test_a_hold_restarts_the_four_seconds(self):
-        self.pager.press()
-        self.time.advance(0.2)
-        self.pager.release()
-        self.time.advance(3.5)
-        self.pager.press()
-        self.time.advance(1.0)
-        self.pager.release()
-        self.time.advance(3.0)
-        self.assertEqual(self.pager.page, "feedback")
-
-    def test_on_beat_nothing_falls_back(self):
-        self.pager.turn(1)
+    def test_a_fallback_after_the_user_left_edit_does_nothing(self):
+        self.edit("beat")
+        self.list.press()
+        self.views.clear()
         self.time.advance(10)
-        self.assertEqual(self.pages, [])
+        self.assertEqual(self.views, [])
+
+    def test_a_second_visit_to_edit_gets_its_own_four_seconds(self):
+        self.edit("beat")
+        self.time.advance(2)
+        self.list.press()
+        self.list.press()
+        self.time.advance(3)
+        self.assertEqual(self.list.mode, delay.EDIT)
+        self.time.advance(1.5)
+        self.assertEqual(self.list.mode, delay.SELECT)
+
+
+class Edit(ListFixture):
+    def test_a_turn_sends_the_rows_turn_word_with_the_clicks(self):
+        for row in delay.DELAY_ROWS:
+            self.list = delay.DelayList(
+                made_up(), lambda *m: self.sent.append(m), lambda *v: None,
+                lambda: False, clock=self.time.clock, later=self.time.later)
+            self.edit(row)
+            self.list.turn(2)
+            self.list.turn(-1)
+            self.assertEqual(self.sent, [("/t/aux-return.delay.%s.turn" % row, 2),
+                                         ("/t/aux-return.delay.%s.turn" % row, -1)], row)
+
+    def test_a_turn_in_edit_does_not_move_the_cursor(self):
+        self.edit("feedback")
+        self.list.turn(3)
+        self.assertEqual(self.list.cursor, 1)
+        self.assertEqual(self.views, [])
+
+    def test_no_clicks_send_nothing(self):
+        self.edit("beat")
+        self.list.turn(0)
+        self.assertEqual(self.sent, [])
+
+
+class CueRow(ListFixture):
+    PUSH = ("/t/aux-return.stem.push", 1)
+
+    def test_a_right_turn_cues_a_cue_that_is_off(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.assertEqual(self.sent, [self.PUSH])
+
+    def test_a_right_turn_on_a_cue_that_is_on_sends_nothing(self):
+        self.edit("cue")
+        self.cue[0] = True
+        self.list.turn(1)
+        self.assertEqual(self.sent, [])
+
+    def test_a_left_turn_uncues_a_cue_that_is_on(self):
+        self.edit("cue")
+        self.cue[0] = True
+        self.list.turn(-1)
+        self.assertEqual(self.sent, [self.PUSH])
+
+    def test_a_left_turn_on_a_cue_that_is_off_sends_nothing(self):
+        self.edit("cue")
+        self.list.turn(-2)
+        self.assertEqual(self.sent, [])
+
+    def test_a_fast_turn_before_the_lamp_answers_sends_one_push(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.time.advance(0.05)
+        self.list.turn(1)
+        self.list.turn(2)
+        self.assertEqual(self.sent, [self.PUSH])
+
+    def test_once_the_lamp_answered_the_other_way_works(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.cue[0] = True
+        self.time.advance(0.2)
+        self.list.turn(-1)
+        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
+
+    def test_a_lamp_that_never_answers_is_asked_again_after_a_second(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.time.advance(1.1)
+        self.list.turn(1)
+        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
+
+    def test_a_press_in_edit_on_cue_sends_nothing(self):
+        self.edit("cue")
+        self.list.press()
+        self.assertEqual(self.sent, [])
 
 
 class Values(unittest.TestCase):
+    ALL_NONE = {"beat": None, "feedback": None, "color": None, "spread": None}
+
     def setUp(self):
         self.shown = []
-        self.state = delay.DelayState(lambda page, values: self.shown.append((page, dict(values))))
+        self.state = delay.DelayState(
+            lambda mode, cursor, values: self.shown.append((mode, cursor, dict(values))))
 
     def test_no_value_until_core_speaks(self):
-        self.state.show_page("beat")
-        self.assertEqual(self.shown[-1], ("beat", {"beat": None, "feedback": None,
-                                                     "color": None, "spread": None}))
+        self.state.show_view(delay.SELECT, 0)
+        self.assertEqual(self.shown[-1], (delay.SELECT, 0, self.ALL_NONE))
 
-    def test_a_value_is_kept_and_shown_with_the_page(self):
+    def test_a_value_is_kept_and_shown_with_the_view(self):
         self.state.set_value("feedback", 0.7)
-        self.state.show_page("feedback")
-        self.assertEqual(self.shown[-1][0], "feedback")
-        self.assertEqual(self.shown[-1][1]["feedback"], 0.7)
-        self.assertIsNone(self.shown[-1][1]["beat"])
+        self.state.show_view(delay.EDIT, 1)
+        self.assertEqual(self.shown[-1][:2], (delay.EDIT, 1))
+        self.assertEqual(self.shown[-1][2]["feedback"], 0.7)
+        self.assertIsNone(self.shown[-1][2]["beat"])
 
-    def test_a_value_alone_redraws_the_current_page(self):
-        self.state.show_page("color")
+    def test_a_value_alone_redraws_the_current_view(self):
+        self.state.show_view(delay.EDIT, 2)
         self.state.set_value("color", -0.3)
-        self.assertEqual(self.shown[-1], ("color", {"beat": None, "feedback": None,
-                                                      "color": -0.3, "spread": None}))
+        self.assertEqual(self.shown[-1], (delay.EDIT, 2, dict(self.ALL_NONE, color=-0.3)))
 
-    def test_the_four_pages_are_the_four_values(self):
-        self.assertEqual(delay.PAGES, ("beat", "feedback", "color", "spread"))
+    def test_the_four_values_are_the_delay_rows(self):
+        self.assertEqual(delay.VALUE_KEYS, tuple("aux-return.delay." + r for r in delay.DELAY_ROWS))
 
 
 class TheDisplaysStartLikeTheState(unittest.TestCase):
-    def test_the_first_delay_page_is_beat_with_no_values(self):
+    def test_the_first_delay_view_is_select_on_beat_with_no_values(self):
         from test_displays import Rig
         displays = Rig().displays()
-        self.assertEqual(displays.delay_page,
-                         ("beat", {page: None for page in delay.PAGES}))
+        self.assertEqual(displays.delay_view,
+                         (delay.SELECT, 0, {row: None for row in delay.DELAY_ROWS}))
 
 
 class ValueAnnouncement(unittest.TestCase):
@@ -208,7 +275,7 @@ class ValueAnnouncement(unittest.TestCase):
 
 
 class ReturnEncoderMessages(unittest.TestCase):
-    def test_the_return_push_is_the_pagers_not_an_immediate_cue(self):
+    def test_the_return_push_is_the_lists_not_an_immediate_cue(self):
         self.assertIsNone(enc.push_message(made_up(), 4, True))
 
     def test_a_channel_push_is_as_before(self):
@@ -223,17 +290,6 @@ class TheTruthHasTheWords(unittest.TestCase):
     def test_the_real_truth_has_the_delay_page(self):
         from test_osc_truth import real_truth_path
         self.assertTrue(a3_mixer_osc.load(real_truth_path()).has_delay_page())
-
-    def test_a_hold_is_not_lost_to_a_turn_meanwhile(self):
-        time = FakeTime()
-        sent = []
-        pager = delay.DelayPager(made_up(), lambda *m: sent.append(m), lambda p: None,
-                                 clock=time.clock, later=time.later)
-        pager.press()
-        time.advance(0.2)
-        pager.turn(1)
-        time.advance(0.4)
-        self.assertEqual(sent[-1], ("/t/aux-return.stem.push", 1))
 
     def test_a_truth_from_before_has_none(self):
         addresses = {k: v for k, v in made_up()._data["addresses"].items()
@@ -251,8 +307,17 @@ class TheDeskUsesIt(unittest.TestCase):
 
     def test_a_calibration_takes_the_return_encoder_first(self):
         branch = self.source.split('if mode == "ENC"', 1)[1].split("# Buttons", 1)[0]
-        self.assertLess(branch.index("calibration.turned("), branch.index("pager.turn("))
-        self.assertLess(branch.index("calibration.pushed()"), branch.index("pager.press("))
+        self.assertLess(branch.index("calibration.turned("), branch.index("delay_list.turn("))
+        self.assertLess(branch.index("calibration.pushed()"), branch.index("delay_list.press("))
+
+    def test_the_shown_cue_reaches_the_serial_reader(self):
+        handler = self.source.split("def cue_handler_return(", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("cue_shown.value", handler)
+        self.assertIn("cue_shown", self.source.split("def serial_handler(", 1)[1].split(")", 1)[0])
+
+    def test_a_press_edge_toggles_and_a_release_does_nothing(self):
+        branch = self.source.split('if mode == "EB"', 1)[1].split("# Buttons", 1)[0]
+        self.assertNotIn(".release(", branch)
 
     def test_a_value_handler_sends_nothing(self):
         handler = self.source.split("def delay_handler(", 1)[1].split("\n\n", 1)[0]

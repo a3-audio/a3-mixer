@@ -16,7 +16,7 @@ import neopixel
 
 import socket
 import threading
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Value
 
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc import osc_server
@@ -33,7 +33,7 @@ from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery
                              RecallRequest, StateAsker)
 from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
                             channel_button, led_colour, panel_fields)
-from a3_mixer_delay import (RETURN_ENCODER, VALUE_KEYS, DelayPager,
+from a3_mixer_delay import (RETURN_ENCODER, VALUE_KEYS, DelayList,
                              DelayState, value_announcement)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
                                 parse_int, push_message)
@@ -422,13 +422,16 @@ def ask_the_panel():
     sendData(ASK_THE_PANEL)
 
 
-def serial_handler(views, calibrate, delay_pages): # dispatch from serial stream and send to osc
+def serial_handler(views, calibrate, delay_views, cue_shown): # dispatch from serial stream and send to osc
 
     global calibration
-    # The return encoder's page lives in this process; the displays, in the
-    # parent, are told through `delay_pages`. Its cue goes through to_core, so
-    # a hold that outlasts the start of a calibration sends nothing.
-    pager = DelayPager(osc, to_core, delay_pages.put) if osc.has_delay_page() else None
+    # The return encoder's mode and cursor live in this process; the displays,
+    # in the parent, are told through `delay_views`. The cue lamp the displays
+    # show comes back the other way, in the shared `cue_shown`: the CUE row
+    # pushes Core's toggle only when it differs from the way the turn points.
+    delay_list = (DelayList(osc, to_core, lambda mode, cursor: delay_views.put((mode, cursor)),
+                            lambda: bool(cue_shown.value))
+                  if osc.has_delay_page() else None)
     calibration = open_calibration(views)
     ask_the_panel()
     be_in_front_of_core()
@@ -463,23 +466,22 @@ def serial_handler(views, calibrate, delay_pages): # dispatch from serial stream
             position = parse_int(value)
             if position is not None:
                 turned = clicks.feed(int(track), position)
-                if int(track) == RETURN_ENCODER and pager is not None:
-                    # The return turns the delay page's value (a3_mixer_delay).
+                if int(track) == RETURN_ENCODER and delay_list is not None:
+                    # The return moves the delay list's cursor or changes its
+                    # row (a3_mixer_delay).
                     if not calibration.turned(turned):
-                        pager.turn(turned)
+                        delay_list.turn(turned)
                 else:
                     msg = encoder_message(osc, int(track), turned)
                     if not calibration.turned(turned) and msg:
                         to_core(*msg)
         if mode == "EB" and track.isdigit():
             pressed = pushes.feed(int(track), value == "1")
-            if int(track) == RETURN_ENCODER and pager is not None:
-                # A short push steps the page, a hold cues; the release is
-                # the pager's too. A press the calibration took is no hold.
-                if value == "0":
-                    pager.release()
-                elif pressed and not calibration.pushed():
-                    pager.press()
+            if int(track) == RETURN_ENCODER and delay_list is not None:
+                # A press toggles select and edit, on the edge; the release
+                # means nothing. A press the calibration took is not one.
+                if pressed and not calibration.pushed():
+                    delay_list.press()
             else:
                 msg = push_message(osc, int(track), pressed)
                 if msg is None and pressed and int(track) == RETURN_ENCODER:
@@ -562,9 +564,10 @@ if __name__ == '__main__':
     # The calibration's pictures, from the serial reader to the displays,
     # which this process draws.
     calibration_views = Queue()
-    delay_pages = Queue()
+    delay_views = Queue()
+    cue_shown = Value("b", 0)
     proc1 = Process(target=serial_handler,
-                    args=(calibration_views, args.calibrate, delay_pages))
+                    args=(calibration_views, args.calibrate, delay_views, cue_shown))
     proc1.start()
 
     # Stirbt der serielle Leser, geht dieser Prozess mit.
@@ -611,15 +614,15 @@ if __name__ == '__main__':
 
     threading.Thread(target=show_calibrations, daemon=True, name="calibration").start()
 
-    # The delay page: the page comes from the serial reader, the values from
-    # Core. Both end in the displays; a value received is never sent back.
+    # The delay list: mode and cursor come from the serial reader, the values
+    # from Core. Both end in the displays; a value received is never sent back.
     delay_state = DelayState(displays.show_delay)
 
-    def show_delay_pages():
+    def show_delay_views():
         while True:
-            delay_state.show_page(delay_pages.get())
+            delay_state.show_view(*delay_views.get())
 
-    threading.Thread(target=show_delay_pages, daemon=True, name="delay page").start()
+    threading.Thread(target=show_delay_views, daemon=True, name="delay list").start()
 
     # A new Core: the displays forget engine mode, then the desk asks for
     # the state again (ForgetThenAsk) -- the first announcement comes after
@@ -693,6 +696,7 @@ if __name__ == '__main__':
         on = cue_announcement(args)
         if osc.is_address("aux-return.cue.led", address) and on is not None:
             displays.show_return_cue(on)
+            cue_shown.value = 1 if on else 0
 
     dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
 

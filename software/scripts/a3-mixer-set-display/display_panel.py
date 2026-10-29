@@ -44,6 +44,7 @@ if _SCRIPTS not in sys.path:
 
 from a3_mixer_meters import (CHANNEL_LED_THRESHOLDS_DB, RED_FROM_FRACTION,  # noqa: E402,F401
                              YELLOW_FROM_FRACTION, bar_fraction)
+from a3_mixer_delay import SELECT  # noqa: E402
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
 #: I2C-Bus und unter welcher Adresse es antwortet, wie herum es eingebaut ist
@@ -272,17 +273,19 @@ def pixel_key(picture):
                   for meter in picture.meters),
             picture.cursor, toggle,
             picture.active, tuple(picture.headings), tuple(picture.marks),
-            tuple(picture.readouts))
+            tuple(picture.rows))
 
 
 #: What a panel shows: headings over meters, the cursor -- the box of the
 #: down arrow over the selected slot --, divider lines, a channel's toggle,
 #: and the box of the active bracket over the meter that plays, or None.
 Heading = namedtuple("Heading", "box text")
-#: A big text: `text` centred in `box` at the size `widest` fits in it, so
-#: every value of one page stands at one size (the return's delay page).
-Readout = namedtuple("Readout", "box text widest")
-Picture = namedtuple("Picture", "headings meters cursor dividers toggle active marks readouts",
+#: One row of the return's delay list: `name` at the left of `box`, `value`
+#: at its right. `inverted` says what the encoder is standing on: "row" (the
+#: whole box lit, dark letters -- select mode), "value" (only the value's
+#: end of it -- edit mode) or None.
+Row = namedtuple("Row", "box name value inverted")
+Picture = namedtuple("Picture", "headings meters cursor dividers toggle active marks rows",
                      defaults=((), None, None, (), ()))
 
 #: Gaps between meters, in pixels: inside a group, and between two groups --
@@ -536,14 +539,17 @@ RETURN_HEADING_OF_WIDTH = 0.47
 RETURN_METER_OF_WIDTH = 0.17
 
 
-#: The delay page's parameter names on the return, and the widest text any of
-#: its values can be (COLOR's "HP 10"): the size of all of them.
-DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread": "SPREAD"}
-DELAY_WIDEST = "HP 10"
-#: Dark columns between the meter and the readout, and between it and the divider.
-READOUT_GAP = 3
-#: A dark row between the parameter's name and its value.
-READOUT_ROW_GAP = 2
+#: The delay list's row names on the return, in the order they stand.
+DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread": "SPREAD",
+               "cue": "CUE"}
+#: What the longest name and the longest values of a row can be: the painter
+#: sizes every row by them, so a digit does not grow or shrink between clicks.
+LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
+LIST_VALUE_SAMPLES = ("HP 10", "LP 10", "100%", "180\u00b0", "1/8", "3/4", "OFF")
+#: Dark columns between the meter and the list.
+LIST_GAP = 3
+#: Dark rows between the heading and the first row.
+LIST_HEADING_GAP = 2
 
 _BEATS = {0.125: "1/8", 0.25: "1/4", 0.5: "1/2", 0.75: "3/4"}
 
@@ -553,39 +559,51 @@ def _number(value):
         and math.isfinite(value)
 
 
-def delay_text(page, value):
-    """What a delay page's value reads on the display; `--` while Core has
-    not said one. Beat in the fractions a deck's loop control shows, colour
-    as filter steps from the centre: HP (high-pass) left of it, LP right."""
+def delay_text(row, value):
+    """What a delay row's value reads on the display; `--` while it is not
+    known. Beat in the fractions a deck's loop control shows, colour as
+    filter steps from the centre: HP (high-pass) left of it, LP right. CUE is
+    a switch: ON or OFF."""
+    if row == "cue":
+        return "--" if value is None else "ON" if value else "OFF"
     if not _number(value):
         return "--"
-    if page == "beat":
+    if row == "beat":
         return _BEATS.get(value) or f"{value:g}"
-    if page == "feedback":
+    if row == "feedback":
         return f"{round(value * 100)}%"
-    if page == "color":
+    if row == "color":
         step = round(value * 10)
         return "0" if step == 0 else f"HP {-step}" if step < 0 else f"LP {step}"
     return f"{round(value)}\u00b0"
 
 
-def _readouts(page, value, heading_rows, free, bottom):
-    """The parameter's name, in the headings' height, and its value in all
-    the room below it, within `free` = (x0, x1) of columns."""
+def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
+    """The five rows, equal and stacked up to the panel's last row, under the
+    heading, within `free` = (x0, x1) of columns. The one under the cursor is
+    inverted: all of it while selecting, its value while editing."""
     x0, x1 = free
-    top = heading_rows[0]
-    name_bottom = top + heading_rows[1] - heading_rows[0]
-    return (Readout((x0, top, x1, name_bottom), DELAY_NAMES[page], DELAY_NAMES[page]),
-            Readout((x0, name_bottom + 1 + READOUT_ROW_GAP, x1, bottom),
-                    delay_text(page, value), DELAY_WIDEST))
+    names = tuple(DELAY_NAMES)
+    top = heading_bottom + 1 + LIST_HEADING_GAP
+    height = max(1, (bottom + 1 - top) // len(names))
+    top = bottom + 1 - height * len(names)
+    inverted = "row" if mode == SELECT else "value"
+    rows = []
+    for index, name in enumerate(names):
+        value = cue if name == "cue" else values.get(name)
+        y0 = top + index * height
+        rows.append(Row((x0, y0, x1, y0 + height - 1), DELAY_NAMES[name],
+                        delay_text(name, value), inverted if index == cursor else None))
+    return tuple(rows)
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     """The FX Return: AUX-RTN at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
-    `delay` = (page, value) adds the delay page in the room between the
-    meter and the divider: the parameter's name, then its value large."""
+    `delay` = (mode, cursor, values) turns the right of the panel into the
+    delay list instead: five rows, CUE one of them (so no CUE field and no
+    divider), beside the same heading and meter."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -602,14 +620,14 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     stem_width = channel[0][1] - channel[0][0] + 1
     left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
+    headings = (Heading((x0, h0, x1, h1), RETURN_NAME),)
+    if delay is not None:
+        free = (left + meter - 1 + LIST_GAP + 1, width - 1)
+        rows = _rows(*delay, cue, h1, height - 1, free)
+        return Picture(headings, meters, None, (), None, None, _marks(meters), rows)
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
-    readouts = ()
-    if delay is not None:
-        free = (left + meter - 1 + READOUT_GAP + 1, divider[0] - READOUT_GAP - 1)
-        readouts = _readouts(delay[0], delay[1], (m0, m0 + h1 - h0), free, m1)
-    return Picture((Heading((x0, h0, x1, h1), RETURN_NAME),), meters, None, (divider,), toggle,
-                   None, _marks(meters), readouts)
+    return Picture(headings, meters, None, (divider,), toggle, None, _marks(meters))
 
 
 def cursor_announcement(args):
