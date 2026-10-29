@@ -430,7 +430,8 @@ def serial_handler(views, calibrate, delay_views, cue_shown): # dispatch from se
     # show comes back the other way, in the shared `cue_shown`: the CUE row
     # pushes Core's toggle only when it differs from the way the turn points.
     delay_list = (DelayList(osc, to_core, lambda mode, cursor: delay_views.put((mode, cursor)),
-                            lambda: bool(cue_shown.value))
+                            lambda: bool(cue_shown.value & 1),
+                            cue_answers=lambda: cue_shown.value >> 1)
                   if osc.has_delay_page() else None)
     calibration = open_calibration(views)
     ask_the_panel()
@@ -565,7 +566,9 @@ if __name__ == '__main__':
     # which this process draws.
     calibration_views = Queue()
     delay_views = Queue()
-    cue_shown = Value("b", 0)
+    # The shown cue lamp for the serial reader: bit 0 is on/off, the rest counts
+    # announcements (a3_mixer_delay: a push is answered once one has come).
+    cue_shown = Value("i", 0)
     proc1 = Process(target=serial_handler,
                     args=(calibration_views, args.calibrate, delay_views, cue_shown))
     proc1.start()
@@ -696,7 +699,7 @@ if __name__ == '__main__':
         on = cue_announcement(args)
         if osc.is_address("aux-return.cue.led", address) and on is not None:
             displays.show_return_cue(on)
-            cue_shown.value = 1 if on else 0
+            cue_shown.value = ((cue_shown.value >> 1) + 1) << 1 | (1 if on else 0)
 
     dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
 

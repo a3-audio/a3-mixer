@@ -45,10 +45,12 @@ class ListFixture(unittest.TestCase):
         self.sent = []
         self.views = []
         self.cue = [False]
+        self.answers = [0]    # lamp announcements seen so far
         self.list = delay.DelayList(
             made_up(), lambda *message: self.sent.append(message),
             lambda mode, cursor: self.views.append((mode, cursor)),
-            lambda: self.cue[0], clock=self.time.clock, later=self.time.later)
+            lambda: self.cue[0], clock=self.time.clock, later=self.time.later,
+            cue_answers=lambda: self.answers[0])
 
     def edit(self, row):
         """Select `row` and press into edit mode, sending nothing."""
@@ -229,6 +231,24 @@ class CueRow(ListFixture):
         self.list.turn(-1)           # the other way: lamp says off already
         self.list.turn(1)
         self.assertEqual(self.sent, [self.PUSH, self.PUSH])
+
+    def test_a_cue_changed_elsewhere_after_an_answered_push_does_not_swallow_a_turn(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.cue[0] = True           # the lamp answers
+        self.answers[0] += 1
+        self.cue[0] = False          # the virtual desk uncues
+        self.answers[0] += 1
+        self.list.turn(1)
+        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
+
+    def test_an_unanswered_push_is_still_not_resent_across_a_new_edit_visit(self):
+        self.edit("cue")
+        self.list.turn(1)
+        self.list.press()
+        self.list.press()
+        self.list.turn(1)
+        self.assertEqual(self.sent, [self.PUSH])
 
     def test_a_press_in_edit_on_cue_sends_nothing(self):
         self.edit("cue")

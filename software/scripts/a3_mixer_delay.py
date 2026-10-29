@@ -72,23 +72,27 @@ class DelayList:
     """The mode and the cursor of the return encoder.
 
     `send(*message)` goes to Core, `show(mode, cursor)` is told when either
-    changes, `cue_is_on()` is the cue lamp as the desk shows it.
+    changes, `cue_is_on()` is the cue lamp as the desk shows it and
+    `cue_answers()` how many lamp announcements the desk has had (a push is
+    unanswered while that count has not moved since it was sent).
     `later(seconds, then)` runs `then` once after `seconds`; a timer is never
     cancelled -- each carries the number of the activity it belongs to and
     does nothing once there was a newer one."""
 
-    def __init__(self, osc, send, show, cue_is_on, clock=time.monotonic, later=_timer):
+    def __init__(self, osc, send, show, cue_is_on, clock=time.monotonic, later=_timer,
+                 cue_answers=lambda: 0):
         self._osc = osc
         self._send = send
         self._show = show
         self._cue_is_on = cue_is_on
+        self._cue_answers = cue_answers
         self._clock = clock
         self._later = later
         self._lock = threading.Lock()
         self.mode = SELECT
         self.cursor = 0
         self._activity = 0
-        self._cue_asked = None   # the direction of a cue push the lamp has not answered
+        self._cue_asked = None   # (direction, announcements seen) of the last cue push
 
     def turn(self, clicks):
         if clicks == 0:
@@ -128,14 +132,18 @@ class DelayList:
         """Edit on CUE: push Core's toggle only if the lamp shows the cue the
         other way, and never twice for one direction before the lamp has
         answered. A toggle word is not resent blind (R26): a push that was
-        lost is recovered by turning the other way and back."""
+        lost is recovered by turning the other way and back. Once the lamp
+        has announced anything since the push, it is answered -- a cue changed
+        elsewhere afterwards (the virtual desk, Motion) does not swallow a
+        turn."""
         with self._lock:
+            answers = self._cue_answers()
             if bool(self._cue_is_on()) == want_on:
                 self._cue_asked = None
                 return
-            if self._cue_asked == want_on:
+            if self._cue_asked == (want_on, answers):
                 return
-            self._cue_asked = want_on
+            self._cue_asked = (want_on, answers)
         self._send(self._osc.address("aux-return.stem.push"), 1)
 
     def _touch(self):
