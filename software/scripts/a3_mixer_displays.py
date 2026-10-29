@@ -24,7 +24,7 @@ whatever plays on the channel: with a stem playing, the DJ still sees there
 is something on analog before switching to it (2026-10-07).
 
 The return's display is the FX Return, the master of the delay channel
-(P47): one mono meter under AUX-RTN -- aux_L/aux_R, the return after RETURN,
+(P47): one mono meter under the heading DELAY (AUX-RTN until 2026-10-29) -- aux_L/aux_R, the return after RETURN,
 the louder side -- and, at its right edge behind a divider, the CUE field
 (2026-10-04): in the slot where a channel shows A, filled while the return
 is cued. Its encoder's push toggles the cue; with nothing to choose there is
@@ -39,7 +39,7 @@ COLOR, SPREAD, CUE, each its name at the left and its value at the right, in
 the room right of the meter. A press of the encoder toggles select and edit,
 and the display says which at a glance by what is lit: selecting, the whole
 row under the cursor (a bar, as a menu's highlight); editing, only its value
--- what the turn changes is what is lit. AUX-RTN and the meter stay in their
+-- what the turn changes is what is lit. DELAY and the meter stay in their
 boxes (a test pins them); the CUE field and its divider are gone with the
 CUE row. The rows are 10 of the panel's 64 rows high and set in one size,
 the one the longest name beside the longest value fits (a digit does not
@@ -52,7 +52,7 @@ texts are those of a deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1
 COLOR as filter steps from the centre (0, HP 1-10 left, LP 1-10 right -- the
 knob's own direction), SPREAD in degrees, CUE ON or OFF; "--" until Core has
 said a value. On a truth without the delay words (R25) the return is as it
-always was: AUX-RTN, the meter, the CUE field, and the push cues at once.
+always was: DELAY, the meter, the CUE field, and the push cues at once.
 
 Every meter moves as the LEDs do (a3_mixer_meters.MeterBallistics, on
 Core's timing, 2026-10-07): an instant rise from raw peaks, a 20 dB/s fall,

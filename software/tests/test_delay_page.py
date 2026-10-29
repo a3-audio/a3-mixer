@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer-set-display"))
 
 import a3_mixer_delay as delay          # noqa: E402
 import a3_mixer_osc                     # noqa: E402
@@ -215,10 +216,17 @@ class CueRow(ListFixture):
         self.list.turn(-1)
         self.assertEqual(self.sent, [self.PUSH, self.PUSH])
 
-    def test_a_lamp_that_never_answers_is_asked_again_after_a_second(self):
+    def test_a_toggle_is_never_resent_blind(self):
         self.edit("cue")
         self.list.turn(1)
-        self.time.advance(1.1)
+        self.time.advance(60)
+        self.list.turn(1)
+        self.assertEqual(self.sent, [self.PUSH])
+
+    def test_a_lost_push_is_recovered_by_turning_back_and_forth(self):
+        self.edit("cue")
+        self.list.turn(1)            # the push is lost, the lamp stays off
+        self.list.turn(-1)           # the other way: lamp says off already
         self.list.turn(1)
         self.assertEqual(self.sent, [self.PUSH, self.PUSH])
 
@@ -226,6 +234,17 @@ class CueRow(ListFixture):
         self.edit("cue")
         self.list.press()
         self.assertEqual(self.sent, [])
+
+
+class DisplayModuleStandsAlone(unittest.TestCase):
+    def test_the_display_module_does_not_import_the_desk_logic(self):
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer-set-display"
+                  / "display_panel.py").read_text()
+        self.assertNotIn("a3_mixer_delay", source)
+
+    def test_its_mode_name_is_the_lists(self):
+        import display_panel
+        self.assertEqual(display_panel.SELECT_MODE, delay.SELECT)
 
 
 class Values(unittest.TestCase):

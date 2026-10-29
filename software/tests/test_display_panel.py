@@ -385,7 +385,7 @@ class ActiveBracket(unittest.TestCase):
 
 class ReturnMeter(unittest.TestCase):
     """P47: the FX Return is the master of the delay channel. Its display is
-    one mono meter under AUX-RTN -- the return after RETURN -- and the CUE
+    one mono meter under DELAY -- the return after RETURN -- and the CUE
     field: no source to choose, so no second meter, no arrow and no active
     bracket."""
 
@@ -395,7 +395,7 @@ class ReturnMeter(unittest.TestCase):
 
     def test_one_meter_under_one_name(self):
         p = self.picture(level=0.4)
-        self.assertEqual([h.text for h in p.headings], ["AUX-RTN"])
+        self.assertEqual([h.text for h in p.headings], ["DELAY"])
         self.assertEqual([m.level for m in p.meters], [0.4])
         heading, meter = p.headings[0].box, p.meters[0].box
         self.assertTrue(heading[0] <= meter[0] and meter[2] <= heading[2])
@@ -521,7 +521,7 @@ class ReturnCue(unittest.TestCase):
 
 class DelayList(unittest.TestCase):
     """The return's delay list (spec delay-params, round 2): five rows --
-    BEAT FEEDBK COLOR SPREAD CUE -- right of the unchanged AUX-RTN heading
+    BEAT FEEDBK COLOR SPREAD CUE -- right of the unchanged DELAY heading
     and meter; the CUE field and its divider are gone, CUE is a row."""
 
     VALUES = {"beat": 0.25, "feedback": 0.7, "color": -0.5, "spread": 60.0}
@@ -537,7 +537,7 @@ class DelayList(unittest.TestCase):
         p = self.picture()
         self.assertEqual(p.headings, plain.headings)
         self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters])
-        self.assertEqual(p.headings[0].box, (1, 0, 60, 11))
+        self.assertEqual(p.headings[0].box, (1, 0, 45, 11))
         self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
 
     def test_the_cue_field_and_its_divider_are_gone(self):

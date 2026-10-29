@@ -27,8 +27,9 @@ press (the press edge PushHoldOff accepts; there is no hold timing):
   (R23). Core's word is a toggle (aux-return.stem.push), so the desk sends it
   only when the lamp it shows (aux-return.cue.led) says the cue is the other
   way -- a fast turn over several detents cannot flicker the cue. The lamp
-  answers a round trip later, so a push waits for it (CUE_SETTLE_SECONDS)
-  before the same direction may push again.
+  answers a round trip later, so the same direction does not push again
+  until it has; and a toggle word is never resent blind (R26) -- a lost push
+  is recovered by turning the other way and back.
 
 Edit falls back to select after FALLBACK_SECONDS without a turn or press, the
 cursor staying on its row (R22): a hand that walked away must not leave the
@@ -57,11 +58,6 @@ EDIT = "edit"
 #: Quiet time in edit after which the encoder is selecting again (R22; one
 #: constant if the maintainer wants it otherwise).
 FALLBACK_SECONDS = 4.0
-
-#: How long a cue push waits for the lamp to answer before the same direction
-#: may push again. Not measured on the desk: a round trip to Core is a few
-#: milliseconds, a second is clear of it and short enough to try again.
-CUE_SETTLE_SECONDS = 1.0
 
 RETURN_ENCODER = 4
 
@@ -92,7 +88,7 @@ class DelayList:
         self.mode = SELECT
         self.cursor = 0
         self._activity = 0
-        self._cue_asked = None   # (wanted state, when) of the last cue push
+        self._cue_asked = None   # the direction of a cue push the lamp has not answered
 
     def turn(self, clicks):
         if clicks == 0:
@@ -129,17 +125,17 @@ class DelayList:
         self._show(self.mode, self.cursor)
 
     def _turn_cue(self, want_on):
-        """Edit on CUE: push Core's toggle only if the cue is the other way
-        and no push for this direction is still waiting for its lamp."""
-        if bool(self._cue_is_on()) == want_on:
-            return
-        now = self._clock()
+        """Edit on CUE: push Core's toggle only if the lamp shows the cue the
+        other way, and never twice for one direction before the lamp has
+        answered. A toggle word is not resent blind (R26): a push that was
+        lost is recovered by turning the other way and back."""
         with self._lock:
-            asked = self._cue_asked
-            if asked is not None and asked[0] == want_on \
-                    and now - asked[1] < CUE_SETTLE_SECONDS:
+            if bool(self._cue_is_on()) == want_on:
+                self._cue_asked = None
                 return
-            self._cue_asked = (want_on, now)
+            if self._cue_asked == want_on:
+                return
+            self._cue_asked = want_on
         self._send(self._osc.address("aux-return.stem.push"), 1)
 
     def _touch(self):

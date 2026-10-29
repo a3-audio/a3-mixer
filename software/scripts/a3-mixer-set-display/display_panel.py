@@ -44,7 +44,6 @@ if _SCRIPTS not in sys.path:
 
 from a3_mixer_meters import (CHANNEL_LED_THRESHOLDS_DB, RED_FROM_FRACTION,  # noqa: E402,F401
                              YELLOW_FROM_FRACTION, bar_fraction)
-from a3_mixer_delay import SELECT  # noqa: E402
 
 #: Ein Display: hinter welchem Kanal des Multiplexers es sitzt, auf welchem
 #: I2C-Bus und unter welcher Adresse es antwortet, wie herum es eingebaut ist
@@ -174,9 +173,9 @@ def playing_slot(index, mask):
     return 2
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
-#: its name, AUX-RTN (maintainer, 2026-10-28), and its CUE field. It has no
+#: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29, and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
-RETURN_NAME = "AUX-RTN"
+RETURN_NAME = "DELAY"
 CUE_TEXT = "CUE"
 
 #: Steps a second: ten, decided 2026-10-04 and kept on 2026-10-07 although
@@ -280,6 +279,11 @@ def pixel_key(picture):
 #: down arrow over the selected slot --, divider lines, a channel's toggle,
 #: and the box of the active bracket over the meter that plays, or None.
 Heading = namedtuple("Heading", "box text")
+#: The mode of the delay list in which the whole cursor row is inverted; the
+#: other mode inverts its value only. The same word as the desk logic's SELECT
+#: (a test says so): the display does not import the desk's logic.
+SELECT_MODE = "select"
+
 #: One row of the return's delay list: `name` at the left of `box`, `value`
 #: at its right. `inverted` says what the encoder is standing on: "row" (the
 #: whole box lit, dark letters -- select mode), "value" (only the value's
@@ -532,10 +536,11 @@ def engine_channel_picture(source, cursor, present, levels, width, height,
 
 
 #: The return's heading and its meter, each as a share of the panel's width.
-#: The heading holds AUX-RTN at the displays' one text size (58 of 60 columns
-#: at 128); the meter is as slim as the channels' bars look beside their
+#: The heading's box is as wide as its name needs at the displays' one text size
+#: (DELAY: 43 of 45 columns at 128; AUX-RTN needed 58, so the box was 60 and
+#: DELAY centred in it would have left the left margin); the meter is as slim as the channels' bars look beside their
 #: neighbours -- 22 columns, the width it had under FX RTN.
-RETURN_HEADING_OF_WIDTH = 0.47
+RETURN_HEADING_OF_WIDTH = 0.35
 RETURN_METER_OF_WIDTH = 0.17
 
 
@@ -587,7 +592,7 @@ def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
     top = heading_bottom + 1 + LIST_HEADING_GAP
     height = max(1, (bottom + 1 - top) // len(names))
     top = bottom + 1 - height * len(names)
-    inverted = "row" if mode == SELECT else "value"
+    inverted = "row" if mode == SELECT_MODE else "value"
     rows = []
     for index, name in enumerate(names):
         value = cue if name == "cue" else values.get(name)
@@ -598,7 +603,7 @@ def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
 
 
 def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
-    """The FX Return: AUX-RTN at the left margin, one mono meter under it,
+    """The FX Return: DELAY (once AUX-RTN) at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
     `delay` = (mode, cursor, values) turns the right of the panel into the

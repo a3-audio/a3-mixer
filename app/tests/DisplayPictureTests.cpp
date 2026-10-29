@@ -85,14 +85,14 @@ TEST (DisplayPicture, ReturnPicturesAreThePythons)
     }
 }
 
-// P47: the FX Return is the delay channel's master: one meter under AUX-RTN, the CUE
-// field, no arrow and no bracket. The name's box is what AUX-RTN needs; the meter stands where it stood
+// P47: the FX Return is the delay channel's master: one meter under DELAY, the CUE
+// field, no arrow and no bracket. The name's box is what DELAY needs; the meter stands where it stood
 // under FX RTN (columns 39-60).
 TEST (DisplayPicture, TheReturnIsOneMeterNamedAuxRtn)
 {
     const auto picture = returnPicture (false, 0.5, 128, 64, false, 0.0);
     ASSERT_EQ (picture.headings.size(), 1u);
-    EXPECT_EQ (picture.headings[0].text, "AUX-RTN");
+    EXPECT_EQ (picture.headings[0].text, "DELAY");
     ASSERT_EQ (picture.meters.size(), 1u);
     EXPECT_LE (picture.headings[0].box.x1 - picture.headings[0].box.x0 + 1, 64);
     // At the left margin, where a channel's first meter starts; its width is main's 22 columns.
