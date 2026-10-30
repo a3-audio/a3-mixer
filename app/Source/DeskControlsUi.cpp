@@ -120,18 +120,19 @@ void DeskKey::setLit (bool lit)
 
 void DeskKey::paint (juce::Graphics& g)
 {
+    // StemDeck's keys: a raised tile with an outline; lit, it is filled with its lamp.
     const DimWhenDisabled dim (g, isEnabled());
     auto r = getLocalBounds().toFloat().reduced (juce::jmin (getWidth(), getHeight()) * 0.06f);
-    const float corner = r.getHeight() * 0.12f;
-    g.setColour (_lit ? theme::keyFaceLit : theme::keyFace);
+    const float corner = juce::jmin (r.getWidth(), r.getHeight()) * 0.1f;
+    g.setColour (_lit ? _lamp : theme::keyFace);
     g.fillRoundedRectangle (r, corner);
-    if (_lit)
+    if (! _lit)
     {
-        g.setColour (_lamp);
-        g.fillRoundedRectangle (r.withHeight (r.getHeight() * 0.12f).reduced (r.getWidth() * 0.12f, 0.f), corner * 0.5f);
+        g.setColour (theme::outline);
+        g.drawRoundedRectangle (r, corner, 1.f);
     }
-    g.setColour (_lit ? theme::pointer : theme::caption);
-    g.setFont (juce::FontOptions (r.getHeight() * 0.32f, _lit ? juce::Font::bold : juce::Font::plain));
+    g.setColour (_lit ? theme::background : theme::text);
+    g.setFont (juce::FontOptions (juce::jmin (r.getHeight() * 0.36f, r.getWidth() * 0.3f), _lit ? juce::Font::bold : juce::Font::plain));
     g.drawText (_caption, r, juce::Justification::centred, false);
 }
 

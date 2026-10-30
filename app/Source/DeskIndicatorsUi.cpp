@@ -12,67 +12,111 @@ namespace desk
 {
 namespace
 {
-juce::Colour ledColour (int index)
+juce::Colour zoneColour (leds::screen::Zone zone)
 {
-    switch (leds::channelLedColour (index))
+    switch (zone)
     {
-        case leds::LedColour::green: return theme::ledGreen;
-        case leds::LedColour::yellow: return theme::ledYellow;
-        case leds::LedColour::red: return theme::ledRed;
+        case leds::screen::Zone::green: return theme::ledGreen;
+        case leds::screen::Zone::yellow: return theme::ledYellow;
+        case leds::screen::Zone::orange: return theme::ledOrange;
+        case leds::screen::Zone::red: return theme::ledRed;
     }
-    return theme::ledOff;
+    return theme::ledGreen;
+}
+
+/** Shares: the well's corner of its width, the gap between segments of a segment's pitch. */
+constexpr float wellCornerOfWidth = 0.08f, gapOfPitch = 0.3f, holdOfSegment = 0.5f;
+
+/** One meter, StemDeck's way: a black well, thin segments across it bottom up -- lit in their
+    zone's colour, unlit as a trace of it -- and the held peak as a line atop its segment. */
+template <typename ZoneOf>
+void paintBar (juce::Graphics& g, juce::Rectangle<float> well, int segments, int lit, int held, ZoneOf zoneOf)
+{
+    g.setColour (theme::meterWell);
+    g.fillRoundedRectangle (well, well.getWidth() * wellCornerOfWidth);
+    const auto inner = well.reduced (juce::jmax (1.f, well.getWidth() * 0.08f), juce::jmax (1.f, well.getWidth() * 0.04f));
+    const float pitch = inner.getHeight() / static_cast<float> (segments);
+    const float light = juce::jmax (1.f, pitch * (1.f - gapOfPitch));
+    const auto segmentAt = [&] (int i) {
+        return juce::Rectangle<float> (inner.getX(), inner.getBottom() - pitch * static_cast<float> (i + 1), inner.getWidth(), light);
+    };
+    for (int i = 0; i < segments; ++i)
+    {
+        const auto colour = zoneColour (zoneOf (i));
+        g.setColour (i < lit ? colour : colour.withAlpha (theme::ledOffAlpha));
+        g.fillRect (segmentAt (i));
+    }
+    if (held <= lit)
+        return;
+    g.setColour (zoneColour (zoneOf (held - 1)));
+    g.fillRect (segmentAt (held - 1).removeFromTop (juce::jmax (1.f, light * holdOfSegment)));
 }
 }
 
-void LedColumn::setLeds (int lit, int holdIndex)
+int LedColumn::segments() const { return leds::screen::channelSegments (static_cast<float> (getHeight())); }
+
+void LedColumn::setLevels (double barDb, double holdDb)
 {
-    if (lit == _lit && holdIndex == _hold)
+    _barDb = barDb;
+    _holdDb = holdDb;
+    const int n = segments();
+    const int lit = leds::screen::channelSegmentsLit (barDb, n), held = leds::screen::channelSegmentsLit (holdDb, n);
+    if (lit == _lit && held == _held)
         return;
     _lit = lit;
-    _hold = holdIndex;
+    _held = held;
     repaint();
 }
 
 void LedColumn::paint (juce::Graphics& g)
 {
-    g.fillAll (theme::background);
+    g.fillAll (theme::panelSeen (isEnabled()));
     const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
-    const float cell = static_cast<float> (getHeight()) / leds::channelLedCount;
-    const float d = juce::jmin (cell, static_cast<float> (getWidth())) * 0.6f;
-    for (int i = 0; i < leds::channelLedCount; ++i)
-    {
-        const bool on = i < _lit || i == _hold;
-        g.setColour (on ? ledColour (i) : theme::ledOff);
-        const float cy = static_cast<float> (getHeight()) - (static_cast<float> (i) + 0.5f) * cell;
-        g.fillEllipse (static_cast<float> (getWidth()) * 0.5f - d * 0.5f, cy - d * 0.5f, d, d);
-    }
+    const int n = segments();
+    const auto bounds = getLocalBounds().toFloat();
+    paintBar (g, bounds.withSizeKeepingCentre (bounds.getWidth() * 0.7f, bounds.getHeight()), n,
+              leds::screen::channelSegmentsLit (_barDb, n), leds::screen::channelSegmentsLit (_holdDb, n),
+              [n] (int i) { return leds::screen::channelSegmentZone (i, n); });
 }
 
-void OutputMatrix::setColumn (int column, int bar, int hold)
+OutputMatrix::OutputMatrix()
+{
+    setOpaque (true);
+    _barDb.fill (leds::meterFloorDb);
+    _holdDb.fill (leds::meterFloorDb);
+}
+
+int OutputMatrix::segments() const { return leds::screen::mainSegments (static_cast<float> (getHeight())); }
+
+void OutputMatrix::setColumn (int column, double barDb, double holdDb)
 {
     if (column < 0 || column >= leds::matrixColumns)
         return;
-    if (_bar[(size_t) column] == bar && _hold[(size_t) column] == hold)
+    const auto c = (size_t) column;
+    _barDb[c] = barDb;
+    _holdDb[c] = holdDb;
+    const int n = segments();
+    const int lit = leds::screen::mainSegmentsLit (barDb, n), held = leds::screen::mainSegmentsLit (holdDb, n);
+    if (_lit[c] == lit && _held[c] == held)
         return;
-    _bar[(size_t) column] = bar;
-    _hold[(size_t) column] = hold;
+    _lit[c] = lit;
+    _held[c] = held;
     repaint();
 }
 
 void OutputMatrix::paint (juce::Graphics& g)
 {
-    g.fillAll (theme::background);
+    g.fillAll (theme::panelSeen (isEnabled()));
     const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
-    const float cw = static_cast<float> (getWidth()) / leds::matrixColumns, ch = static_cast<float> (getHeight()) / leds::mainLedCount;
-    const float d = juce::jmin (cw, ch) * 0.7f;
+    const int n = segments();
+    const float cw = static_cast<float> (getWidth()) / leds::matrixColumns;
     for (int c = 0; c < leds::matrixColumns; ++c)
-        for (int row = 0; row < leds::mainLedCount; ++row)
-        {
-            const bool held = row == _hold[(size_t) c] && row > _bar[(size_t) c];
-            g.setColour (row <= _bar[(size_t) c] ? theme::ledGreen : held ? theme::ledYellow : theme::ledOff);
-            const float x = (static_cast<float> (c) + 0.5f) * cw, y = static_cast<float> (getHeight()) - (static_cast<float> (row) + 0.5f) * ch;
-            g.fillEllipse (x - d * 0.5f, y - d * 0.5f, d, d);
-        }
+    {
+        const auto column = juce::Rectangle<float> (static_cast<float> (c) * cw, 0.f, cw, static_cast<float> (getHeight()));
+        paintBar (g, column.withSizeKeepingCentre (cw * 0.6f, column.getHeight()), n,
+                  leds::screen::mainSegmentsLit (_barDb[(size_t) c], n), leds::screen::mainSegmentsLit (_holdDb[(size_t) c], n),
+                  [n] (int i) { return leds::screen::mainSegmentZone (i, n); });
+    }
 }
 
 void OledView::setPicture (const display::Picture& picture)
@@ -91,7 +135,7 @@ juce::Rectangle<float> OledView::panelArea() const
 
 void OledView::paint (juce::Graphics& g)
 {
-    g.fillAll (theme::background);
+    g.fillAll (theme::panelSeen (isEnabled()));
     const DimWhenDisabled dim (g, isEnabled());   // stale: the whole surface dims (spec 4.1)
     if (! _image.isValid())
         return;

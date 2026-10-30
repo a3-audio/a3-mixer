@@ -12,8 +12,10 @@ namespace desk
 {
 namespace
 {
-constexpr float captionOfCell = 0.22f, knobOfSpace = 0.86f, strokeOfKnob = 0.09f;
-constexpr float capOfRing = 0.72f, markerOfStroke = 0.75f;
+// StemDeck's knob (Theme.cpp drawRotarySlider): shares of the knob's radius. Its caption as
+// StemDeck's: a line under the knob, the text 0.85 of the line.
+constexpr float textOfCaption = 0.85f, knobOfSpace = 0.9f;
+constexpr float strokeOfRadius = 0.18f, bodyInsetOfStroke = 2.2f, markerOfStroke = 0.75f;
 /** The encoder's knurl, and the step its cap turns per click: a step the eye
     can follow, not the hardware's detent count (unmeasured, a3_mixer_encoders). */
 constexpr int knurlsPerTurn = 24;
@@ -35,25 +37,31 @@ float capHeightOf (const juce::Slider& fader)
     return faderCap (fader.getLocalBounds().toFloat(), 0.f).getHeight();
 }
 
+/** StemDeck's fader: tick marks either side of a black slot, a wide cap in a gradient with the
+    strip's colour as its line. The cap fills the hit area faderCap() gives. */
 void paintFaderSlot (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
+    const auto slot = bounds.withSizeKeepingCentre (bounds.getWidth() * 0.12f, bounds.getHeight());
+    const float tickGap = slot.getWidth() * 0.5f;
     g.setColour (theme::tick);
     for (int t = 0; t <= 10; ++t)
     {
         const float ty = bounds.getY() + bounds.getHeight() * static_cast<float> (t) / 10.f;
-        g.fillRect (bounds.getX(), ty, bounds.getWidth() * 0.2f, 1.f);
-        g.fillRect (bounds.getRight() - bounds.getWidth() * 0.2f, ty, bounds.getWidth() * 0.2f, 1.f);
+        const float tick = bounds.getWidth() * (t % 5 == 0 ? 0.22f : 0.13f);
+        g.fillRect (slot.getX() - tickGap - tick, ty, tick, 1.f);
+        g.fillRect (slot.getRight() + tickGap, ty, tick, 1.f);
     }
     g.setColour (theme::slot);
-    g.fillRoundedRectangle (bounds.withSizeKeepingCentre (bounds.getWidth() * 0.12f, bounds.getHeight()), 3.f);
+    g.fillRoundedRectangle (slot, slot.getWidth() * 0.5f);
 }
 
 void paintFaderCap (juce::Graphics& g, juce::Rectangle<float> cap, const DeskFader& fader)
 {
-    g.setColour (theme::cap);
-    g.fillRoundedRectangle (cap.reduced (cap.getWidth() * 0.04f), cap.getHeight() * 0.15f);
+    const auto body = cap.reduced (cap.getWidth() * 0.04f, 0.f);
+    g.setGradientFill (juce::ColourGradient (theme::capTop, 0.f, body.getY(), theme::capBottom, 0.f, body.getBottom(), false));
+    g.fillRoundedRectangle (body, body.getHeight() * 0.12f);
     g.setColour (fader.colour);
-    g.fillRect (cap.withSizeKeepingCentre (cap.getWidth() * 0.8f, juce::jmax (2.f, cap.getHeight() * 0.08f)));
+    g.fillRect (body.withSizeKeepingCentre (body.getWidth() * 0.85f, juce::jmax (2.f, body.getHeight() * 0.1f)));
     if (! fader.marked)
         return;
     g.setColour (theme::marker);
@@ -89,36 +97,39 @@ struct KnobParts
     float stroke, ring, cap;
 };
 
-KnobParts partsOf (juce::Rectangle<float> cell)
+KnobParts partsOf (juce::Rectangle<float> cell, std::optional<float> captionHeight = std::nullopt)
 {
     KnobParts k;
-    k.caption = cell.removeFromBottom (cell.getHeight() * captionOfCell);
-    const float diameter = juce::jmin (cell.getWidth(), cell.getHeight()) * knobOfSpace;
+    k.caption = cell.removeFromBottom (captionHeight.value_or (cell.getHeight() * DeskLook::captionOfCell));
+    const float radius = juce::jmin (cell.getWidth(), cell.getHeight()) * knobOfSpace * 0.5f;
     k.centre = cell.getCentre();
-    k.stroke = diameter * strokeOfKnob;
-    k.ring = diameter * 0.5f - k.stroke * 0.5f;
-    k.cap = k.ring * capOfRing;
+    k.stroke = juce::jmax (1.5f, radius * strokeOfRadius);
+    k.ring = radius - k.stroke * 0.5f;
+    k.cap = radius - k.stroke * bodyInsetOfStroke;
     return k;
 }
 
 void paintCap (juce::Graphics& g, const KnobParts& k, float pointerAngle, const juce::String& caption)
 {
-    g.setColour (theme::cap);
+    g.setGradientFill (juce::ColourGradient (theme::bodyTop, k.centre.x, k.centre.y - k.cap, theme::bodyBottom, k.centre.x,
+                                             k.centre.y + k.cap, false));
     g.fillEllipse (k.centre.x - k.cap, k.centre.y - k.cap, 2.f * k.cap, 2.f * k.cap);
+    juce::Path pointer;
+    const float width = juce::jmax (1.5f, k.cap * 0.2f);
+    pointer.addRoundedRectangle (-width * 0.5f, -k.cap * 0.9f, width, k.cap * 0.5f, width * 0.5f);
     g.setColour (theme::pointer);
-    g.drawLine ({ onCircle (k.centre, k.cap * 0.35f, pointerAngle), onCircle (k.centre, k.cap * 0.9f, pointerAngle) },
-                juce::jmax (1.5f, k.stroke * 0.45f));
+    g.fillPath (pointer, juce::AffineTransform::rotation (pointerAngle).translated (k.centre));
     g.setColour (theme::caption);
-    g.setFont (juce::FontOptions (k.caption.getHeight() * 0.7f));
-    g.drawText (caption, k.caption, juce::Justification::centred, false);
+    g.setFont (juce::FontOptions (k.caption.getHeight() * textOfCaption));
+    g.drawFittedText (caption, k.caption.toNearestInt(), juce::Justification::centred, 1, 0.8f);
 }
 }
 
 void DeskLook::paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption,
                           std::optional<float> arcValue, float pointerValue, juce::Colour arc, bool fromMiddle,
-                          bool marked, float startAngle, float endAngle)
+                          bool marked, float startAngle, float endAngle, std::optional<float> captionHeight)
 {
-    const auto k = partsOf (cell);
+    const auto k = partsOf (cell, captionHeight);
     g.setColour (theme::ringTrack);
     arcPath (g, k.centre, k.ring, startAngle, endAngle, k.stroke);
     const auto angleOf = [&] (float v) { return startAngle + juce::jlimit (0.f, 1.f, v) * (endAngle - startAngle); };
@@ -146,7 +157,7 @@ void DeskLook::paintEncoder (juce::Graphics& g, juce::Rectangle<float> cell, con
     constexpr float fullTurn = juce::MathConstants<float>::twoPi;
     g.setColour (theme::ringTrack);
     arcPath (g, k.centre, k.ring, 0.f, fullTurn, k.stroke);
-    g.setColour (theme::caption);
+    g.setColour (theme::textDim);
     for (int i = 0; i < knurlsPerTurn; ++i)
     {
         const float a = fullTurn * static_cast<float> (i) / static_cast<float> (knurlsPerTurn);
@@ -165,7 +176,7 @@ void DeskLook::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int
     const DimWhenDisabled dim (g, slider.isEnabled());
     paintKnob (g, juce::Rectangle<int> (x, y, width, height).toFloat(), knob->caption,
                knob->known ? std::optional<float> (position) : std::nullopt, position, knob->arc,
-               knob->fromMiddle, knob->marked, startAngle, endAngle);
+               knob->fromMiddle, knob->marked, startAngle, endAngle, knob->captionHeight);
 }
 
 juce::Slider::SliderLayout DeskLook::getSliderLayout (juce::Slider& slider)

@@ -43,6 +43,22 @@ double lightOf (const juce::Image& image)
     return sum;
 }
 
+bool isLit (juce::Colour p) { return p.getPerceivedBrightness() > 0.3f; }
+
+/** Lit runs down one pixel column: one per lit segment where segments are lines with gaps between. */
+int litRunsDown (const juce::Image& image, int x)
+{
+    int runs = 0;
+    bool inside = false;
+    for (int y = 0; y < image.getHeight(); ++y)
+    {
+        const bool lit = isLit (image.getPixelAt (x, y));
+        runs += lit && ! inside ? 1 : 0;
+        inside = lit;
+    }
+    return runs;
+}
+
 juce::Image snapshotOf (juce::Component& c, int w, int h)
 {
     c.setBounds (0, 0, w, h);
@@ -186,8 +202,10 @@ TEST (DeskUi, TheGrabAreaIsTheDrawnCap)
     const auto image = snapshotOf (fader, 60, 400);
     const auto inside = image.getPixelAt (x, (int) (cap.getY() + cap.getHeight() * 0.3f));
     const auto outside = image.getPixelAt (x, (int) cap.getY() - 4);
-    EXPECT_LE (std::abs (inside.getRed() - theme::cap.getRed()), 4);
-    EXPECT_NE (outside, theme::cap);
+    // StemDeck's cap: a gradient from capTop down to capBottom.
+    const auto capAt = theme::capTop.interpolatedWith (theme::capBottom, 0.3f);
+    EXPECT_LE (std::abs (inside.getRed() - capAt.getRed()), 6);
+    EXPECT_GT (std::abs (outside.getRed() - capAt.getRed()), 6);
     fader.setLookAndFeel (nullptr);
 }
 
@@ -263,32 +281,101 @@ TEST (DeskUi, AnEncoderWithoutSizeStaysFinite)
     EXPECT_EQ (total, 3);
 }
 
-TEST (DeskUi, TheLedsLightNOfEightInTheirColours)
+TEST (DeskUi, TheLedsLightInTheirColours)
 {
     LedColumn leds;
-    leds.setLeds (4, -1);
+    leds.setLevels (-14.0, -14.0);   // the -18 LED's group and most of the -12 one's
     auto image = snapshotOf (leds, 30, 240);
     EXPECT_GT (countNear (image, theme::ledGreen, 16), 0);
     EXPECT_EQ (countNear (image, theme::ledRed, 16), 0);
-    leds.setLeds (8, 7);
-    EXPECT_GT (countNear (snapshotOf (leds, 30, 240), theme::ledRed, 16), 0);
+    EXPECT_EQ (countNear (image, theme::ledOrange, 16), 0);
+    leds.setLevels (0.0, 0.0);
+    image = snapshotOf (leds, 30, 240);
+    EXPECT_GT (countNear (image, theme::ledYellow, 16), 0);
+    EXPECT_GT (countNear (image, theme::ledOrange, 16), 0);
+    EXPECT_GT (countNear (image, theme::ledRed, 16), 0);
+}
+
+// Lines, not dots (maintainer, 2026-10-30): every segment a bar across the meter, many of them.
+TEST (DeskUi, TheChannelMeterDrawsManyLines)
+{
+    LedColumn leds;
+    leds.setLevels (0.0, 0.0);
+    const auto image = snapshotOf (leds, 30, 320);
+    EXPECT_EQ (litRunsDown (image, 15), leds::screen::channelSegments (320.f));
+    EXPECT_GE (litRunsDown (image, 15), 64);
+    const int y = image.getHeight() - 3;   // inside the bottom segment
+    int lit = 0;
+    for (int x = 0; x < image.getWidth(); ++x)
+        lit += isLit (image.getPixelAt (x, y)) ? 1 : 0;
+    EXPECT_GT (lit, image.getWidth() / 2);
+}
+
+TEST (DeskUi, TheChannelMeterKeepsItsPeakHold)
+{
+    LedColumn leds;
+    leds.setLevels (-30.0, -30.0);
+    const auto without = snapshotOf (leds, 30, 320);
+    leds.setLevels (-30.0, -7.0);
+    const auto with = snapshotOf (leds, 30, 320);
+    EXPECT_EQ (countNear (without, theme::ledOrange, 16), 0);
+    EXPECT_GT (countNear (with, theme::ledOrange, 16), 0);
+    EXPECT_EQ (litRunsDown (with, 15), litRunsDown (without, 15) + 1);
 }
 
 TEST (DeskUi, TheOutputMatrixLightsItsRows)
 {
     OutputMatrix matrix;
     const auto dark = countNear (snapshotOf (matrix, 200, 300), theme::ledGreen, 16);
-    matrix.setColumn (0, 20, 25);
+    matrix.setColumn (0, -20.0, -15.0);
     EXPECT_GT (countNear (snapshotOf (matrix, 200, 300), theme::ledGreen, 16), dark);
+}
+
+TEST (DeskUi, TheOutputMetersDrawManyLines)
+{
+    OutputMatrix matrix;
+    for (int column = 0; column < leds::matrixColumns; ++column)
+        matrix.setColumn (column, 0.0, 0.0);
+    const auto image = snapshotOf (matrix, 200, 600);
+    const float columnWidth = 200.f / leds::matrixColumns;
+    for (int column = 0; column < leds::matrixColumns; ++column)
+        EXPECT_EQ (litRunsDown (image, juce::roundToInt ((static_cast<float> (column) + 0.5f) * columnWidth)),
+                   leds::screen::mainSegments (600.f)) << column;
+    EXPECT_GT (countNear (image, theme::ledRed, 16), 0);
 }
 
 TEST (DeskUi, TheOutputMatrixIgnoresAColumnItDoesNotHave)
 {
     OutputMatrix matrix;
     const auto before = countNear (snapshotOf (matrix, 200, 300), theme::ledGreen, 16);
-    matrix.setColumn (-1, 20, 25);
-    matrix.setColumn (8, 20, 25);
+    matrix.setColumn (-1, -20.0, -15.0);
+    matrix.setColumn (8, -20.0, -15.0);
     EXPECT_EQ (countNear (snapshotOf (matrix, 200, 300), theme::ledGreen, 16), before);
+}
+
+// StemDeck's keys: a lit key is filled with its lamp, not marked by a strip.
+TEST (DeskUi, ALitKeyIsFilledWithItsLamp)
+{
+    DeskKey key ("CUE", theme::lampCue);
+    const auto dark = countNear (snapshotOf (key, 80, 60), theme::lampCue, 16);
+    key.setLit (true);
+    EXPECT_LT (dark, 80 * 60 / 20);
+    EXPECT_GT (countNear (snapshotOf (key, 80, 60), theme::lampCue, 16), 80 * 60 / 2);
+}
+
+// StemDeck's knobs: a body in its grey with a light pointer, the value arc in the channel's colour.
+TEST (DeskUi, AKnobWearsStemDecksBody)
+{
+    DeskLook look;
+    DeskKnob knob ("TRIM", theme::channel[0], false);
+    knob.setLookAndFeel (&look);
+    knob.known = true;
+    knob.setValue (0.8, juce::dontSendNotification);
+    const auto image = snapshotOf (knob, 120, 100);
+    EXPECT_GT (countNear (image, theme::channel[0], 16), 50);
+    EXPECT_GT (countNear (image, theme::outline, 6), 20);   // the track, as StemDeck's
+    EXPECT_GT (countNear (image, theme::text, 16), 5);      // the pointer
+    knob.setLookAndFeel (nullptr);
 }
 
 TEST (DeskUi, TheOledShowsThePicture)
@@ -405,10 +492,10 @@ TEST (DeskUi, EveryControlPaintsDisabledDimmer)
 TEST (DeskUi, EveryIndicatorPaintsDisabledDimmer)
 {
     LedColumn leds;
-    leds.setLeds (8, 7);
+    leds.setLevels (0.0, 0.0);
     OutputMatrix matrix;
     for (int column = 0; column < 8; ++column)
-        matrix.setColumn (column, 31, 31);
+        matrix.setColumn (column, 0.0, 0.0);
     OledView oled;
     oled.setPicture (display::channelPicture (0, 0, { 1, 1, 1 }, 1, display::oledWidth,
                                               display::oledHeight, {}, {}));

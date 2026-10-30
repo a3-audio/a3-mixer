@@ -14,29 +14,36 @@
 
 namespace desk
 {
-/** A channel's 8 input LEDs in the firmware's colours, bottom up, and the hold LED. Opaque: repainted at meter pace. */
+/** A channel's input meter: the screen's finer scale (leds::screen), bottom up, and its held peak
+    as a line. Opaque: repainted at meter pace, only when a segment changes. */
 class LedColumn : public juce::Component
 {
 public:
     LedColumn() { setOpaque (true); }
-    void setLeds (int lit, int holdIndex);
+    void setLevels (double barDb, double holdDb);
     void paint (juce::Graphics&) override;
 
 private:
-    int _lit = 0, _hold = -1;
+    int segments() const;
+
+    double _barDb = leds::meterFloorDb, _holdDb = leds::meterFloorDb;
+    int _lit = 0, _held = 0;
 };
 
-/** The 8 x 32 output matrix: SUB, 1-7; the bar and its held dot. */
+/** The output meters: SUB, 1-7, each a bar on the screen's finer scale and its held peak. */
 class OutputMatrix : public juce::Component
 {
 public:
-    OutputMatrix() { setOpaque (true); }
+    OutputMatrix();
     /** A column outside 0-7 is ignored. */
-    void setColumn (int column, int bar, int hold);
+    void setColumn (int column, double barDb, double holdDb);
     void paint (juce::Graphics&) override;
 
 private:
-    std::array<int, leds::matrixColumns> _bar {}, _hold {};
+    int segments() const;
+
+    std::array<double, leds::matrixColumns> _barDb {}, _holdDb {};
+    std::array<int, leds::matrixColumns> _lit {}, _held {};
 };
 
 /** A display, the OLED's picture at its own pixels, scaled whole -- the same picture as the hardware's. */

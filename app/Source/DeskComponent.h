@@ -86,6 +86,7 @@ private:
     void syncControls();
     void showLamps();
     void showMeters();
+    void paintCards (juce::Graphics&) const;
     void showDisplays (double dtSeconds);
     void updateHands();
     void releaseLostGrabs (bool hands);

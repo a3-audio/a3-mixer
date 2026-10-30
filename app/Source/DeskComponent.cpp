@@ -17,6 +17,8 @@ namespace desk
 namespace
 {
 constexpr float captionTextOfBand = 0.6f, textOfMatrixLine = 0.9f;
+/** StemDeck's stem card: a line of its colour on top, a share of the card's height. */
+constexpr float colourLineOfCard = 0.006f;
 
 double fraction (float linear) { return leds::barFraction (leds::peakDb (linear)); }
 
@@ -365,13 +367,12 @@ void DeskComponent::showMeters()
     for (int ch = 1; ch <= numChannels; ++ch)
     {
         const auto r = _meters->channelInput (ch, now);
-        _leds[(size_t) ch - 1]->setLeds (leds::channelLeds (leds::peakDb (r.bar)),
-                                         leds::channelLeds (leds::peakDb (r.hold)) - 1);
+        _leds[(size_t) ch - 1]->setLevels (leds::peakDb (r.bar), leds::peakDb (r.hold));
     }
     for (int column = 0; column < leds::matrixColumns; ++column)
     {
         const auto r = _meters->output (column, now);
-        _matrix->setColumn (column, leds::mainLedIndex (leds::peakDb (r.bar)), leds::mainLedIndex (leds::peakDb (r.hold)));
+        _matrix->setColumn (column, leds::peakDb (r.bar), leds::peakDb (r.hold));
     }
 }
 
@@ -474,14 +475,16 @@ void DeskComponent::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
     const DimWhenDisabled dim (g, handsAccepted());   // the print dims with the surface (spec 4.1)
-    g.setColour (theme::caption);
+    paintCards (g);
+    g.setColour (theme::text);
     for (int ch = 1; ch <= numChannels; ++ch)
     {
         const auto band = _layout.strips[(size_t) ch - 1].caption;
-        g.setFont (juce::FontOptions (band.getHeight() * captionTextOfBand));
+        g.setFont (juce::FontOptions (band.getHeight() * captionTextOfBand, juce::Font::bold));
         g.drawText ("CH " + juce::String (ch), band, juce::Justification::centred, false);
     }
     // The hardware's print under the matrix: the column names, then OUTPUT.
+    g.setColour (theme::caption);
     auto band = _layout.matrixCaption;
     const auto names = band.removeFromTop (band.getHeight() * 0.5f);
     g.setFont (juce::FontOptions (names.getHeight() * textOfMatrixLine));
@@ -490,7 +493,32 @@ void DeskComponent::paint (juce::Graphics& g)
         g.drawFittedText (c == 0 ? juce::String ("SUB") : juce::String (c),
                           names.withX (names.getX() + column * static_cast<float> (c)).withWidth (column).toNearestInt(),
                           juce::Justification::centred, 1, 0.5f);
+    g.setFont (juce::FontOptions (names.getHeight() * textOfMatrixLine, juce::Font::bold));
     g.drawText ("OUTPUT", band, juce::Justification::centred, false);
+}
+
+void DeskComponent::paintCards (juce::Graphics& g) const
+{
+    // StemDeck's cards: the panel's grey, its corner; a strip's colour only as the line on top.
+    const auto fill = [&g] (Rect card) {
+        g.setColour (theme::panel);
+        g.fillRoundedRectangle (card, theme::corner (card));
+    };
+    for (const auto card : { _layout.returnCard, _layout.outputCard, _layout.masterCard })
+        fill (card);
+    for (size_t i = 0; i < (size_t) numChannels; ++i)
+    {
+        const auto& s = _layout.strips[i];
+        fill (s.faderCard);
+        juce::Path outline;
+        outline.addRoundedRectangle (s.card, theme::corner (s.card));
+        g.setColour (theme::panel);
+        g.fillPath (outline);
+        const juce::Graphics::ScopedSaveState clip (g);
+        g.reduceClipRegion (outline);
+        g.setColour (theme::channel[i]);
+        g.fillRect (s.card.withHeight (juce::jmax (2.f, s.card.getHeight() * colourLineOfCard)));
+    }
 }
 
 void DeskComponent::resized()
@@ -513,6 +541,9 @@ void DeskComponent::resized()
         const auto slot = slotOf (pot.key);
         _potControl[i]->setBounds ((slot == (size_t) faderSlot ? strip.fader : strip.pots[slot]).toNearestInt());
     }
+    // MASTER is the large knob, not a large caption: its caption is the pots'.
+    if (auto* knob = dynamic_cast<DeskKnob*> (controlFor ("master.volume", 0)))
+        knob->captionHeight = _layout.strips[0].pots[0].getHeight() * DeskLook::captionOfCell;
     for (size_t i = 0; i < (size_t) numChannels; ++i)
     {
         const auto& s = _layout.strips[i];

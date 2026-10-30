@@ -27,6 +27,8 @@ public:
     juce::String caption;
     juce::Colour arc;
     bool fromMiddle = false, known = false, marked = false;
+    /** In pixels; empty: the cell's share (DeskLook::captionOfCell). */
+    std::optional<float> captionHeight;
 };
 
 /** A fader: grabbed by its cap only, then following the hand; a tap on the
