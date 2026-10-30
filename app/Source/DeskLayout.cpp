@@ -11,15 +11,43 @@ namespace desk
 {
 namespace shares
 {
-// Shares of the window's height unless named otherwise. Read off the V02
-// photo (spec §4.2); Task D3 replaces them with the measured front panel.
-constexpr float gapOfWidth = 0.02f, masterColumns = 1.6f;
-// The encoder row is a pot row: the photo's display encoders are no smaller than the pots.
-constexpr float status = 0.02f, top = 0.075f, display = 0.07f, pot = 0.058f, encoder = pot;
-constexpr float tap = 0.035f, keys = 0.05f, caption = 0.03f;
-constexpr float matrix = 0.20f, matrixCaption = 0.03f, filterPots = 0.075f, filterKeys = 0.05f;
-constexpr float master = 0.12f, monitorPots = 0.075f, phones = 0.075f;
+// Shares of the window's width: the margins and the gaps between cards, the padding inside one.
+constexpr float gapOfWidth = 0.01f, padOfWidth = 0.01f, masterColumns = 1.6f;
+// Shares of the window's height. StemDeck leaves 5 of 1024 px between its cards.
+constexpr float status = 0.02f, top = 0.07f, cardGap = 5.f / 1024.f, caption = 0.025f, matrixCaption = 0.035f;
+// Within a strip card, weights of its height, read off the V02 photo (spec §4.2). The encoder
+// row is a pot row: the photo's display encoders are no smaller than the pots.
+constexpr float display = 0.07f, pot = 0.058f, encoder = pot, tap = 0.035f, keys = 0.05f;
+// Within the master card, weights of its height.
+constexpr float filterPots = 0.075f, filterKeys = 0.05f, master = 0.12f, monitorPots = 0.075f, phones = 0.075f;
 constexpr float meterOfColumn = 0.25f, capOfFaderWidth = 0.45f;
+}
+
+namespace
+{
+/** Hands out a band's rows top down, each its weight's share of the band. */
+class Rows
+{
+public:
+    Rows (Rect band, float totalWeight) : _x (band.getX()), _w (band.getWidth()), _y (band.getY()),
+                                          _scale (band.getHeight() / totalWeight) {}
+    Rect next (float weight)
+    {
+        const Rect r { _x, _y, _w, weight * _scale };
+        _y += r.getHeight();
+        return r;
+    }
+
+private:
+    float _x, _w, _y, _scale;
+};
+
+/** The left and right half of a row. */
+void halves (Rect row, Rect& left, Rect& right)
+{
+    left = row.withWidth (row.getWidth() * 0.5f);
+    right = left.withX (left.getRight());
+}
 }
 
 float fingertipPixels (double dpi, double scale)
@@ -42,66 +70,59 @@ DeskLayout layOutDesk (Rect area, float fingertip)
     DeskLayout l;
     l.fingertip = fingertip;
     const float width = area.getWidth(), height = area.getHeight();
-    const float gap = gapOfWidth * width;
+    const float gap = gapOfWidth * width, pad = padOfWidth * width;
     const float column = (width - 6.f * gap) / (static_cast<float> (numChannels) + masterColumns);
     const auto xOf = [&] (int i) { return area.getX() + gap + static_cast<float> (i) * (column + gap); };
+    const auto yAt = [&] (float share) { return area.getY() + share * height; };
+    const auto card = [] (float x, float w, float y, float bottom) { return Rect { x, y, w, bottom - y }; };
 
-    float y = area.getY();
-    const auto row = [&] (float share) {
-        const Rect r { 0.f, y, 0.f, share * height };
-        y += share * height;
-        return r;
-    };
-    const auto at = [] (Rect band, float x, float w) { return band.withX (x).withWidth (w); };
+    l.status = { area.getX() + gap, area.getY(), width - 2.f * gap, status * height };
 
-    const auto statusBand = row (status);
-    l.status = at (statusBand, area.getX() + gap, width - 2.f * gap);
-    const auto topBand = row (top);
-    l.returnDisplay = at (topBand, xOf (0), column);
-    l.select = at (topBand, xOf (1), column);
-    l.auxReturn = at (topBand, xOf (2), column);
-    const auto displayBand = row (display);
-    const auto encoderBand = row (encoder);
-    std::array<Rect, 5> potBands;
-    for (auto& band : potBands)
-        band = row (pot);
-    const auto tapBand = row (tap);
-    const auto keysBand = row (keys);
-    const float captionHeight = caption * height;
-    const Rect restBand { 0.f, y, 0.f, area.getBottom() - y - captionHeight };
-    const Rect captionBand { 0.f, area.getBottom() - captionHeight, 0.f, captionHeight };
+    // The FX Return over channels 1-3: its display, SELECT, its pot. The card spans all four
+    // strips, so the cards below line up with one above.
+    const float topY = l.status.getBottom();
+    l.returnCard = card (xOf (0), xOf (numChannels - 1) + column - xOf (0), topY, topY + top * height + 2.f * pad);
+    const auto topRow = l.returnCard.reduced (0.f, pad);
+    l.returnDisplay = topRow.withX (xOf (0) + pad).withWidth (column - 2.f * pad);
+    l.select = l.returnDisplay.withX (xOf (1) + pad);
+    l.auxReturn = l.returnDisplay.withX (xOf (2) + pad);
 
+    const float bandTop = yAt (stemDeckBandTop), bandBottom = yAt (stemDeckBandBottom);
+    const float upperBottom = bandTop - cardGap * height;
+    const float stripTop = l.returnCard.getBottom() + cardGap * height;
     for (int i = 0; i < numChannels; ++i)
     {
         auto& s = l.strips[(size_t) i];
         const float x = xOf (i);
-        s.display = at (displayBand, x, column);
-        s.encoder = at (encoderBand, x, column);
-        for (size_t p = 0; p < s.pots.size(); ++p)
-            s.pots[p] = at (potBands[p], x, column);
-        s.tap = at (tapBand, x, column);
-        s.fx = at (keysBand, x, column * 0.5f);
-        s.cue = at (keysBand, x + column * 0.5f, column * 0.5f);
-        s.meter = at (restBand, x, column * meterOfColumn);
-        s.fader = at (restBand, x + column * meterOfColumn, column * (1.f - meterOfColumn));
-        s.caption = at (captionBand, x, column);
+        s.card = card (x, column, stripTop, upperBottom);
+        Rows rows (s.card.reduced (pad), display + encoder + 5.f * pot + tap + keys);
+        s.display = rows.next (display);
+        s.encoder = rows.next (encoder);
+        for (auto& p : s.pots)
+            p = rows.next (pot);
+        s.tap = rows.next (tap);
+        halves (rows.next (keys), s.fx, s.cue);
+
+        s.faderCard = card (x, column, bandTop, bandBottom);
+        auto inside = s.faderCard.reduced (pad);
+        s.caption = inside.removeFromBottom (caption * height);
+        s.meter = inside.removeFromLeft (inside.getWidth() * meterOfColumn);
+        s.fader = inside;
     }
 
     const float mx = xOf (numChannels), mw = masterColumns * column;
-    y = topBand.getY();
-    const auto whole = [&] (float share) { return at (row (share), mx, mw); };
-    const auto halves = [&] (float share, Rect& left, Rect& right) {
-        const auto band = row (share);
-        left = at (band, mx, mw * 0.5f);
-        right = at (band, mx + mw * 0.5f, mw * 0.5f);
-    };
-    l.matrix = whole (matrix);
-    l.matrixCaption = whole (matrixCaption);
-    halves (filterPots, l.freq, l.res);
-    halves (filterKeys, l.hpf, l.lpf);
-    l.master = whole (master);
-    halves (monitorPots, l.booth, l.cueMix);
-    halves (phones, l.phones, l.lock);
+    l.outputCard = card (mx, mw, topY, upperBottom);
+    auto outputs = l.outputCard.reduced (pad);
+    l.matrixCaption = outputs.removeFromBottom (matrixCaption * height);
+    l.matrix = outputs;
+
+    l.masterCard = card (mx, mw, bandTop, bandBottom);
+    Rows rows (l.masterCard.reduced (pad), filterPots + filterKeys + master + monitorPots + phones);
+    halves (rows.next (filterPots), l.freq, l.res);
+    halves (rows.next (filterKeys), l.hpf, l.lpf);
+    l.master = rows.next (master);
+    halves (rows.next (monitorPots), l.booth, l.cueMix);
+    halves (rows.next (phones), l.phones, l.lock);
 
     const auto targets = touchTargets (l);
     l.fits = std::all_of (targets.begin(), targets.end(), [fingertip] (const Rect& r) {
