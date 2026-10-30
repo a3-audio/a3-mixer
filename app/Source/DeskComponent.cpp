@@ -150,14 +150,7 @@ void DeskComponent::buildMaster()
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              _select.get(), _returnDisplay.get(), _delayCue.get(), _tap.get(), _hpf.get(), _lpf.get(), _matrix.get() })
         show (*c);
-    // Not among the handed: the way out works whatever Core does. Hidden until there is an i3 to ask.
-    _workspace.setTooltip ("On to the next workspace (i3)");
-    _workspace.setMouseClickGrabsKeyboardFocus (false);
-    _workspace.onClick = [this] {
-        if (_i3)
-            _i3 (screen::nextWorkspaceCommand());
-    };
-    addChildComponent (_workspace);
+
     _status->onLiveTapped = [this] { liveTapped(); };
     show (*_status, false);   // says why the rest is dim: never dimmed itself
 }
@@ -252,8 +245,13 @@ void DeskComponent::touchPot (int pot, float value)
 
 void DeskComponent::setWorkspaceRunner (screen::I3Runner runner)
 {
-    _i3 = std::move (runner);
-    _workspace.setVisible (_i3 != nullptr);
+    // Not among the handed: the way out works whatever Core does.
+    _switch.reset();
+    if (runner == nullptr)
+        return;
+    _switch = std::make_unique<WorkspaceSwitch> (std::move (runner));
+    _switch->attachTo (*this);
+    _switch->place (_layout.workspace.toNearestInt());
 }
 
 void DeskComponent::setHandsWithheld (bool withheld)
@@ -604,7 +602,8 @@ void DeskComponent::resized()
     }
     _delayCue->setBounds (_layout.strips[2].tap.toNearestInt());
     _tap->setBounds (_layout.strips[3].tap.toNearestInt());
-    _workspace.setBounds (_layout.workspace.toNearestInt());
+    if (_switch != nullptr)
+        _switch->place (_layout.workspace.toNearestInt());
     _select->setBounds (_layout.select.toNearestInt());
     _returnDisplay->setBounds (_layout.returnDisplay.toNearestInt());
     _hpf->setBounds (_layout.hpf.toNearestInt());

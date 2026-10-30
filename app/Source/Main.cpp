@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <cstdint>
 #include <cstdlib>
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -36,10 +37,15 @@ public:
     {
         window = std::make_unique<desk::DeskWindow>();
         window->content.setWorkspaceRunner (desk::screen::systemI3Runner());
-        // The rig's launch says --fullscreen (as StemDeck's service): the i3 rule alone can miss a window
-        // JUCE builds and drops again while it comes up (StemDeck, 2026-09-30).
+        // Full screen however the desk is started (launcher, Canvas, a unit). JUCE's setFullScreen is a
+        // maximise, which i3 tiles under its bar (03.0+247 on a3nuc2): i3 is asked for its own full screen on
+        // this window once it is mapped, and once more in case i3 managed it late.
         if (desk::screen::wantsFullScreen (getCommandLineParameterArray()))
+        {
             window->setFullScreen (true);
+            for (const int afterMs : { 300, 1500 })
+                juce::Timer::callAfterDelay (afterMs, [this] { askI3ForFullScreen(); });
+        }
         const juce::File cache (a3::truthkeeper::cachePath (
             juce::File::getSpecialLocation (juce::File::userHomeDirectory).getFullPathName().toStdString()));
         // $A3_OSC_TRUTH set: still hear /core/here (Core silent), but never fetch or reload.
@@ -59,6 +65,14 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
+    void askI3ForFullScreen()
+    {
+        if (window == nullptr || window->getPeer() == nullptr)
+            return;
+        const auto id = reinterpret_cast<std::uintptr_t> (window->getPeer()->getNativeHandle());
+        desk::screen::systemI3Runner() (desk::screen::fullScreenCommand (static_cast<unsigned long> (id)));
+    }
+
     /** At start and on every truth Core serves anew: in-process, no restart (spec §4.4). */
     void load()
     {

@@ -116,7 +116,8 @@ std::optional<int> DelayList::turn (int clicks, double nowMs)
         return std::nullopt;
     if (_mode == Mode::select)
     {
-        _cursor = std::clamp (_cursor + clicks, 0, rowCount - 1);
+        // Left moves down the list, right up (maintainer, 2026-10-30); a value in edit keeps right = more.
+        _cursor = std::clamp (_cursor - clicks, 0, rowCount - 1);
         return std::nullopt;
     }
     _lastTouchMs = nowMs;

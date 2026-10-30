@@ -10,13 +10,14 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "EncoderTurns.h"
+#include "FirstSourceOnly.h"
 
 namespace desk
 {
 /** A pot: JUCE's rotary slider, dragged vertically, wheel for fine steps.
     Two taps put it at restPosition() where it has one (set by DeskComponent;
     the maintainer's call of 2026-10-17 over spec Q10). */
-class DeskKnob : public juce::Slider
+class DeskKnob : public FollowsOneSource<juce::Slider>
 {
 public:
     DeskKnob (juce::String caption, juce::Colour arc, bool fromMiddle);
@@ -33,7 +34,7 @@ public:
 
 /** A fader: grabbed by its cap only, then following the hand; a tap on the
     slot does nothing -- a desk fader never jumps to the finger (spec 4.3). */
-class DeskFader : public juce::Slider
+class DeskFader : public FollowsOneSource<juce::Slider>
 {
 public:
     explicit DeskFader (juce::Colour colour);

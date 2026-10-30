@@ -25,6 +25,7 @@ set(_a3desk_sources
     EncoderTurns.cpp
     DeskOsc.cpp
     DeskScreen.cpp
+    DeskWorkspaceSwitch.cpp
     DeskWindow.cpp
     DeskWire.cpp
     DeskState.cpp

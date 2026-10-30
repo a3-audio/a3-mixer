@@ -142,7 +142,7 @@ TEST (DeskPromo, WritesThePlayingDeskForReview)
     std::vector<Outgoing> sent;
     DeskComponent desk ([&sent] (const Outgoing& out) { sent.push_back (out); return true; });
     desk.setSize (rigWidth, rigHeight);
-    desk.setWorkspaceRunner ([] (const std::vector<std::string>&) {});   // the rig's key, never run here
+    desk.setWorkspaceRunner ([] (const std::vector<std::string>&) { return std::string(); });   // the rig's switch, never run here
     desk.useTruth (test::truth());
     ASSERT_NE (desk.osc(), nullptr) << desk.statusText();
     desk.setLinkState (DeskLink::Opened::ok);

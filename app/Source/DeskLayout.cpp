@@ -4,6 +4,8 @@
 
 #include "DeskLayout.h"
 
+#include "DeskScreen.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -22,8 +24,7 @@ constexpr float display = 0.07f, pot = 0.058f, encoder = pot, tap = 0.035f, keys
 constexpr float filterPots = 0.075f, filterKeys = 0.05f, monitorPots = 0.075f;
 // MASTER and BOOTH over the output meters, a share of the window's height: the size MASTER had in the master card.
 constexpr float levels = 0.105f;
-// The workspace key: StemDeck's and A3 Motion's app key (switcherGeometry), shares of the window's width.
-constexpr float workspaceOfWidth = 80.f / 768.f, workspaceMarginOfWidth = 6.f / 768.f;
+
 constexpr float meterOfColumn = 0.25f, capOfFaderWidth = 0.45f;
 }
 
@@ -80,10 +81,12 @@ DeskLayout layOutDesk (Rect area, float fingertip)
     const auto yAt = [&] (float share) { return area.getY() + share * height; };
     const auto card = [] (float x, float w, float y, float bottom) { return Rect { x, y, w, bottom - y }; };
 
-    // The status line is as tall as the workspace key at its right end needs: a fingertip at least.
+    // The status line is as tall as the workspace switch at its right end needs: a fingertip at least. The
+    // switch is StemDeck's and A3 Motion's: the app key, then the arrow (switcherGeometry).
     const float statusHeight = std::max (status * height, fingertip);
-    const float keyWidth = std::max (workspaceOfWidth * width, fingertip);
-    l.workspace = { area.getRight() - workspaceMarginOfWidth * width - keyWidth, area.getY(), keyWidth, statusHeight };
+    const auto switcher = screen::switcherGeometry (static_cast<int> (width));
+    const float switchWidth = static_cast<float> (switcher.appKeyWidth + switcher.gap + switcher.arrowWidth);
+    l.workspace = { area.getRight() - static_cast<float> (switcher.margin) - switchWidth, area.getY(), switchWidth, statusHeight };
     l.status = { area.getX() + gap, area.getY(), l.workspace.getX() - gap - (area.getX() + gap), statusHeight };
 
     // The FX Return over channels 1-3: its display, SELECT, its pot. The card spans all four

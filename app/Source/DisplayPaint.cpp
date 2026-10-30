@@ -4,6 +4,9 @@
 
 #include "DisplayPaint.h"
 
+#include <algorithm>
+#include <optional>
+
 namespace desk::display
 {
 namespace
@@ -14,6 +17,8 @@ constexpr int frame = 1, toggleInset = 3, clipHatch = 3;
 // The hardware's list (a3_mixer_displays): dark columns at a row's ends and least between name and value.
 constexpr int rowPad = 2, rowTextGap = 4;
 constexpr float capOfFont = 0.72f;
+// A large heading's capitals leave this many dark rows above and below: 10 of the 14-row band at 64 rows.
+constexpr int largeHeadingMargin = 2;
 
 juce::Rectangle<int> rectOf (const Box& b) { return { b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1 }; }
 Box inset (const Box& b, int n) { return { b.x0 + n, b.y0 + n, b.x1 - n, b.y1 - n }; }
@@ -54,6 +59,50 @@ juce::Font rowFont (const std::vector<Row>& rows)
             return font;
     }
     return juce::Font (juce::FontOptions { 4.f });
+}
+
+juce::Rectangle<float> inkOf (const juce::Font& font, const juce::String& t)
+{
+    // The outlines, not the line's box: the capitals are what is measured.
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText (font, t, 0.f, 0.f);
+    juce::Path outlines;
+    glyphs.createPath (outlines);
+    return outlines.getBounds();
+}
+
+/** The one size of a picture's large headings: the largest at which every one's capitals leave a dark row
+    above and below and its text fits its box's width. */
+std::optional<juce::Font> largeHeadingFont (const std::vector<Heading>& headings)
+{
+    std::vector<const Heading*> large;
+    for (const auto& h : headings)
+        if (h.large)
+            large.push_back (&h);
+    if (large.empty())
+        return std::nullopt;
+    for (float size = static_cast<float> (large.front()->box.y1 - large.front()->box.y0 + 1) * 2.f; size > 4.f; size -= 0.25f)
+    {
+        const juce::Font font (juce::FontOptions { size });
+        const bool fits = std::all_of (large.begin(), large.end(), [&font] (const Heading* h) {
+            const auto ink = inkOf (font, juce::String (h->text));
+            return ink.getHeight() <= static_cast<float> (h->box.y1 - h->box.y0 + 1 - 2 * largeHeadingMargin)
+                && ink.getWidth() <= static_cast<float> (h->box.x1 - h->box.x0 + 1 - rowPad);
+        });
+        if (fits)
+            return font;
+    }
+    return juce::Font (juce::FontOptions { 4.f });
+}
+
+/** A large heading's ink at its box's left, where the rows' names start, and centred top to bottom. */
+void largeText (juce::Graphics& g, const juce::Font& font, const Heading& h)
+{
+    const auto ink = inkOf (font, juce::String (h.text));
+    const auto box = rectOf (h.box).toFloat();
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText (font, juce::String (h.text), box.getX() + rowPad - ink.getX(), box.getCentreY() - ink.getCentreY());
+    glyphs.draw (g);
 }
 
 void delayRows (juce::Graphics& g, const std::vector<Row>& rows)
@@ -103,8 +152,12 @@ juce::Image paintPicture (const Picture& p, int width, int height)
     juce::Image image (juce::Image::RGB, width, height, true);
     juce::Graphics g (image);
     g.setColour (juce::Colours::white);
+    const auto largeFont = largeHeadingFont (p.headings);
     for (const auto& h : p.headings)
-        text (g, h.box, h.text);
+        if (h.large)
+            largeText (g, *largeFont, h);
+        else
+            text (g, h.box, h.text);
     for (const auto& d : p.dividers)
         g.fillRect (rectOf (d));
     for (const auto& m : p.marks)

@@ -269,16 +269,15 @@ const std::array<std::string, 4> someValues { "1/4", "70%", "HP 3", "60\xc2\xb0"
 }
 
 // The desk's return with the delay list (maintainer, 2026-10-30): the hardware's rows -- BEAT, FEEDBK,
-// COLOR, SPREAD under DELAY, CUE no longer one of them -- left-aligned, the VU under AUX at the right.
+// COLOR, SPREAD under DELAY, CUE no longer one of them -- left-aligned, the VU at the right. No AUX heading:
+// the VU is the delay's return, DELAY covers it, and the VU takes the panel's whole height.
 TEST (DisplayPicture, TheDelayReturnHasTheRowsLeftAndTheMeterRight)
 {
     const auto p = delayReturnPicture (false, 0, someValues, 0.5, oledWidth, oledHeight, false, 0.0);
     ASSERT_EQ (p.rows.size(), 4u);
     ASSERT_EQ (p.meters.size(), 1u);
-    ASSERT_EQ (p.headings.size(), 2u);
+    ASSERT_EQ (p.headings.size(), 1u);
     EXPECT_EQ (p.headings[0].text, "DELAY");
-    EXPECT_EQ (p.headings[1].text, "AUX");
-    EXPECT_EQ (p.headings[0].box.y0, p.headings[1].box.y0);
     EXPECT_EQ (p.headings[0].box.x0, p.rows[0].box.x0);   // the heading over the rows, at the left margin
     EXPECT_LE (p.rows[0].box.x0, 1);
     const auto& meter = p.meters[0].box;
@@ -286,6 +285,8 @@ TEST (DisplayPicture, TheDelayReturnHasTheRowsLeftAndTheMeterRight)
         EXPECT_LT (row.box.x1, meter.x0) << row.name;
     EXPECT_GE (meter.x1, oledWidth - 8);                   // at the right edge
     EXPECT_EQ (meter.x1 - meter.x0 + 1, 22);               // the return's meter, as wide as before
+    EXPECT_EQ (meter.y0, 0);
+    EXPECT_EQ (meter.y1, oledHeight - 1);
     ASSERT_EQ (p.dividers.size(), 1u);
     EXPECT_GT (p.dividers[0].x0, p.rows[0].box.x1);
     EXPECT_LT (p.dividers[0].x0, meter.x0 - 2);            // the scale marks stand left of the bar
@@ -346,4 +347,45 @@ TEST (DisplayPaint, TheDelayRowsPaintTheirLitPart)
     const auto& other = selecting.rows[3].box;
     EXPECT_GT (litIn (shotSelecting, other.x0, other.x1, other), 0);
     EXPECT_LT (litIn (shotSelecting, other.x0, other.x1, other), (other.x1 - other.x0 + 1) * (other.y1 - other.y0 + 1) / 2);
+}
+
+namespace
+{
+/** The rows and columns of a box that carry ink. */
+juce::Rectangle<int> inkIn (const juce::Image& image, const Box& b)
+{
+    int top = -1, bottom = -1, left = -1, right = -1;
+    for (int y = b.y0; y <= b.y1; ++y)
+        for (int x = b.x0; x <= b.x1; ++x)
+            if (image.getPixelAt (x, y).getBrightness() > 0.5f)
+            {
+                top = top < 0 ? y : top;
+                bottom = y;
+                left = left < 0 ? x : juce::jmin (left, x);
+                right = juce::jmax (right, x);
+            }
+    return top < 0 ? juce::Rectangle<int>() : juce::Rectangle<int>::leftTopRightBottom (left, top, right + 1, bottom + 1);
+}
+}
+
+// Maintainer, 2026-10-30: DELAY larger on the desk -- the largest size whose capitals leave two dark rows
+// above and below in its band (rows 0-13) and whose text fits its box; the rows keep their place.
+TEST (DisplayPaint, TheDelayHeadingIsLarge)
+{
+    const auto p = delayReturnPicture (false, 0, someValues, 0.0, oledWidth, oledHeight, false, 0.0);
+    ASSERT_EQ (p.headings.size(), 1u);
+    for (const auto& h : p.headings)
+    {
+        EXPECT_TRUE (h.large) << h.text;
+        EXPECT_EQ (h.box.y0, 0);
+        EXPECT_EQ (h.box.y1, 13);
+        EXPECT_LT (h.box.y1, p.rows[0].box.y0 - 1) << h.text;
+    }
+    const auto image = paintPicture (p, oledWidth, oledHeight);
+    const auto delayInk = inkIn (image, p.headings[0].box);
+    ASSERT_FALSE (delayInk.isEmpty());
+    EXPECT_GE (delayInk.getHeight(), 9);   // was 6 of the 12-row band
+    EXPECT_LE (delayInk.getHeight(), 14 - 4);
+    EXPECT_GE (delayInk.getY(), 2);
+    EXPECT_LE (delayInk.getBottom(), 12);
 }

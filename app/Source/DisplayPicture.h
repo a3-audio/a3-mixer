@@ -32,7 +32,13 @@ struct Heading
 {
     Box box;
     std::string text;
+    /** The return's DELAY (maintainer, 2026-10-30): the largest size whose capitals leave two dark rows above
+        and below and whose text fits its box (one size for all large headings of a picture). */
+    bool large = false;
 };
+
+/** The large headings' band: rows 0 to this share of the panel's height (0-13 of 64). */
+inline constexpr double largeHeadingOfHeight = 0.22;
 
 struct Meter
 {
@@ -100,7 +106,7 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
     the CUE field behind it. Nothing to choose, so no arrow and no bracket (noBox). */
 Picture returnPicture (bool cue, double level, int width, int height, bool clip, double hold);
 /** The FX Return with the delay list (the desk's, maintainer 2026-10-30): the hardware's rows under DELAY,
-    left-aligned, a divider, and the one meter under AUX at the right edge. `values` are the rows' texts;
+    left-aligned, a divider, and the one meter at the right edge, the panel's whole height. `values` are the rows' texts;
     the row under `cursor` is lit whole while selecting, only its value while `editing`. */
 Picture delayReturnPicture (bool editing, int cursor, const std::array<std::string, 4>& values, double level, int width,
                             int height, bool clip, double hold);

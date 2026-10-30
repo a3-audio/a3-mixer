@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <functional>
+
 #include <gtest/gtest.h>
 
 #include "DeskComponent.h"
@@ -896,7 +898,7 @@ TEST (DeskComponent, TheReturnEncoderWalksTheDelayListAsTheHardware)
     auto desk = deskJoined (c);
     auto* select = selectOf (*desk);
     ASSERT_NE (select, nullptr);
-    turnBy (*select, 1);   // BEAT -> FEEDBK
+    turnBy (*select, -1);   // left: BEAT -> FEEDBK, down the list
     push (*select);
     EXPECT_TRUE (c.sent.empty()) << c.addresses().joinIntoString (" ");
     turnBy (*select, 1);
@@ -905,7 +907,7 @@ TEST (DeskComponent, TheReturnEncoderWalksTheDelayListAsTheHardware)
     EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
     push (*select);   // select again: the turn moves the cursor
     c.sent.clear();
-    turnBy (*select, 1);
+    turnBy (*select, -1);
     EXPECT_TRUE (c.sent.empty());
     push (*select);
     turnBy (*select, -1);
@@ -1036,5 +1038,73 @@ TEST (DeskComponent, MasterAndBoothStandAboveTheOutputMeters)
         ASSERT_NE (knob, nullptr);
         EXPECT_LT (knob->getBottom(), layout.matrix.getY() + 1) << key;
         EXPECT_TRUE (layout.outputCard.toNearestInt().contains (knob->getBounds())) << key;
+    }
+}
+
+namespace
+{
+/** One finger dragging up `rise` pixels on the rig: touch#0 and X's emulated mouse#0 each go down, move in
+    steps -- the mouse a step behind, as X's copy lags -- and lift; Core relays `relayed` (of the desk's
+    current value) after every step, as it relays the pot to every desk. */
+void dragTwiceDelivered (DeskComponent& desk, juce::ComponentPeer& peer, int pot, juce::Point<float> at, float rise,
+                         juce::int64 t, const std::function<float (float)>& relayed)
+{
+    constexpr int steps = 10;
+    const auto move = [&peer] (Source s, juce::Point<float> p, juce::int64 ms) {
+        peer.handleMouseEvent (s, p, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier), 1.f, 0.f, ms);
+    };
+    press (peer, Source::touch, at, t);
+    press (peer, Source::mouse, at, t + 2);
+    auto last = at;
+    for (int i = 1; i <= steps; ++i)
+    {
+        const auto p = at.translated (0.f, -rise * static_cast<float> (i) / steps);
+        move (Source::touch, p, t + 10 * i);
+        move (Source::mouse, last, t + 10 * i + 2);
+        last = p;
+        const auto& k = allPots()[(size_t) pot];
+        desk.receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (k.key, k.channel)), relayed (desk.state().value (pot))),
+                      (double) (t + 10 * i + 5));
+    }
+    lift (peer, Source::touch, last, t + 200);
+    lift (peer, Source::mouse, last, t + 202);
+}
+}
+
+// Maintainer, 2026-10-30, on the rig: "I can't operate the pots". A finger's drag, delivered twice as the
+// rig's X delivers it, moves the pot with the finger and sends the new value -- every kind of pot.
+TEST (DeskComponent, AFingerDragsAPotOnTheRig)
+{
+    for (const auto& [key, channel] : std::vector<std::pair<std::string, int>> {
+             { "channel.gain", 1 }, { "channel.eq.mid", 3 }, { "master.volume", 0 }, { "filter.frequency", 0 } })
+    {
+        Captured c;
+        auto desk = deskJoined (c);
+        desk->setSize (768, 1024);
+        test::PeerHost window;
+        window.setBounds (desk->getLocalBounds());
+        window.addAndMakeVisible (*desk);
+        window.addToDesktop (0);
+        window.setVisible (true);
+        auto* peer = window.getPeer();
+        ASSERT_NE (peer, nullptr);
+        const int pot = potIndex (key, channel);
+        const auto& k = allPots()[(size_t) pot];
+        desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (k.key, k.channel)), 0.3f), 500);   // Core's value
+        c.sent.clear();
+        auto* control = potControl (*desk, pot);
+        const auto at = control->getBounds().getCentre().toFloat();
+        const float rise = 0.25f * static_cast<float> (control->getHeight());
+
+        dragTwiceDelivered (*desk, *peer, pot, at, rise, 10000, [] (float sent) { return sent; });
+        ASSERT_FALSE (c.sent.empty()) << key;
+        const float expected = juce::jmin (1.f, 0.3f + rise / (4.f * static_cast<float> (control->getHeight())));
+        EXPECT_NEAR (c.sent.back().message[0].getFloat32(), expected, 0.02f) << key;
+        EXPECT_NEAR (desk->state().value (pot), expected, 0.02f) << key;
+        EXPECT_NEAR ((float) control->getValue(), expected, 0.02f) << key;
+        // Values only rise with the finger: X's lagging copy never pulls the pot back.
+        for (size_t i = 1; i < c.sent.size(); ++i)
+            EXPECT_GE (c.sent[i].message[0].getFloat32() + 1e-6f, c.sent[i - 1].message[0].getFloat32()) << key << " " << i;
+        window.removeChildComponent (desk.get());
     }
 }

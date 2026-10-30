@@ -10,7 +10,7 @@
 #include <vector>
 
 /** The delay list on the FX Return's encoder, as the hardware has it (a3_mixer_delay.DelayList and
-    display_panel.delay_text): select, the start mode with the cursor on BEAT, where a turn moves the
+    display_panel.delay_text): select, the start mode with the cursor on BEAT, where a turn (left down the list, right up) moves the
     cursor and stops at the ends; edit, where a turn goes to Core as the row's turn word. A press toggles
     the two; four quiet seconds in edit select again (R22). The mode and the cursor are the desk's own,
     the values Core's. One difference, the maintainer's (2026-10-30): CUE is no row here -- the desk has

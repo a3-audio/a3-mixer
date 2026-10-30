@@ -20,6 +20,7 @@
 #include "DeskLook.h"
 #include "DeskMeters.h"
 #include "DeskScreen.h"
+#include "DeskWorkspaceSwitch.h"
 #include "DeskState.h"
 #include "DeskWire.h"
 #include "StartupAsk.h"
@@ -56,8 +57,9 @@ public:
     void step (double nowMs);
 
     void touchPot (int pot, float value);
-    /** Shows the key to the next i3 workspace and runs i3 through `runner`; without one there is no key. */
+    /** Adds StemDeck's and A3 Motion's workspace switch, asking i3 through `runner`; without one there is none. */
     void setWorkspaceRunner (screen::I3Runner runner);
+    WorkspaceSwitch* workspaceSwitch() { return _switch.get(); }
     /** While true no hand is taken and every control dims, as before Core answers. */
     void setHandsWithheld (bool withheld);
     bool handsAccepted() const;
@@ -136,9 +138,8 @@ private:
     /** Of the hardware's four tap keys: the third is DELAY CUE, the fourth TAP (maintainer, 2026-10-30). */
     std::unique_ptr<DeskKey> _delayCue, _tap, _hpf, _lpf;
     delay::DelayList _delay;
-    /** The way to the next workspace: always enabled, shown only with a runner (setWorkspaceRunner). */
-    juce::TextButton _workspace { juce::String::fromUTF8 ("NEXT \xe2\x96\xb8") };
-    screen::I3Runner _i3;
+    /** The way to the other workspaces: never dimmed, there only with a runner (setWorkspaceRunner). */
+    std::unique_ptr<WorkspaceSwitch> _switch;
     std::array<std::unique_ptr<LedColumn>, numChannels> _leds;
     std::unique_ptr<OutputMatrix> _matrix;
     std::array<std::unique_ptr<OledView>, numChannels> _displays;

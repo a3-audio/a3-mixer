@@ -288,9 +288,9 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
 Picture delayReturnPicture (bool editing, int cursor, const std::array<std::string, 4>& values, double level, int width,
                             int height, bool clip, double hold)
 {
-    // The hardware's two sections (display_panel.return_picture, round 3), mirrored: DELAY over the rows at the
-    // left margin, a divider the panel's whole height, AUX over the meter at the right.
-    const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
+    // The hardware's two sections (display_panel.return_picture), mirrored: DELAY over the rows at the left
+    // margin, a divider the panel's whole height, the meter alone at the right.
+    const auto headingRows = bands (height)[0];
     const int x0 = channelColumns (width)[0].x0;
     const int meter = pyRound (width * returnMeterOfWidth);
     const int divider = width - 1 - pyRound (width * returnSectionOfWidth);
@@ -298,10 +298,12 @@ Picture delayReturnPicture (bool editing, int cursor, const std::array<std::stri
     const auto meterSpan = centred ({ divider + 1, width - 1 }, marks + 1 + meter);
     const int meterLeft = meterSpan.x1 - meter + 1;
 
+    const int headingBottom = pyRound (height * largeHeadingOfHeight) - 1;
     Picture p;
-    p.headings.push_back ({ { x0, headingRows.top, x0 + pyRound (width * returnHeadingOfWidth) - 1, headingRows.bottom }, "DELAY" });
-    p.headings.push_back ({ { divider + 1 + listGap, headingRows.top, width - 1, headingRows.bottom }, "AUX" });
-    p.meters = metersFor (std::vector<Box> { { meterLeft, meterRows.top, meterLeft + meter - 1, meterRows.bottom } },
+    // Over the whole list's section: its width, not the plain heading's, is what DELAY may grow into.
+    p.headings.push_back ({ { x0, headingRows.top, divider - 1 - listGap, headingBottom }, "DELAY", true });
+    // No AUX heading (maintainer, 2026-10-30): the meter is the delay's return, DELAY covers it.
+    p.meters = metersFor (std::vector<Box> { { meterLeft, 0, meterLeft + meter - 1, height - 1 } },
                           std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
     p.dividers.push_back ({ divider, 0, divider, height - 1 });
     p.cursor = noBox;
@@ -310,7 +312,7 @@ Picture delayReturnPicture (bool editing, int cursor, const std::array<std::stri
 
     // Equal rows stacked up to the panel's last row under the heading (display_panel._rows).
     const int count = static_cast<int> (values.size());
-    const int free = height - (headingRows.bottom + 1 + listHeadingGap);
+    const int free = height - (headingBottom + 1 + listHeadingGap);
     const int rowHeight = std::max (1, free / count);
     const int top = height - rowHeight * count;
     const auto lit = editing ? Row::Lit::value : Row::Lit::row;
