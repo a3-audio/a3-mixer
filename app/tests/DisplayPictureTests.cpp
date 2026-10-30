@@ -262,3 +262,88 @@ TEST (DeskRing, EngineModeLabelsOnThePicture)
     EXPECT_EQ (absent.active.x0, absent.meters[3].box.x0 - 1);
     EXPECT_LE (std::abs (centre (absent.cursor) - centre (absent.meters[2].box)), 1);
 }
+
+namespace
+{
+const std::array<std::string, 4> someValues { "1/4", "70%", "HP 3", "60\xc2\xb0" };
+}
+
+// The desk's return with the delay list (maintainer, 2026-10-30): the hardware's rows -- BEAT, FEEDBK,
+// COLOR, SPREAD under DELAY, CUE no longer one of them -- left-aligned, the VU under AUX at the right.
+TEST (DisplayPicture, TheDelayReturnHasTheRowsLeftAndTheMeterRight)
+{
+    const auto p = delayReturnPicture (false, 0, someValues, 0.5, oledWidth, oledHeight, false, 0.0);
+    ASSERT_EQ (p.rows.size(), 4u);
+    ASSERT_EQ (p.meters.size(), 1u);
+    ASSERT_EQ (p.headings.size(), 2u);
+    EXPECT_EQ (p.headings[0].text, "DELAY");
+    EXPECT_EQ (p.headings[1].text, "AUX");
+    EXPECT_EQ (p.headings[0].box.y0, p.headings[1].box.y0);
+    EXPECT_EQ (p.headings[0].box.x0, p.rows[0].box.x0);   // the heading over the rows, at the left margin
+    EXPECT_LE (p.rows[0].box.x0, 1);
+    const auto& meter = p.meters[0].box;
+    for (const auto& row : p.rows)
+        EXPECT_LT (row.box.x1, meter.x0) << row.name;
+    EXPECT_GE (meter.x1, oledWidth - 8);                   // at the right edge
+    EXPECT_EQ (meter.x1 - meter.x0 + 1, 22);               // the return's meter, as wide as before
+    ASSERT_EQ (p.dividers.size(), 1u);
+    EXPECT_GT (p.dividers[0].x0, p.rows[0].box.x1);
+    EXPECT_LT (p.dividers[0].x0, meter.x0 - 2);            // the scale marks stand left of the bar
+    EXPECT_EQ (p.dividers[0].y0, 0);
+    EXPECT_EQ (p.dividers[0].y1, oledHeight - 1);
+    EXPECT_FALSE (p.toggle.has_value());                   // no CUE field: DELAY CUE is a key now
+    EXPECT_TRUE (isEmpty (p.cursor));
+    EXPECT_TRUE (isEmpty (p.active));
+    const char* names[] { "BEAT", "FEEDBK", "COLOR", "SPREAD" };
+    for (size_t i = 0; i < p.rows.size(); ++i)
+    {
+        EXPECT_EQ (p.rows[i].name, names[i]);
+        EXPECT_EQ (p.rows[i].value, someValues[i]);
+        EXPECT_GT (p.rows[i].box.y0, p.headings[0].box.y1);
+        if (i > 0)
+        {
+            EXPECT_EQ (p.rows[i].box.y0, p.rows[i - 1].box.y1 + 1);
+            EXPECT_EQ (p.rows[i].box.y1 - p.rows[i].box.y0, p.rows[0].box.y1 - p.rows[0].box.y0);
+        }
+    }
+    EXPECT_EQ (p.rows.back().box.y1, oledHeight - 1);
+}
+
+// The hardware's two modes, told by what is lit: selecting, the whole row under the cursor; editing, its value.
+TEST (DisplayPicture, TheCursorRowIsLitWholeWhileSelectingAndItsValueWhileEditing)
+{
+    const auto selecting = delayReturnPicture (false, 2, someValues, 0.0, oledWidth, oledHeight, false, 0.0);
+    const auto editing = delayReturnPicture (true, 2, someValues, 0.0, oledWidth, oledHeight, false, 0.0);
+    for (size_t i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ (selecting.rows[i].lit, i == 2 ? Row::Lit::row : Row::Lit::none) << i;
+        EXPECT_EQ (editing.rows[i].lit, i == 2 ? Row::Lit::value : Row::Lit::none) << i;
+    }
+}
+
+// A page test must paint: the lit row is mostly white across its width, the edited one only at its right
+// end, and an unlit row's name reaches the pixels.
+TEST (DisplayPaint, TheDelayRowsPaintTheirLitPart)
+{
+    const auto litIn = [] (const juce::Image& image, int x0, int x1, const Box& b) {
+        int n = 0;
+        for (int x = x0; x <= x1; ++x)
+            for (int y = b.y0; y <= b.y1; ++y)
+                n += image.getPixelAt (x, y).getBrightness() > 0.5f ? 1 : 0;
+        return n;
+    };
+    const auto selecting = delayReturnPicture (false, 1, someValues, 0.0, oledWidth, oledHeight, false, 0.0);
+    const auto editing = delayReturnPicture (true, 1, someValues, 0.0, oledWidth, oledHeight, false, 0.0);
+    const auto shotSelecting = paintPicture (selecting, oledWidth, oledHeight);
+    const auto shotEditing = paintPicture (editing, oledWidth, oledHeight);
+    const auto& row = selecting.rows[1].box;
+    const int area = (row.x1 - row.x0 + 1) * (row.y1 - row.y0 + 1);
+    const int leftEnd = row.x0 + 6;
+    EXPECT_GT (litIn (shotSelecting, row.x0, row.x1, row), area / 2);
+    EXPECT_GT (litIn (shotSelecting, row.x0, leftEnd, row), 0);    // the bar starts at the name
+    EXPECT_GT (litIn (shotEditing, row.x1 - 3, row.x1, row), 0);   // the value's end is lit ...
+    EXPECT_LT (litIn (shotEditing, row.x0, row.x1, row), area / 2);
+    const auto& other = selecting.rows[3].box;
+    EXPECT_GT (litIn (shotSelecting, other.x0, other.x1, other), 0);
+    EXPECT_LT (litIn (shotSelecting, other.x0, other.x1, other), (other.x1 - other.x0 + 1) * (other.y1 - other.y0 + 1) / 2);
+}

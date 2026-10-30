@@ -53,6 +53,16 @@ struct Toggle
     std::string text;
 };
 
+/** One row of the return's delay list: `name` at the left of `box`, `value` at its right. `lit` says what
+    the encoder stands on: the whole row (select), only its value (edit), or nothing. */
+struct Row
+{
+    enum class Lit { none, row, value };
+    Box box;
+    std::string name, value;
+    Lit lit = Lit::none;
+};
+
 struct Picture
 {
     std::vector<Heading> headings;
@@ -62,6 +72,7 @@ struct Picture
     std::optional<Toggle> toggle;
     Box active;
     std::vector<Box> marks;
+    std::vector<Row> rows;
 };
 
 /** Channel `channel`'s cursors, left to right: D1's stem n, D2's stem n, A (stem n plays only on channel n). */
@@ -88,6 +99,11 @@ Picture enginePicture (int source, int cursor, const std::array<bool, engineDeck
 /** The FX Return, the delay channel's master (P47): one meter under DELAY, centred left of the divider, and
     the CUE field behind it. Nothing to choose, so no arrow and no bracket (noBox). */
 Picture returnPicture (bool cue, double level, int width, int height, bool clip, double hold);
+/** The FX Return with the delay list (the desk's, maintainer 2026-10-30): the hardware's rows under DELAY,
+    left-aligned, a divider, and the one meter under AUX at the right edge. `values` are the rows' texts;
+    the row under `cursor` is lit whole while selecting, only its value while `editing`. */
+Picture delayReturnPicture (bool editing, int cursor, const std::array<std::string, 4>& values, double level, int width,
+                            int height, bool clip, double hold);
 
 /** Lit by a peak over full scale, held one second after the last one. */
 class ClipHold

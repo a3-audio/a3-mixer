@@ -7,6 +7,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "DeskOsc.h"
+#include "DeskScreen.h"
 #include "DeskWindow.h"
 #include "shared/TruthKeeper.h"
 #include "shared/TruthKeeperLink.h"
@@ -34,6 +35,11 @@ public:
     void initialise (const juce::String&) override
     {
         window = std::make_unique<desk::DeskWindow>();
+        window->content.setWorkspaceRunner (desk::screen::systemI3Runner());
+        // The rig's launch says --fullscreen (as StemDeck's service): the i3 rule alone can miss a window
+        // JUCE builds and drops again while it comes up (StemDeck, 2026-09-30).
+        if (desk::screen::wantsFullScreen (getCommandLineParameterArray()))
+            window->setFullScreen (true);
         const juce::File cache (a3::truthkeeper::cachePath (
             juce::File::getSpecialLocation (juce::File::userHomeDirectory).getFullPathName().toStdString()));
         // $A3_OSC_TRUTH set: still hear /core/here (Core silent), but never fetch or reload.

@@ -43,11 +43,6 @@ juce::String potCaption (const std::string& key)
     return found != captions.end() ? juce::String (found->second) : juce::String();
 }
 
-bool isGuarded (const std::string& key)
-{
-    return key == "master.volume" || key == "master.booth" || key == "master.phones-volume";
-}
-
 bool fillsFromTheMiddle (const std::string& key)
 {
     return key == "channel.eq.high" || key == "channel.eq.mid" || key == "channel.eq.low" || key == "master.phones-mix";

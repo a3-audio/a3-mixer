@@ -229,3 +229,14 @@ TEST (DeskWire, ProdjLiveIsAnInt)
         EXPECT_EQ (out.message[0].getInt32(), on ? 1 : 0);
     }
 }
+
+// The hardware's return turn (a3_mixer_encoders.encoder_message): the row's own turn word, the clicks as int32.
+TEST (DeskWire, ADelayTurnIsTheRowsTurnWordWithItsClicks)
+{
+    const auto turn = DeskWire (osc()).delayTurn (2, -3);
+    EXPECT_EQ (turn.to, Outgoing::To::core);
+    EXPECT_EQ (turn.message.getAddressPattern().toString(), osc().address ("aux-return.delay.color.turn"));
+    ASSERT_EQ (turn.message.size(), 1);
+    EXPECT_TRUE (turn.message[0].isInt32());
+    EXPECT_EQ (turn.message[0].getInt32(), -3);
+}

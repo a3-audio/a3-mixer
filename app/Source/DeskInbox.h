@@ -10,6 +10,7 @@
 #include <juce_osc/juce_osc.h>
 
 #include "DeskControls.h"
+#include "DeskDelay.h"
 #include "DeskOsc.h"
 #include "DeskState.h"
 #include "DisplayPicture.h"
@@ -30,6 +31,8 @@ struct Indicators
     std::optional<bool> highPass;
     std::array<int, numChannels> stemMask {}, cursor {};
     bool returnCue = false;   // the FX Return has no source, mode or cursor (P47)
+    /** Core's delay values by row (BEAT, FEEDBK, COLOR, SPREAD), unknown until Core says one. */
+    std::array<std::optional<float>, delay::rowCount> delayValues {};
     /** Engine mode (Plan 4e): from Core's first `channel.source` report until a new Core. Each channel's
         source and cursor in the ring 1 2 3 4 A (Core's 1-4, 0); the decks are absent until Core reports them. */
     bool engine = false;

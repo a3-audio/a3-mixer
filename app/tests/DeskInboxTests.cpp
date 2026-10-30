@@ -336,3 +336,22 @@ TEST (DeskRing, ANewCoreClearsEngineMode)
     EXPECT_EQ (d.ind.sourceCursor[2], 0);
     EXPECT_FALSE (d.ind.deckPresent[1]);
 }
+
+// Core's delay values (a3_mixer_delay.DelayState): unknown until Core says one, a float or an int
+// taken, anything damaged ignored.
+TEST (DeskInbox, CoresDelayValuesAreKept)
+{
+    Desk d;
+    for (const auto& v : d.ind.delayValues)
+        EXPECT_FALSE (v.has_value());
+    d.hear ("aux-return.delay.beat", 0, 0.5f);
+    d.hear ("aux-return.delay.spread", 0, 60);
+    d.hear ("aux-return.delay.feedback", 0, juce::String ("x"));
+    d.hear ("aux-return.delay.color", 0, std::numeric_limits<float>::quiet_NaN());
+    ASSERT_TRUE (d.ind.delayValues[0].has_value());
+    EXPECT_FLOAT_EQ (*d.ind.delayValues[0], 0.5f);
+    EXPECT_FALSE (d.ind.delayValues[1].has_value());
+    EXPECT_FALSE (d.ind.delayValues[2].has_value());
+    ASSERT_TRUE (d.ind.delayValues[3].has_value());
+    EXPECT_FLOAT_EQ (*d.ind.delayValues[3], 60.f);
+}

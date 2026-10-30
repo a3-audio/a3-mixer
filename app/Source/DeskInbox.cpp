@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "DeskDelay.h"
+
 namespace desk
 {
 namespace
@@ -88,6 +90,12 @@ void DeskInbox::receive (const juce::OSCMessage& m, double nowMs)
         // Core numbers decks 1-4, the ring offers all four.
         if (const auto v = countIn (m[0], 1); v && slot < _ind.deckPresent.size())
             _ind.deckPresent[slot] = *v == 1;
+        return;
+    }
+    if (const auto row = delay::rowOfValueKey (key))
+    {
+        if (const auto v = numberIn (m[0]))
+            _ind.delayValues[(size_t) *row] = *v;
         return;
     }
     if (key == "aux-return.cue.led")

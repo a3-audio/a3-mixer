@@ -100,8 +100,6 @@ void DeskComponent::buildStrip (int ch)
     _encoders[i] = std::make_unique<DeskEncoder> ("INPUT");
     _encoders[i]->onTurn = [this, ch] (int clicks) { if (handsAccepted()) send (_wire->channelTurn (ch, clicks)); };
     _encoders[i]->onPush = [this, ch] { if (handsAccepted()) send (_wire->channelPush (ch)); };
-    _taps[i] = std::make_unique<DeskKey> ("TAP", theme::lampTap);
-    _taps[i]->onPress = [this] (bool down) { if (down) tap(); };
     _fxKeys[i] = std::make_unique<DeskKey> ("FX", theme::lampFx);
     _fxKeys[i]->onPress = [this, ch] (bool down) { pressKey ("channel.filter", ch, down); };
     _cueKeys[i] = std::make_unique<DeskKey> ("CUE", theme::lampCue);
@@ -116,7 +114,7 @@ void DeskComponent::buildStrip (int ch)
             send (_wire->channelTurn (ch, turns));   // never a push: switching an input stays on the encoder
     };
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             _encoders[i].get(), _taps[i].get(), _fxKeys[i].get(), _cueKeys[i].get(), _leds[i].get(), _displays[i].get() })
+             _encoders[i].get(), _fxKeys[i].get(), _cueKeys[i].get(), _leds[i].get(), _displays[i].get() })
         show (*c);
 }
 
@@ -130,25 +128,36 @@ void DeskComponent::show (juce::Component& control, bool takesHands)
 void DeskComponent::buildMaster()
 {
     _select = std::make_unique<DeskEncoder> ("SELECT");
-    // P47: the FX Return has nothing to choose -- its turn sends nothing, its push and its CUE field cue it.
-    _select->onPush = [this] { if (handsAccepted()) send (_wire->returnPush()); };
+    _select->onTurn = [this] (int clicks) { turnReturn (clicks); };
+    _select->onPush = [this] { pushReturn(); };
     _returnDisplay = std::make_unique<OledView>();
     _returnDisplay->onSlot = [this] (int index) {
-        constexpr int cueField = 1;   // after the one meter
-        if (index == cueField && handsAccepted())
-            send (_wire->returnPush());
+        // Only the picture without the delay list has the CUE field, after its one meter.
+        constexpr int cueField = 1;
+        if (index == cueField && ! (_osc != nullptr && _osc->hasDelayList()))
+            cueReturn();
     };
+    _delayCue = std::make_unique<DeskKey> ("DELAY CUE", theme::lampCue);
+    _delayCue->onPress = [this] (bool down) { if (down) cueReturn(); };   // a toggle at Core: the press alone
+    _tap = std::make_unique<DeskKey> ("TAP", theme::lampTap);
+    _tap->onPress = [this] (bool down) { if (down) tap(); };
     _hpf = std::make_unique<DeskKey> ("HPF", theme::lampHpf);
     _hpf->onPress = [this] (bool down) { pressFilter (true, down); };
     _lpf = std::make_unique<DeskKey> ("LPF", theme::lampLpf);
     _lpf->onPress = [this] (bool down) { pressFilter (false, down); };
-    _lock = std::make_unique<DeskKey> ("LOCK", theme::lampLock);
-    _lock->onPress = [this] (bool down) { if (down) setLocked (! _locked); };
     _matrix = std::make_unique<OutputMatrix>();
     _status = std::make_unique<StatusLine>();
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             _select.get(), _returnDisplay.get(), _hpf.get(), _lpf.get(), _lock.get(), _matrix.get() })
+             _select.get(), _returnDisplay.get(), _delayCue.get(), _tap.get(), _hpf.get(), _lpf.get(), _matrix.get() })
         show (*c);
+    // Not among the handed: the way out works whatever Core does. Hidden until there is an i3 to ask.
+    _workspace.setTooltip ("On to the next workspace (i3)");
+    _workspace.setMouseClickGrabsKeyboardFocus (false);
+    _workspace.onClick = [this] {
+        if (_i3)
+            _i3 (screen::nextWorkspaceCommand());
+    };
+    addChildComponent (_workspace);
     _status->onLiveTapped = [this] { liveTapped(); };
     show (*_status, false);   // says why the rest is dim: never dimmed itself
 }
@@ -219,6 +228,7 @@ void DeskComponent::step (double nowMs)
             send (due == StartupAsk::Send::hello ? _wire->hello (_osc->truth().digest(), _device) : _wire->recall());
     if (_inbox != nullptr)
         _inbox->step (nowMs);
+    _delay.step (nowMs);
     updateHands();
     showLamps();
     showMeters();
@@ -235,11 +245,15 @@ void DeskComponent::touchPot (int pot, float value)
 {
     if (pot < 0 || pot >= _state.size() || ! handsAccepted())
         return;
-    if (_locked && isGuarded (allPots()[(size_t) pot].key))
-        return;
     _state.setFromTouch (pot, value);
     send (_wire->pot (pot, _state.value (pot)));
     syncControls();
+}
+
+void DeskComponent::setWorkspaceRunner (screen::I3Runner runner)
+{
+    _i3 = std::move (runner);
+    _workspace.setVisible (_i3 != nullptr);
 }
 
 void DeskComponent::setHandsWithheld (bool withheld)
@@ -253,13 +267,14 @@ juce::Component* DeskComponent::controlFor (const std::string& key, int channel)
     if (const auto pot = potIndex (key, channel); pot >= 0)
         return _potControl[(size_t) pot];
     if (key == "aux-return.stem.push")
+        return channel == 0 ? _delayCue.get() : nullptr;
+    if (delay::rowOfTurnKey (key))
         return channel == 0 ? _select.get() : nullptr;
     // One word, two keys: the filter mode is HPF as 1 and LPF as 2.
     if (key == "filter.mode")
         return channel == 1 ? _hpf.get() : channel == 2 ? _lpf.get() : nullptr;
-    // Every TAP sends the same word: 0 stands for the first.
     if (key == "tap")
-        return channel >= 0 && channel <= numChannels ? _taps[(size_t) std::max (channel, 1) - 1].get() : nullptr;
+        return channel == 0 ? _tap.get() : nullptr;
     if (channel < 1 || channel > numChannels)
         return nullptr;
     const auto i = (size_t) channel - 1;
@@ -270,13 +285,6 @@ juce::Component* DeskComponent::controlFor (const std::string& key, int channel)
     if (key == "channel.stem.turn" || key == "channel.stem.push")
         return _encoders[i].get();
     return nullptr;
-}
-
-void DeskComponent::setLocked (bool locked)
-{
-    _locked = locked;
-    _lock->setLit (locked);
-    updateHands();
 }
 
 void DeskComponent::send (const Outgoing& out) { _send (out); }
@@ -297,6 +305,47 @@ void DeskComponent::tap()
 {
     if (handsAccepted())
         send (_wire->tap());
+}
+
+void DeskComponent::cueReturn()
+{
+    if (handsAccepted())
+        send (_wire->returnPush());
+}
+
+void DeskComponent::turnReturn (int clicks)
+{
+    // R25: on a truth without the delay list the turn chooses nothing.
+    if (! handsAccepted() || ! _osc->hasDelayList())
+        return;
+    if (const auto row = _delay.turn (clicks, _now))
+        send (_wire->delayTurn (*row, clicks));
+}
+
+void DeskComponent::pushReturn()
+{
+    if (! handsAccepted())
+        return;
+    if (! _osc->hasDelayList())
+    {
+        cueReturn();   // R25: the push cues at once, as it always did
+        return;
+    }
+    _delay.press (_now);
+}
+
+display::Picture DeskComponent::returnPicture (double level, bool clip, double hold) const
+{
+    if (_osc == nullptr || ! _osc->hasDelayList())
+        return display::returnPicture (_ind.returnCue, level, display::oledWidth, display::oledHeight, clip, hold);
+    std::array<std::string, delay::rowCount> values;
+    for (int row = 0; row < delay::rowCount; ++row)
+    {
+        const auto& v = _ind.delayValues[(size_t) row];
+        values[(size_t) row] = delay::valueText (row, v ? std::optional<double> (*v) : std::nullopt);
+    }
+    return display::delayReturnPicture (_delay.mode() == delay::Mode::edit, _delay.cursor(), values, level,
+                                        display::oledWidth, display::oledHeight, clip, hold);
 }
 
 void DeskComponent::syncControls()
@@ -323,7 +372,7 @@ void DeskComponent::updateHands()
         repaint();   // the print under the controls dims with them
     _handsShown = hands;
     for (size_t i = 0; i < _potControl.size(); ++i)
-        _potControl[i]->setEnabled (hands && ! (_locked && isGuarded (allPots()[i].key)));
+        _potControl[i]->setEnabled (hands);
     // Indicators too: stale dims the whole surface (spec 4.1), each by DimWhenDisabled.
     for (auto* c : _handed)
         c->setEnabled (hands);
@@ -336,8 +385,7 @@ void DeskComponent::releaseLostGrabs (bool hands)
     bool released = false;
     for (int pot = 0; pot < _state.size(); ++pot)
     {
-        const bool keeps = hands && ! (_locked && isGuarded (allPots()[(size_t) pot].key));
-        if (keeps || ! _state.grabbed (pot))
+        if (hands || ! _state.grabbed (pot))
             continue;
         _state.release (pot);
         released = true;
@@ -350,10 +398,11 @@ void DeskComponent::showLamps()
 {
     for (size_t i = 0; i < (size_t) numChannels; ++i)
     {
-        _taps[i]->setLit (_now < _ind.tapLitUntilMs);
         _fxKeys[i]->setLit (_ind.fx[i]);
         _cueKeys[i]->setLit (_ind.cue[i]);
     }
+    _tap->setLit (_now < _ind.tapLitUntilMs);
+    _delayCue->setLit (_ind.returnCue);
     _hpf->setLit (_ind.highPass == std::optional<bool> (true));
     _lpf->setLit (_ind.highPass == std::optional<bool> (false));
 }
@@ -425,9 +474,8 @@ void DeskComponent::showDisplays (double dt)
             display::oledHeight, clips, holds));
     }
     const auto fx = _meters->fxReturn (now);
-    _returnDisplay->setPicture (display::returnPicture (_ind.returnCue, fraction (fx.bar), display::oledWidth,
-                                                        display::oledHeight, _returnClip.feed (_meters->fxReturnPeak(), dt),
-                                                        fraction (fx.hold)));
+    _returnDisplay->setPicture (returnPicture (fraction (fx.bar), _returnClip.feed (_meters->fxReturnPeak(), dt),
+                                               fraction (fx.hold)));
 }
 
 juce::String DeskComponent::statusRight() const
@@ -468,7 +516,7 @@ void DeskComponent::showStatus()
 {
     _status->setLive ({ liveOffered(), _ind.prodjLive, handsAccepted() });
     _statusText = statusRight();
-    _status->setText ("A3 DESK" + juce::String (_locked ? "  master locked" : ""), _statusText);
+    _status->setText ("A3 DESK", _statusText);
 }
 
 void DeskComponent::paint (juce::Graphics& g)
@@ -541,24 +589,26 @@ void DeskComponent::resized()
         const auto slot = slotOf (pot.key);
         _potControl[i]->setBounds ((slot == (size_t) faderSlot ? strip.fader : strip.pots[slot]).toNearestInt());
     }
-    // MASTER is the large knob, not a large caption: its caption is the pots'.
-    if (auto* knob = dynamic_cast<DeskKnob*> (controlFor ("master.volume", 0)))
-        knob->captionHeight = _layout.strips[0].pots[0].getHeight() * DeskLook::captionOfCell;
+    // The master column's knobs are larger than a strip's, not their captions: one caption size for all pots.
+    for (const auto& key : masterPotKeys)
+        if (auto* knob = dynamic_cast<DeskKnob*> (controlFor (key, 0)))
+            knob->captionHeight = _layout.strips[0].pots[0].getHeight() * DeskLook::captionOfCell;
     for (size_t i = 0; i < (size_t) numChannels; ++i)
     {
         const auto& s = _layout.strips[i];
         _encoders[i]->setBounds (s.encoder.toNearestInt());
-        _taps[i]->setBounds (s.tap.toNearestInt());
         _fxKeys[i]->setBounds (s.fx.toNearestInt());
         _cueKeys[i]->setBounds (s.cue.toNearestInt());
         _leds[i]->setBounds (s.meter.toNearestInt());
         _displays[i]->setBounds (s.display.toNearestInt());
     }
+    _delayCue->setBounds (_layout.strips[2].tap.toNearestInt());
+    _tap->setBounds (_layout.strips[3].tap.toNearestInt());
+    _workspace.setBounds (_layout.workspace.toNearestInt());
     _select->setBounds (_layout.select.toNearestInt());
     _returnDisplay->setBounds (_layout.returnDisplay.toNearestInt());
     _hpf->setBounds (_layout.hpf.toNearestInt());
     _lpf->setBounds (_layout.lpf.toNearestInt());
-    _lock->setBounds (_layout.lock.toNearestInt());
     _matrix->setBounds (_layout.matrix.toNearestInt());
     _status->setBounds (_layout.status.toNearestInt());
 }

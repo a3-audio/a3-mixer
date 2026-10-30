@@ -12,12 +12,14 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "DeskControlsUi.h"
+#include "DeskDelay.h"
 #include "DeskIndicatorsUi.h"
 #include "DeskInbox.h"
 #include "DeskLayout.h"
 #include "DeskLink.h"
 #include "DeskLook.h"
 #include "DeskMeters.h"
+#include "DeskScreen.h"
 #include "DeskState.h"
 #include "DeskWire.h"
 #include "StartupAsk.h"
@@ -54,15 +56,17 @@ public:
     void step (double nowMs);
 
     void touchPot (int pot, float value);
-    void setLocked (bool locked);
+    /** Shows the key to the next i3 workspace and runs i3 through `runner`; without one there is no key. */
+    void setWorkspaceRunner (screen::I3Runner runner);
     /** While true no hand is taken and every control dims, as before Core answers. */
     void setHandsWithheld (bool withheld);
     bool handsAccepted() const;
     const DeskMeters* meters() const { return _meters.get(); }
     /** The control a truth key stands for, for every control the desk has a key for: pots and fader
-        ("channel.volume", "master.booth"), "channel.cue", "channel.filter", "tap" (0 = the first), the INPUT
-        encoders ("channel.stem.turn"/".push"), SELECT ("aux-return.stem.push", channel 0: the FX Return's cue), and
-        "filter.mode" (1 = HPF, 2 = LPF). Channel 0 for the master section; nullptr for anything else. */
+        ("channel.volume", "master.booth"), "channel.cue", "channel.filter", "tap" (channel 0: the one TAP), the
+        INPUT encoders ("channel.stem.turn"/".push"), DELAY CUE ("aux-return.stem.push", channel 0: the FX Return's
+        cue), SELECT (the four "aux-return.delay.<row>.turn", channel 0), and "filter.mode" (1 = HPF, 2 = LPF).
+        Channel 0 for the master section; nullptr for anything else. */
     juce::Component* controlFor (const std::string& key, int channel) const;
 
     const DeskOsc* osc() const { return _osc.get(); }
@@ -98,6 +102,10 @@ private:
     void pressKey (const std::string& key, int channel, bool down);
     void pressFilter (bool highPass, bool down);
     void tap();
+    void turnReturn (int clicks);
+    void pushReturn();
+    void cueReturn();
+    display::Picture returnPicture (double level, bool clip, double hold) const;
 
     Send _send;
     juce::String _device;
@@ -114,7 +122,7 @@ private:
     CoreWatch _core;
     DeskLink::Opened _link = DeskLink::Opened::noTruth;
     juce::String _truthProblem, _statusText;
-    bool _locked = false, _withheld = false, _handsShown = false;
+    bool _withheld = false, _handsShown = false;
     double _now = 0.0, _lastStep = 0.0;
 
     std::vector<juce::Component*> _handed;   // every control and indicator but the pots: enabled with the hands
@@ -124,8 +132,13 @@ private:
     std::array<std::unique_ptr<DeskFader>, numChannels> _faders;
     std::array<std::unique_ptr<DeskEncoder>, numChannels> _encoders;
     std::unique_ptr<DeskEncoder> _select;
-    std::array<std::unique_ptr<DeskKey>, numChannels> _taps, _fxKeys, _cueKeys;
-    std::unique_ptr<DeskKey> _hpf, _lpf, _lock;
+    std::array<std::unique_ptr<DeskKey>, numChannels> _fxKeys, _cueKeys;
+    /** Of the hardware's four tap keys: the third is DELAY CUE, the fourth TAP (maintainer, 2026-10-30). */
+    std::unique_ptr<DeskKey> _delayCue, _tap, _hpf, _lpf;
+    delay::DelayList _delay;
+    /** The way to the next workspace: always enabled, shown only with a runner (setWorkspaceRunner). */
+    juce::TextButton _workspace { juce::String::fromUTF8 ("NEXT \xe2\x96\xb8") };
+    screen::I3Runner _i3;
     std::array<std::unique_ptr<LedColumn>, numChannels> _leds;
     std::unique_ptr<OutputMatrix> _matrix;
     std::array<std::unique_ptr<OledView>, numChannels> _displays;

@@ -47,6 +47,8 @@ public:
     int vuPort() const;
     /** A word an older Core's truth may lack: its absence is no missing key, the feature just is not offered. */
     bool hasOptional (const std::string& key) const;
+    /** All of the delay list's words (a3_mixer_osc.has_delay_page): without them SELECT only cues (R25). */
+    bool hasDelayList() const;
     int vuNumber (const char* meterName) const { return _truth.vuNumber (meterName); }
 
 private:

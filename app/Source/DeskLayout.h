@@ -26,11 +26,14 @@ struct StripLayout
 
 struct DeskLayout
 {
-    Rect status, returnCard, returnDisplay, select, auxReturn;
+    /** The status line and, at its right end, the key to the next workspace. */
+    Rect status, workspace, returnCard, returnDisplay, select, auxReturn;
     std::array<StripLayout, numChannels> strips;
     /** The master column: the output meters above, the master section in the faders' band. */
     Rect outputCard, matrix, matrixCaption;
-    Rect masterCard, freq, res, hpf, lpf, master, booth, cueMix, phones, lock;
+    /** MASTER and BOOTH, the room's levels, at the very top of the output card (maintainer, 2026-10-30). */
+    Rect master, booth;
+    Rect masterCard, freq, res, hpf, lpf, cueMix, phones;
     float fingertip = 0.f;
     bool fits = false;
 };

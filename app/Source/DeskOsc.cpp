@@ -4,7 +4,10 @@
 
 #include "DeskOsc.h"
 
+#include <algorithm>
+
 #include "DeskControls.h"
+#include "DeskDelay.h"
 
 namespace desk
 {
@@ -44,6 +47,9 @@ std::vector<std::string> heardKeys (const a3::OscTruth& truth)
     for (const auto* key : { "prodj.live", "channel.source", "channel.source.cursor", "stemdeck.present" })
         if (truth.hasAddress (key))
             keys.emplace_back (key);
+    for (int row = 0; row < delay::rowCount; ++row)
+        if (truth.hasAddress (delay::valueKey (row)))
+            keys.push_back (delay::valueKey (row));
     return keys;
 }
 }
@@ -76,6 +82,12 @@ juce::StringArray DeskOsc::missing (const a3::OscTruth& truth)
 }
 
 bool DeskOsc::hasOptional (const std::string& key) const { return _truth.hasAddress (key); }
+
+bool DeskOsc::hasDelayList() const
+{
+    const auto keys = delay::delayKeys();
+    return std::all_of (keys.begin(), keys.end(), [this] (const std::string& key) { return hasOptional (key); });
+}
 
 juce::String DeskOsc::address (const std::string& key, int number) const
 {

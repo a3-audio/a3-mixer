@@ -41,8 +41,6 @@ struct Pot
 const std::vector<Pot>& allPots();
 int potIndex (const std::string& key, int channel);
 juce::String potCaption (const std::string& key);
-/** MASTER, BOOTH, PHONES: what a lock on a second operator's window holds (spec Q8). */
-bool isGuarded (const std::string& key);
 /** The EQ bands and the phones' blend read as a distance from their middle. */
 bool fillsFromTheMiddle (const std::string& key);
 /** Where two taps put a pot, or nothing for one that stays where it was left. */

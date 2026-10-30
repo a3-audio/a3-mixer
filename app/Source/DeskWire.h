@@ -35,6 +35,8 @@ public:
     Outgoing channelTurn (int channel, int clicks) const;
     Outgoing channelPush (int channel) const;
     Outgoing returnPush() const;
+    /** The return's turn in edit (a3_mixer_encoders.encoder_message): the row's turn word, the clicks as int32. */
+    Outgoing delayTurn (int row, int clicks) const;
     Outgoing tap() const;
     Outgoing hello (const juce::String& truthDigest, const juce::String& device = "desk") const;
     Outgoing recall() const;

@@ -211,7 +211,7 @@ void StatusLine::paintLiveChip (juce::Graphics& g, juce::Rectangle<float> chip) 
     // Dark is a key at rest; dimmed when a tap would do nothing (no hands), never hidden.
     const float corner = chip.getHeight() * 0.25f;
     const DimWhenDisabled dim (g, _live.lit || _live.tappable);
-    g.setColour (_live.lit ? theme::lampLock : theme::keyFace);
+    g.setColour (_live.lit ? theme::lampLive : theme::keyFace);
     g.fillRoundedRectangle (chip, corner);
     g.setColour (_live.lit ? theme::background : theme::caption);
     g.setFont (juce::FontOptions (chip.getHeight() * 0.62f, _live.lit ? juce::Font::bold : juce::Font::plain));

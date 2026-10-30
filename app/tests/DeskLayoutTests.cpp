@@ -21,7 +21,7 @@ std::vector<Rect> everythingDrawn (const DeskLayout& l)
 {
     // The fader, not its cap: the cap rides inside it.
     std::vector<Rect> drawn { l.status, l.returnDisplay, l.select, l.auxReturn, l.matrix, l.matrixCaption, l.freq, l.res,
-                              l.hpf, l.lpf, l.master, l.booth, l.cueMix, l.phones, l.lock };
+                              l.hpf, l.lpf, l.master, l.booth, l.cueMix, l.phones, l.workspace };
     for (const auto& s : l.strips)
     {
         drawn.insert (drawn.end(), { s.display, s.encoder, s.tap, s.fx, s.cue, s.meter, s.fader, s.caption });
@@ -134,17 +134,18 @@ TEST (DeskLayout, TheMasterSectionIsAsTallAsTheFaderZone)
     const auto l = layOutDesk (rig, finger);
     EXPECT_FLOAT_EQ (l.masterCard.getY(), l.strips[0].faderCard.getY());
     EXPECT_FLOAT_EQ (l.masterCard.getBottom(), l.strips[0].faderCard.getBottom());
-    for (const auto& r : { l.freq, l.res, l.hpf, l.lpf, l.master, l.booth, l.cueMix, l.phones, l.lock })
+    for (const auto& r : { l.freq, l.res, l.hpf, l.lpf, l.cueMix, l.phones })
         EXPECT_TRUE (l.masterCard.contains (r)) << r.toString();
 }
 
+// Under MASTER and BOOTH since 2026-10-30, the output meters take the rest of the upper master column.
 TEST (DeskLayout, TheOutputMetersFillTheUpperMasterColumn)
 {
     const auto l = layOutDesk (rig, finger);
     EXPECT_TRUE (l.outputCard.contains (l.matrix));
     EXPECT_TRUE (l.outputCard.contains (l.matrixCaption));
     EXPECT_LT (l.outputCard.getBottom(), l.masterCard.getY());
-    EXPECT_GT (l.matrix.getHeight(), 0.5f * rig.getHeight());
+    EXPECT_GT (l.matrix.getHeight(), 0.4f * rig.getHeight());
 }
 
 TEST (DeskLayout, EveryStripIsACardAboveItsFaderCard)
@@ -180,4 +181,36 @@ TEST (DeskLayout, NothingOverlapsAtTheRigSize)
     for (size_t i = 0; i < cards.size(); ++i)
         for (size_t j = i + 1; j < cards.size(); ++j)
             EXPECT_FALSE (cards[i].intersects (cards[j])) << cards[i].toString() << " / " << cards[j].toString();
+}
+
+// Maintainer, 2026-10-30: MASTER and BOOTH, the room's levels, at the very top of the master column,
+// above the output meters; MASTER still the large knob.
+TEST (DeskLayout, MasterAndBoothStandAboveTheOutputMeters)
+{
+    const auto l = layOutDesk (rig, finger);
+    for (const auto& r : { l.master, l.booth })
+    {
+        EXPECT_TRUE (l.outputCard.contains (r)) << r.toString();
+        EXPECT_LT (r.getBottom(), l.matrix.getY() + 0.5f) << r.toString();
+    }
+    EXPECT_LT (l.master.getY() - l.outputCard.getY(), 0.05f * l.outputCard.getHeight());
+    EXPECT_FLOAT_EQ (l.master.getY(), l.booth.getY());
+    EXPECT_GE (l.master.getWidth() * l.master.getHeight(), l.booth.getWidth() * l.booth.getHeight());
+    EXPECT_GT (l.matrix.getHeight(), 0.4f * rig.getHeight());
+}
+
+// The way to the next workspace (the desk runs full screen, i3's bar is hidden): where StemDeck and
+// A3 Motion have their switch -- the window's right edge, the top -- and a fingertip, whatever the screen.
+TEST (DeskLayout, TheWorkspaceKeyIsAtTheTopRightAndAFingertip)
+{
+    for (const auto& area : { rig, roomy })
+    {
+        const auto l = layOutDesk (area, finger);
+        EXPECT_GE (l.workspace.getHeight(), finger);
+        EXPECT_GE (l.workspace.getWidth(), finger);
+        EXPECT_LT (area.getRight() - l.workspace.getRight(), 0.02f * area.getWidth());
+        EXPECT_FLOAT_EQ (l.workspace.getY(), l.status.getY());
+        EXPECT_LE (l.status.getRight(), l.workspace.getX());
+        EXPECT_LE (l.workspace.getBottom(), l.returnCard.getY() + 0.5f);
+    }
 }

@@ -6,6 +6,7 @@
 
 #include "DeskComponent.h"
 #include "DeskControls.h"
+#include "DeskDelay.h"
 #include "DeskLink.h"
 #include "FakePeer.h"
 #include "TestTruth.h"
@@ -66,14 +67,20 @@ std::unique_ptr<DeskComponent> deskJoined (Captured& c)
 }
 
 /** The test truth without one key the desk sends: what an older Core would serve. */
-a3::OscTruth truthWithout (const char* key)
+a3::OscTruth truthWithout (const std::vector<std::string>& keys)
 {
     auto data = juce::JSON::parse (juce::File (juce::SystemStats::getEnvironmentVariable ("A3_OSC_TRUTH", {}))
                                        .loadFileAsString());
     if (auto* addresses = data["addresses"].getDynamicObject())
-        addresses->removeProperty (key);
+        for (const auto& key : keys)
+            addresses->removeProperty (juce::Identifier (key));
     return a3::parseOscTruth (juce::JSON::toString (data));
 }
+
+a3::OscTruth truthWithout (const char* key) { return truthWithout (std::vector<std::string> { key }); }
+
+/** What a Core from before the delay list serves (R25). */
+a3::OscTruth truthWithoutTheDelay() { return truthWithout (delay::delayKeys()); }
 }
 
 namespace
@@ -280,18 +287,21 @@ TEST (DeskComponent, ControlForCoversEveryControlWithAKey)
     EXPECT_TRUE (is ("master.booth", 0, (DeskKnob*) nullptr));
     EXPECT_TRUE (is ("channel.gain", 4, (DeskKnob*) nullptr));
     EXPECT_TRUE (is ("channel.filter", 1, (DeskKey*) nullptr));
-    EXPECT_TRUE (is ("tap", 2, (DeskKey*) nullptr));
-    EXPECT_TRUE (is ("tap", 0, (DeskKey*) nullptr));
+    EXPECT_TRUE (is ("tap", 0, (DeskKey*) nullptr));   // one TAP, the fourth strip's
     EXPECT_TRUE (is ("channel.stem.turn", 3, (DeskEncoder*) nullptr));
     EXPECT_TRUE (is ("channel.stem.push", 3, (DeskEncoder*) nullptr));
     EXPECT_EQ (desk->controlFor ("channel.stem.turn", 3), desk->controlFor ("channel.stem.push", 3));
-    EXPECT_TRUE (is ("aux-return.stem.push", 0, (DeskEncoder*) nullptr));
-    EXPECT_EQ (desk->controlFor ("aux-return.stem.turn", 0), nullptr);   // P47: the turn chooses nothing
+    EXPECT_TRUE (is ("aux-return.stem.push", 0, (DeskKey*) nullptr));   // DELAY CUE
+    for (const auto* turn : { "aux-return.delay.beat.turn", "aux-return.delay.feedback.turn", "aux-return.delay.color.turn",
+                              "aux-return.delay.spread.turn" })
+        EXPECT_TRUE (is (turn, 0, (DeskEncoder*) nullptr)) << turn;   // SELECT walks the delay list
+    EXPECT_EQ (desk->controlFor ("aux-return.stem.turn", 0), nullptr);
     EXPECT_TRUE (is ("filter.mode", 1, (DeskKey*) nullptr));   // 1 = HPF, 2 = LPF: one word, two keys
     EXPECT_TRUE (is ("filter.mode", 2, (DeskKey*) nullptr));
     EXPECT_NE (desk->controlFor ("filter.mode", 1), desk->controlFor ("filter.mode", 2));
     EXPECT_EQ (desk->controlFor ("filter.mode", 0), nullptr);
     EXPECT_EQ (desk->controlFor ("tap", 5), nullptr);
+    EXPECT_EQ (desk->controlFor ("tap", 2), nullptr);
 }
 
 TEST (DeskComponent, MetersAreThere)
@@ -337,18 +347,6 @@ TEST (DeskComponent, ATouchSendsThePotAndRaisesTheRing)
     ASSERT_EQ (c.sent[0].message.size(), 1);
     EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), 0.4f);
     EXPECT_TRUE (desk->state().marked (pot));
-}
-
-TEST (DeskComponent, TheLockHoldsMasterBoothAndPhones)
-{
-    Captured c;
-    auto desk = deskJoined (c);
-    desk->setLocked (true);
-    desk->touchPot (potIndex ("master.volume", 0), 0.2f);
-    desk->touchPot (potIndex ("master.phones-volume", 0), 0.2f);
-    EXPECT_TRUE (c.sent.empty());
-    desk->touchPot (potIndex ("filter.frequency", 0), 0.2f);
-    EXPECT_EQ (c.sent.size(), 1u);
 }
 
 TEST (DeskComponent, OneToFourCueAndSpaceTaps)
@@ -492,7 +490,7 @@ TEST (DeskComponent, BackFromSilenceAsksAgainAndTakesNoHandUntilAnswered)
     EXPECT_TRUE (desk->handsAccepted());
 }
 
-// Stale dims the whole surface (spec 4.1): every child but the status line, LOCK too.
+// Stale dims the whole surface (spec 4.1): every child but the status line and the way to the next workspace.
 TEST (DeskComponent, CoreSilentDimsEveryControl)
 {
     Captured c;
@@ -501,7 +499,7 @@ TEST (DeskComponent, CoreSilentDimsEveryControl)
     ASSERT_FALSE (desk->handsAccepted());
     int enabled = 0;
     for (auto* child : desk->getChildren())
-        if (child->isEnabled() && dynamic_cast<StatusLine*> (child) == nullptr)
+        if (child->isEnabled() && dynamic_cast<StatusLine*> (child) == nullptr && dynamic_cast<juce::TextButton*> (child) == nullptr)
             ++enabled;
     EXPECT_EQ (enabled, 0);
 }
@@ -711,12 +709,13 @@ TEST (DeskComponent, TheChannelEncoderSendsTheHardwaresTurnAndPush)
     EXPECT_EQ (c.sent[2].message[0].getInt32(), -1);
 }
 
-// P47: the FX Return has nothing to choose. Its encoder's turn sends nothing, its press the cue
-// (aux-return.stem.push 1); on its display only the CUE field answers a tap, with the same word.
-TEST (DeskComponent, TheReturnEncoderOnlyCues)
+// R25, as the hardware: on a truth without the delay words the FX Return has nothing to choose. Its
+// encoder's turn sends nothing, its press the cue (aux-return.stem.push 1); on its display only the CUE
+// field answers a tap, with the same word.
+TEST (DeskComponent, WithoutTheDelayWordsTheReturnEncoderOnlyCues)
 {
     Captured c;
-    auto desk = deskJoined (c);
+    auto desk = deskJoinedOn (c, truthWithoutTheDelay());
     auto* encoder = nthChild<DeskEncoder> (*desk, numChannels);   // SELECT, after the four channels'
     ASSERT_NE (encoder, nullptr);
     const juce::Point<float> start { encoder->getWidth() * 0.5f, encoder->getHeight() * 0.5f };
@@ -864,4 +863,178 @@ TEST (DeskRing, TheRingFromTheStartAndAfterANewCore)
     answer (*desk, 9100);   // the surface dims until the new Core answers
     desk->step (9120);
     EXPECT_TRUE (samePixels (start, displayShot (*desk, 0)));
+}
+
+namespace
+{
+/** SELECT, the FX Return's encoder: after the four channels' INPUT encoders. */
+DeskEncoder* selectOf (DeskComponent& desk) { return nthChild<DeskEncoder> (desk, numChannels); }
+
+void turnBy (DeskEncoder& encoder, int clicks)
+{
+    const juce::Point<float> at { encoder.getWidth() * 0.5f, encoder.getHeight() * 0.5f };
+    for (int i = 0; i < std::abs (clicks); ++i)
+        encoder.mouseWheelMove (clickOn (encoder, at, at, false),
+                                juce::MouseWheelDetails { 0.f, clicks > 0 ? 0.1f : -0.1f, false, false, false });
+}
+
+void push (DeskEncoder& encoder)
+{
+    const juce::Point<float> at { encoder.getWidth() * 0.5f, encoder.getHeight() * 0.5f };
+    encoder.mouseDown (clickOn (encoder, at, at, false));
+    encoder.mouseUp (clickOn (encoder, at, at, false));
+}
+
+DeskLayout layoutOf (DeskComponent& desk) { return layOutDesk (desk.getLocalBounds().toFloat(), currentFingertip()); }
+}
+
+// The hardware's return encoder (a3_mixer_delay): selecting, a turn moves the cursor and sends nothing; a
+// press is edit, and a turn then sends the row's turn word with the clicks; another press selects again.
+TEST (DeskComponent, TheReturnEncoderWalksTheDelayListAsTheHardware)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* select = selectOf (*desk);
+    ASSERT_NE (select, nullptr);
+    turnBy (*select, 1);   // BEAT -> FEEDBK
+    push (*select);
+    EXPECT_TRUE (c.sent.empty()) << c.addresses().joinIntoString (" ");
+    turnBy (*select, 1);
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("aux-return.delay.feedback.turn"));
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
+    push (*select);   // select again: the turn moves the cursor
+    c.sent.clear();
+    turnBy (*select, 1);
+    EXPECT_TRUE (c.sent.empty());
+    push (*select);
+    turnBy (*select, -1);
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("aux-return.delay.color.turn"));
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), -1);
+}
+
+// R22: four quiet seconds in edit and the encoder selects again.
+TEST (DeskComponent, TheDelayListFallsBackToSelect)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* select = selectOf (*desk);
+    push (*select);
+    desk->step (100 + delay::fallbackMs + 50);
+    c.sent.clear();
+    turnBy (*select, 1);
+    EXPECT_TRUE (c.sent.empty());
+}
+
+// The return display shows Core's values and the mode: a press and Core's value change its pixels.
+TEST (DeskComponent, TheReturnDisplayShowsTheModeAndCoresValues)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* display = nthChild<OledView> (*desk, numChannels);
+    ASSERT_NE (display, nullptr);
+    desk->step (140);
+    const auto selecting = display->createComponentSnapshot (display->getLocalBounds());
+    push (*selectOf (*desk));
+    desk->step (180);
+    const auto editing = display->createComponentSnapshot (display->getLocalBounds());
+    desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address ("aux-return.delay.beat")), 0.5f), 190);
+    desk->step (220);
+    const auto valued = display->createComponentSnapshot (display->getLocalBounds());
+    const auto differ = [] (const juce::Image& a, const juce::Image& b) {
+        for (int y = 0; y < a.getHeight(); ++y)
+            for (int x = 0; x < a.getWidth(); ++x)
+                if (a.getPixelAt (x, y) != b.getPixelAt (x, y))
+                    return true;
+        return false;
+    };
+    EXPECT_TRUE (differ (selecting, editing));
+    EXPECT_TRUE (differ (editing, valued));
+}
+
+// Maintainer, 2026-10-30: of the four tap keys only the fourth is TAP; the third is DELAY CUE.
+TEST (DeskComponent, TheThirdTapKeyIsDelayCueAndTheFourthTap)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    const auto layout = layoutOf (*desk);
+    auto* tap = desk->controlFor ("tap", 0);
+    auto* cue = dynamic_cast<DeskKey*> (desk->controlFor ("aux-return.stem.push", 0));
+    ASSERT_NE (tap, nullptr);
+    ASSERT_NE (cue, nullptr);
+    EXPECT_EQ (tap->getBounds(), layout.strips[3].tap.toNearestInt());
+    EXPECT_EQ (cue->getBounds(), layout.strips[2].tap.toNearestInt());
+    for (size_t strip : { 0u, 1u })
+        for (auto* child : desk->getChildren())
+            EXPECT_FALSE (child->getBounds().intersects (layout.strips[strip].tap.toNearestInt()))
+                << "strip " << strip + 1 << ": " << child->getBounds().toString();
+
+    // The cue is a toggle at Core: a press sends it, the release nothing (as the hardware's push).
+    cue->mouseDown (clickOn (*cue, { 2.f, 2.f }, { 2.f, 2.f }, false));
+    cue->mouseUp (clickOn (*cue, { 2.f, 2.f }, { 2.f, 2.f }, false));
+    ASSERT_EQ (c.sent.size(), 1u);
+    EXPECT_EQ (c.sent[0].message.getAddressPattern().toString(), osc().address ("aux-return.stem.push"));
+    EXPECT_EQ (c.sent[0].message[0].getInt32(), 1);
+}
+
+TEST (DeskComponent, DelayCueIsLitByCoresLamp)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    auto* cue = desk->controlFor ("aux-return.stem.push", 0);
+    desk->step (140);
+    const auto off = cue->createComponentSnapshot (cue->getLocalBounds());
+    desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address ("aux-return.cue.led")), 1.f), 150);
+    desk->step (180);
+    const auto on = cue->createComponentSnapshot (cue->getLocalBounds());
+    int differing = 0;
+    for (int y = 0; y < on.getHeight(); ++y)
+        for (int x = 0; x < on.getWidth(); ++x)
+            differing += on.getPixelAt (x, y) != off.getPixelAt (x, y) ? 1 : 0;
+    EXPECT_GT (differing, on.getWidth() * on.getHeight() / 4);
+}
+
+// Maintainer, 2026-10-30: LOCK is gone; the keys are one TAP, DELAY CUE, four FX, four CUE, HPF and LPF.
+TEST (DeskComponent, ThereIsNoLock)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    int keys = 0;
+    for (auto* child : desk->getChildren())
+        keys += dynamic_cast<DeskKey*> (child) != nullptr ? 1 : 0;
+    EXPECT_EQ (keys, 2 + 2 * numChannels + 2);
+    desk->touchPot (potIndex ("master.volume", 0), 0.2f);
+    EXPECT_EQ (c.sent.size(), 1u);
+}
+
+// Larger knobs in the master column, not larger captions: every pot's caption is a strip pot's.
+TEST (DeskComponent, EveryMasterPotHasTheStripsCaptionSize)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    const auto layout = layoutOf (*desk);
+    const float strip = layout.strips[0].pots[0].getHeight() * DeskLook::captionOfCell;
+    for (const auto& key : masterPotKeys)
+    {
+        auto* knob = dynamic_cast<DeskKnob*> (desk->controlFor (key, 0));
+        ASSERT_NE (knob, nullptr) << key;
+        ASSERT_TRUE (knob->captionHeight.has_value()) << key;
+        EXPECT_FLOAT_EQ (*knob->captionHeight, strip) << key;
+    }
+}
+
+// Maintainer, 2026-10-30: MASTER and BOOTH at the very top of the master column, above the output VU.
+TEST (DeskComponent, MasterAndBoothStandAboveTheOutputMeters)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    const auto layout = layoutOf (*desk);
+    for (const auto* key : { "master.volume", "master.booth" })
+    {
+        auto* knob = desk->controlFor (key, 0);
+        ASSERT_NE (knob, nullptr);
+        EXPECT_LT (knob->getBottom(), layout.matrix.getY() + 1) << key;
+        EXPECT_TRUE (layout.outputCard.toNearestInt().contains (knob->getBounds())) << key;
+    }
 }

@@ -14,6 +14,7 @@ set(A3DESK_INCLUDE_DIR "${A3DESK_APP_DIR}/Source")
 set(_a3desk_sources
     DeskControls.cpp
     DeskControlsUi.cpp
+    DeskDelay.cpp
     DeskIndicatorsUi.cpp
     DeskLook.cpp
     DeskComponent.cpp
@@ -23,6 +24,7 @@ set(_a3desk_sources
     DeskMeters.cpp
     EncoderTurns.cpp
     DeskOsc.cpp
+    DeskScreen.cpp
     DeskWindow.cpp
     DeskWire.cpp
     DeskState.cpp

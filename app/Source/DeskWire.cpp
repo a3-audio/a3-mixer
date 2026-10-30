@@ -5,6 +5,7 @@
 #include "DeskWire.h"
 
 #include "DeskControls.h"
+#include "DeskDelay.h"
 
 namespace desk
 {
@@ -53,6 +54,13 @@ Outgoing DeskWire::returnPush() const
 {
     auto m = to ("aux-return.stem.push");
     m.addInt32 (1);
+    return { Outgoing::To::core, m };
+}
+
+Outgoing DeskWire::delayTurn (int row, int clicks) const
+{
+    auto m = to (delay::turnKey (row));
+    m.addInt32 (clicks);
     return { Outgoing::To::core, m };
 }
 

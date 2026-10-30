@@ -19,7 +19,11 @@ constexpr float status = 0.02f, top = 0.07f, cardGap = 5.f / 1024.f, caption = 0
 // row is a pot row: the photo's display encoders are no smaller than the pots.
 constexpr float display = 0.07f, pot = 0.058f, encoder = pot, tap = 0.035f, keys = 0.05f;
 // Within the master card, weights of its height.
-constexpr float filterPots = 0.075f, filterKeys = 0.05f, master = 0.12f, monitorPots = 0.075f, phones = 0.075f;
+constexpr float filterPots = 0.075f, filterKeys = 0.05f, monitorPots = 0.075f;
+// MASTER and BOOTH over the output meters, a share of the window's height: the size MASTER had in the master card.
+constexpr float levels = 0.105f;
+// The workspace key: StemDeck's and A3 Motion's app key (switcherGeometry), shares of the window's width.
+constexpr float workspaceOfWidth = 80.f / 768.f, workspaceMarginOfWidth = 6.f / 768.f;
 constexpr float meterOfColumn = 0.25f, capOfFaderWidth = 0.45f;
 }
 
@@ -76,7 +80,11 @@ DeskLayout layOutDesk (Rect area, float fingertip)
     const auto yAt = [&] (float share) { return area.getY() + share * height; };
     const auto card = [] (float x, float w, float y, float bottom) { return Rect { x, y, w, bottom - y }; };
 
-    l.status = { area.getX() + gap, area.getY(), width - 2.f * gap, status * height };
+    // The status line is as tall as the workspace key at its right end needs: a fingertip at least.
+    const float statusHeight = std::max (status * height, fingertip);
+    const float keyWidth = std::max (workspaceOfWidth * width, fingertip);
+    l.workspace = { area.getRight() - workspaceMarginOfWidth * width - keyWidth, area.getY(), keyWidth, statusHeight };
+    l.status = { area.getX() + gap, area.getY(), l.workspace.getX() - gap - (area.getX() + gap), statusHeight };
 
     // The FX Return over channels 1-3: its display, SELECT, its pot. The card spans all four
     // strips, so the cards below line up with one above.
@@ -113,16 +121,15 @@ DeskLayout layOutDesk (Rect area, float fingertip)
     const float mx = xOf (numChannels), mw = masterColumns * column;
     l.outputCard = card (mx, mw, topY, upperBottom);
     auto outputs = l.outputCard.reduced (pad);
+    halves (outputs.removeFromTop (levels * height), l.master, l.booth);
     l.matrixCaption = outputs.removeFromBottom (matrixCaption * height);
     l.matrix = outputs;
 
     l.masterCard = card (mx, mw, bandTop, bandBottom);
-    Rows rows (l.masterCard.reduced (pad), filterPots + filterKeys + master + monitorPots + phones);
+    Rows rows (l.masterCard.reduced (pad), filterPots + filterKeys + monitorPots);
     halves (rows.next (filterPots), l.freq, l.res);
     halves (rows.next (filterKeys), l.hpf, l.lpf);
-    l.master = rows.next (master);
-    halves (rows.next (monitorPots), l.booth, l.cueMix);
-    halves (rows.next (phones), l.phones, l.lock);
+    halves (rows.next (monitorPots), l.cueMix, l.phones);
 
     const auto targets = touchTargets (l);
     l.fits = std::all_of (targets.begin(), targets.end(), [fingertip] (const Rect& r) {
@@ -133,8 +140,8 @@ DeskLayout layOutDesk (Rect area, float fingertip)
 
 std::vector<Rect> touchTargets (const DeskLayout& l)
 {
-    std::vector<Rect> targets { l.select, l.auxReturn, l.freq, l.res, l.hpf, l.lpf,
-                                l.master, l.booth, l.cueMix, l.phones, l.lock };
+    std::vector<Rect> targets { l.workspace, l.select, l.auxReturn, l.freq, l.res, l.hpf, l.lpf,
+                                l.master, l.booth, l.cueMix, l.phones };
     for (const auto& s : l.strips)
     {
         targets.insert (targets.end(), { s.encoder, s.tap, s.fx, s.cue, faderCap (s.fader, 0.f) });

@@ -4,6 +4,8 @@
 
 #include "DisplayPicture.h"
 
+#include "DeskDelay.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -14,6 +16,10 @@ namespace
 constexpr int innerGap = 2, groupGap = 7, edge = 1, lastSlotMeters = 2;
 constexpr int arrowRows = 5, arrowWidth = 2 * arrowRows, bracketRows = 4;
 constexpr double markOfMeter = 0.1, returnHeadingOfWidth = 0.35, returnMeterOfWidth = 0.17;
+// The hardware's return sections (RETURN_SECTION_OF_WIDTH, LIST_GAP, LIST_HEADING_GAP): the meter's section
+// is the share the AUX section has there, at the other side.
+constexpr double returnSectionOfWidth = 0.26;
+constexpr int listGap = 2, listHeadingGap = 2;
 constexpr std::array<double, 2> markedFractions { 4.0 / 8.0, 6.0 / 8.0 };   // first yellow, first red LED
 constexpr int channelMarkLength = innerGap - 1;
 
@@ -276,6 +282,44 @@ Picture returnPicture (bool cue, double level, int width, int height, bool clip,
     p.cursor = noBox;
     p.active = noBox;
     addMarks (p.marks, p.meters, std::nullopt);
+    return p;
+}
+
+Picture delayReturnPicture (bool editing, int cursor, const std::array<std::string, 4>& values, double level, int width,
+                            int height, bool clip, double hold)
+{
+    // The hardware's two sections (display_panel.return_picture, round 3), mirrored: DELAY over the rows at the
+    // left margin, a divider the panel's whole height, AUX over the meter at the right.
+    const auto [headingRows, arrowRowsBand, meterRows] = bands (height);
+    const int x0 = channelColumns (width)[0].x0;
+    const int meter = pyRound (width * returnMeterOfWidth);
+    const int divider = width - 1 - pyRound (width * returnSectionOfWidth);
+    const int marks = markLength ({ 0, 0, meter - 1, 0 });
+    const auto meterSpan = centred ({ divider + 1, width - 1 }, marks + 1 + meter);
+    const int meterLeft = meterSpan.x1 - meter + 1;
+
+    Picture p;
+    p.headings.push_back ({ { x0, headingRows.top, x0 + pyRound (width * returnHeadingOfWidth) - 1, headingRows.bottom }, "DELAY" });
+    p.headings.push_back ({ { divider + 1 + listGap, headingRows.top, width - 1, headingRows.bottom }, "AUX" });
+    p.meters = metersFor (std::vector<Box> { { meterLeft, meterRows.top, meterLeft + meter - 1, meterRows.bottom } },
+                          std::array<double, 1> { level }, std::array<bool, 1> { clip }, std::array<double, 1> { hold });
+    p.dividers.push_back ({ divider, 0, divider, height - 1 });
+    p.cursor = noBox;
+    p.active = noBox;
+    addMarks (p.marks, p.meters, std::nullopt);
+
+    // Equal rows stacked up to the panel's last row under the heading (display_panel._rows).
+    const int count = static_cast<int> (values.size());
+    const int free = height - (headingRows.bottom + 1 + listHeadingGap);
+    const int rowHeight = std::max (1, free / count);
+    const int top = height - rowHeight * count;
+    const auto lit = editing ? Row::Lit::value : Row::Lit::row;
+    for (int i = 0; i < count; ++i)
+    {
+        const int y0 = top + i * rowHeight;
+        p.rows.push_back ({ { x0, y0, divider - 1 - listGap, y0 + rowHeight - 1 }, delay::rowName (i), values[(size_t) i],
+                            i == cursor ? lit : Row::Lit::none });
+    }
     return p;
 }
 

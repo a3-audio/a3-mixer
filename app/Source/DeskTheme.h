@@ -29,7 +29,7 @@ inline constexpr float ledOffAlpha = 0.12f;
 /** The lamps keep the hardware's colours: the eye knows them from the desk (spec 4.1).
     filter.led: blue HPF, green LPF (truth). */
 inline const juce::Colour lampFx { 0xff6bd66b }, lampCue { 0xff3d7bf0 }, lampTap { 0xffe04040 },
-    lampHpf { 0xff3d7bf0 }, lampLpf { 0xff6bd66b }, lampLock { 0xfff2b33d };
+    lampHpf { 0xff3d7bf0 }, lampLpf { 0xff6bd66b }, lampLive { 0xfff2b33d };
 /** Channel identity, as on Motion: on value arcs, fader caps and the line atop the strip's card. */
 inline const std::array<juce::Colour, 4> channel { juce::Colour (0xffe8336d), juce::Colour (0xff5468e8),
                                                    juce::Colour (0xfff2c21b), juce::Colour (0xff1fa39a) };

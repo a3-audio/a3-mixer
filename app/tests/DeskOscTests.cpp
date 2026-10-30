@@ -2,9 +2,12 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <algorithm>
+
 #include <gtest/gtest.h>
 
 #include "DeskControls.h"
+#include "DeskDelay.h"
 #include "DeskOsc.h"
 #include "TestTruth.h"
 
@@ -59,15 +62,6 @@ TEST (DeskControls, EveryPotHasAnIndexAndOnlyOne)
         EXPECT_EQ (potIndex (pots[i].key, pots[i].channel), (int) i);
     EXPECT_EQ (potIndex ("channel.gain", 5), -1);
     EXPECT_EQ (potIndex ("master.volume", 1), -1);
-}
-
-TEST (DeskControls, TheLockHoldsMasterBoothAndPhones)
-{
-    EXPECT_TRUE (isGuarded ("master.volume"));
-    EXPECT_TRUE (isGuarded ("master.booth"));
-    EXPECT_TRUE (isGuarded ("master.phones-volume"));
-    EXPECT_FALSE (isGuarded ("master.phones-mix"));
-    EXPECT_FALSE (isGuarded ("channel.volume"));
 }
 
 TEST (DeskOsc, TheTruthHasEverythingTheDeskNeeds)
@@ -192,4 +186,21 @@ TEST (DeskRing, EngineWordsAreHeardAndNumbered)
 TEST (DeskControls, TheReturnPotReadsFxRtn)
 {
     EXPECT_EQ (desk::potCaption ("master.aux-return"), "FX RTN");
+}
+
+// The delay words are optional, as on the hardware (a3_mixer_osc.DELAY_KEYS): Core's values are heard when
+// the truth has them, and a truth without them is no missing key.
+TEST (DeskOsc, TheDelayValuesAreHeardAndOptional)
+{
+    const DeskOsc osc (test::truth());
+    for (const auto* key : { "aux-return.delay.beat", "aux-return.delay.feedback", "aux-return.delay.color",
+                             "aux-return.delay.spread" })
+    {
+        const auto found = osc.match (osc.address (key));
+        ASSERT_TRUE (found.has_value()) << key;
+        EXPECT_EQ (found->key, key);
+    }
+    const auto used = keysUsed();
+    for (const auto& key : delay::delayKeys())
+        EXPECT_EQ (std::find (used.begin(), used.end(), key), used.end()) << key;
 }

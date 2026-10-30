@@ -91,6 +91,12 @@ void tellTheMix (DeskComponent& desk, double nowMs)
     }
     for (const auto& m : master)
         say (desk, osc.address (m.key), m.value, nowMs);
+    // The delay as Core announces it: 1/4 beat, 70 % feedback, a touch of high-pass, 60 degrees.
+    if (osc.hasDelayList())
+        for (const auto& [key, value] : { std::pair<const char*, float> { "aux-return.delay.beat", 0.25f },
+                                          { "aux-return.delay.feedback", 0.7f }, { "aux-return.delay.color", -0.2f },
+                                          { "aux-return.delay.spread", 60.f } })
+            say (desk, osc.address (key), value, nowMs);
     desk.receive (juce::OSCMessage (juce::OSCAddressPattern (osc.address ("filter.led")), juce::String ("high_pass")),
                   nowMs);
 }
@@ -136,6 +142,7 @@ TEST (DeskPromo, WritesThePlayingDeskForReview)
     std::vector<Outgoing> sent;
     DeskComponent desk ([&sent] (const Outgoing& out) { sent.push_back (out); return true; });
     desk.setSize (rigWidth, rigHeight);
+    desk.setWorkspaceRunner ([] (const std::vector<std::string>&) {});   // the rig's key, never run here
     desk.useTruth (test::truth());
     ASSERT_NE (desk.osc(), nullptr) << desk.statusText();
     desk.setLinkState (DeskLink::Opened::ok);
