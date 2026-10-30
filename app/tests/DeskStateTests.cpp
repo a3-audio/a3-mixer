@@ -15,35 +15,22 @@ TEST (DeskState, NothingIsKnownUntilCoreTells)
     s.setFromPeer (0, 0.4f);
     EXPECT_TRUE (s.known (0));
     EXPECT_FLOAT_EQ (s.value (0), 0.4f);
-    EXPECT_FALSE (s.marked (0));
 }
 
-TEST (DeskState, ATouchStoresAndRaisesTheRing)
+TEST (DeskState, ATouchStores)
 {
     DeskState s (3);
     s.setFromPeer (1, 0.2f);
     s.setFromTouch (1, 0.7f);
     EXPECT_FLOAT_EQ (s.value (1), 0.7f);
-    EXPECT_TRUE (s.marked (1));
 }
 
-TEST (DeskState, ADifferentRelayClearsTheRing)
+TEST (DeskState, ARelayAfterATouchWins)
 {
     DeskState s (3);
     s.setFromTouch (1, 0.7f);
     s.setFromPeer (1, 0.3f);   // the hardware knob was touched: its position wins
     EXPECT_FLOAT_EQ (s.value (1), 0.3f);
-    EXPECT_FALSE (s.marked (1));
-}
-
-// Review focus 4: a recall someone else started repeats this desk's own value
-// to everyone; the hardware still stands elsewhere, so the ring stays.
-TEST (DeskState, TheSameValueComingBackKeepsTheRing)
-{
-    DeskState s (3);
-    s.setFromTouch (2, 0.55f);
-    s.setFromPeer (2, 0.55f);
-    EXPECT_TRUE (s.marked (2));
 }
 
 TEST (DeskState, AGrabHoldsRelaysUntilRelease)
@@ -55,7 +42,6 @@ TEST (DeskState, AGrabHoldsRelaysUntilRelease)
     EXPECT_FLOAT_EQ (s.value (0), 0.6f);
     s.release (0);
     EXPECT_FLOAT_EQ (s.value (0), 0.1f);   // Core's value on release (spec §5)
-    EXPECT_FALSE (s.marked (0));
 }
 
 TEST (DeskState, AReleaseWithoutARelayKeepsTheHandsValue)
@@ -65,7 +51,6 @@ TEST (DeskState, AReleaseWithoutARelayKeepsTheHandsValue)
     s.setFromTouch (0, 0.6f);
     s.release (0);
     EXPECT_FLOAT_EQ (s.value (0), 0.6f);
-    EXPECT_TRUE (s.marked (0));
 }
 
 TEST (DeskState, ValuesStayOnTheScale)

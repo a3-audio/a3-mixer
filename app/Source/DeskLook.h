@@ -44,7 +44,7 @@ public:
         given, replaces the cell's share: a large knob keeps its row's caption size. */
     static void paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption,
                            std::optional<float> arcValue, float pointerValue, juce::Colour arc,
-                           bool fromMiddle, bool marked, float startAngle, float endAngle,
+                           bool fromMiddle, float startAngle, float endAngle,
                            std::optional<float> captionHeight = std::nullopt);
     /** An endless encoder: a closed, knurled ring and a cap turned `clicks` steps from noon. */
     static void paintEncoder (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption, int clicks);

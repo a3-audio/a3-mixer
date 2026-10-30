@@ -28,7 +28,6 @@ template <typename Control>
 void showPot (Control& control, const DeskState& state, int pot)
 {
     control.known = state.known (pot);
-    control.marked = state.marked (pot);
 }
 
 size_t slotOf (const std::string& key)

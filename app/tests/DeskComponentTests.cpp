@@ -338,17 +338,15 @@ TEST (DeskComponent, ControlsTakeNoHandBeforeTheFirstAnswer)
     EXPECT_EQ (c.addresses(), juce::StringArray (osc().address ("channel.gain", 1)));
 }
 
-TEST (DeskComponent, ATouchSendsThePotAndRaisesTheRing)
+TEST (DeskComponent, ATouchSendsThePot)
 {
     Captured c;
     auto desk = deskJoined (c);
     const int pot = potIndex ("master.aux-return", 0);
-    EXPECT_FALSE (desk->state().marked (pot));
     desk->touchPot (pot, 0.4f);
     ASSERT_EQ (c.sent.size(), 1u);
     ASSERT_EQ (c.sent[0].message.size(), 1);
     EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), 0.4f);
-    EXPECT_TRUE (desk->state().marked (pot));
 }
 
 TEST (DeskComponent, OneToFourCueAndSpaceTaps)
@@ -609,7 +607,6 @@ TEST (DeskComponent, TwoTapsPutEachKindOfPotBackAsADragWould)
         ASSERT_TRUE (c.sent[0].message[0].isFloat32()) << key;
         EXPECT_FLOAT_EQ (c.sent[0].message[0].getFloat32(), rest) << key;
         EXPECT_FLOAT_EQ (desk->state().value (pot), rest) << key;
-        EXPECT_TRUE (desk->state().marked (pot)) << key;
         EXPECT_FALSE (desk->state().grabbed (pot)) << key;
     }
 }
@@ -1128,4 +1125,31 @@ TEST (DeskComponent, ARestartedDeskAsksForTheStateAndItsPotsTakeAHand)
     desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address ("aux-return.delay.beat")), 0.5f), 60);
     desk->step (80);
     EXPECT_TRUE (knob->hitTest (centre.x, centre.y));
+}
+
+// Maintainer, 2026-10-30: "the dot at the last-touched pot can go". A pot or fader set by a hand looks
+// exactly as the same value from Core: no marker on it.
+TEST (DeskComponent, ATouchedPotCarriesNoMarker)
+{
+    for (const auto& [key, channel] : std::vector<std::pair<std::string, int>> {
+             { "channel.eq.high", 2 }, { "master.volume", 0 }, { "channel.volume", 3 } })
+    {
+        Captured c;
+        auto desk = deskJoined (c);
+        const int pot = potIndex (key, channel);
+        auto* control = potControl (*desk, pot);
+        const auto& k = allPots()[(size_t) pot];
+        desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (k.key, k.channel)), 0.4f), 200);
+        desk->step (220);
+        const auto fromCore = control->createComponentSnapshot (control->getLocalBounds());
+        desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address (k.key, k.channel)), 0.2f), 230);
+        desk->touchPot (pot, 0.4f);
+        desk->step (260);
+        const auto touched = control->createComponentSnapshot (control->getLocalBounds());
+        int differing = 0;
+        for (int y = 0; y < touched.getHeight(); ++y)
+            for (int x = 0; x < touched.getWidth(); ++x)
+                differing += touched.getPixelAt (x, y) != fromCore.getPixelAt (x, y) ? 1 : 0;
+        EXPECT_EQ (differing, 0) << key;
+    }
 }

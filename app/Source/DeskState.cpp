@@ -7,12 +7,11 @@
 #include <algorithm>
 #include <utility>
 
-#include "Takeover.h"
 
 namespace desk
 {
 DeskState::DeskState (int pots)
-    : _values ((size_t) pots, 0.f), _known ((size_t) pots, false), _marked ((size_t) pots, false),
+    : _values ((size_t) pots, 0.f), _known ((size_t) pots, false),
       _grabbed ((size_t) pots, false), _held ((size_t) pots)
 {
 }
@@ -22,7 +21,6 @@ void DeskState::setFromTouch (int pot, float value)
     const auto i = (size_t) pot;
     _values[i] = std::clamp (value, 0.f, 1.f);
     _known[i] = true;
-    _marked[i] = true;
 }
 
 void DeskState::setFromPeer (int pot, float value)
@@ -52,8 +50,6 @@ void DeskState::release (int pot)
 void DeskState::take (int pot, float value)
 {
     const auto i = (size_t) pot;
-    if (_marked[i] && takeover::clearsMarker (_values[i], value))
-        _marked[i] = false;
     _values[i] = value;
     _known[i] = true;
 }

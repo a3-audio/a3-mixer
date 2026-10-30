@@ -100,20 +100,6 @@ TEST (DeskUi, AnUnknownValueDrawsNoArc)
     knob.setLookAndFeel (nullptr);
 }
 
-TEST (DeskUi, TheRingShowsOnlyWhenMarked)
-{
-    DeskLook look;   // before the knob: outlives it
-    DeskKnob knob ("HIGH", theme::channel[2], true);
-    knob.setLookAndFeel (&look);
-    knob.known = true;
-    knob.setValue (0.7, juce::dontSendNotification);
-    const auto plain = countNear (snapshotOf (knob, 120, 100), theme::marker, 8);
-    knob.marked = true;
-    const auto ringed = countNear (snapshotOf (knob, 120, 100), theme::marker, 8);
-    EXPECT_GT (ringed, plain);
-    knob.setLookAndFeel (nullptr);
-}
-
 // A full turn takes four knob heights of drag, at every size.
 TEST (DeskUi, AKnobTurnsFullyOverFourHeights)
 {

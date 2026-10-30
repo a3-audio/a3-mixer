@@ -27,7 +27,7 @@ public:
 
     juce::String caption;
     juce::Colour arc;
-    bool fromMiddle = false, known = false, marked = false;
+    bool fromMiddle = false, known = false;
     /** In pixels; empty: the cell's share (DeskLook::captionOfCell). */
     std::optional<float> captionHeight;
 };
@@ -43,7 +43,7 @@ public:
     bool hitTest (int x, int y) override;
 
     juce::Colour colour;
-    bool known = false, marked = false;
+    bool known = false;
 };
 
 /** An endless push encoder: drag or wheel turns, a click without a drag pushes.

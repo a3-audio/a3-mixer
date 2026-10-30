@@ -15,7 +15,7 @@ namespace
 // StemDeck's knob (Theme.cpp drawRotarySlider): shares of the knob's radius. Its caption as
 // StemDeck's: a line under the knob, the text 0.85 of the line.
 constexpr float textOfCaption = 0.85f, knobOfSpace = 0.9f;
-constexpr float strokeOfRadius = 0.18f, bodyInsetOfStroke = 2.2f, markerOfStroke = 0.75f;
+constexpr float strokeOfRadius = 0.18f, bodyInsetOfStroke = 2.2f;
 /** The encoder's knurl, and the step its cap turns per click: a step the eye
     can follow, not the hardware's detent count (unmeasured, a3_mixer_encoders). */
 constexpr int knurlsPerTurn = 24;
@@ -62,11 +62,6 @@ void paintFaderCap (juce::Graphics& g, juce::Rectangle<float> cap, const DeskFad
     g.fillRoundedRectangle (body, body.getHeight() * 0.12f);
     g.setColour (fader.colour);
     g.fillRect (body.withSizeKeepingCentre (body.getWidth() * 0.85f, juce::jmax (2.f, body.getHeight() * 0.1f)));
-    if (! fader.marked)
-        return;
-    g.setColour (theme::marker);
-    const float r = cap.getHeight() * 0.18f;
-    g.drawEllipse (cap.getRight() - 2.f * r - 2.f, cap.getY() - 2.f * r - 2.f, 2.f * r, 2.f * r, 1.5f);
 }
 }
 
@@ -127,7 +122,7 @@ void paintCap (juce::Graphics& g, const KnobParts& k, float pointerAngle, const 
 
 void DeskLook::paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const juce::String& caption,
                           std::optional<float> arcValue, float pointerValue, juce::Colour arc, bool fromMiddle,
-                          bool marked, float startAngle, float endAngle, std::optional<float> captionHeight)
+                          float startAngle, float endAngle, std::optional<float> captionHeight)
 {
     const auto k = partsOf (cell, captionHeight);
     g.setColour (theme::ringTrack);
@@ -138,13 +133,6 @@ void DeskLook::paintKnob (juce::Graphics& g, juce::Rectangle<float> cell, const 
         g.setColour (arc);
         const float from = fromMiddle ? angleOf (0.5f) : startAngle;
         arcPath (g, k.centre, k.ring, juce::jmin (from, angleOf (*arcValue)), juce::jmax (from, angleOf (*arcValue)), k.stroke);
-        if (marked)
-        {
-            g.setColour (theme::marker);
-            const auto at = onCircle (k.centre, k.ring + k.stroke * 1.4f, angleOf (*arcValue));
-            const float r = k.stroke * markerOfStroke;
-            g.drawEllipse (at.x - r, at.y - r, 2.f * r, 2.f * r, juce::jmax (1.f, k.stroke * 0.3f));
-        }
     }
     paintCap (g, k, angleOf (pointerValue), caption);
 }
@@ -176,7 +164,7 @@ void DeskLook::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int
     const DimWhenDisabled dim (g, slider.isEnabled());
     paintKnob (g, juce::Rectangle<int> (x, y, width, height).toFloat(), knob->caption,
                knob->known ? std::optional<float> (position) : std::nullopt, position, knob->arc,
-               knob->fromMiddle, knob->marked, startAngle, endAngle, knob->captionHeight);
+               knob->fromMiddle, startAngle, endAngle, knob->captionHeight);
 }
 
 juce::Slider::SliderLayout DeskLook::getSliderLayout (juce::Slider& slider)

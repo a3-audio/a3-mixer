@@ -17,7 +17,7 @@ inline const juce::Colour background { 0xff121315 }, panel { 0xff1c1d20 }, panel
 
 inline const juce::Colour ringTrack = outline, pointer = text, caption = textDim, keyFace = panelRaised,
     tick = outline;
-inline const juce::Colour neutralArc { 0xffd8dbe0 }, marker { 0xfffafafa }, slot { 0xff000000 },
+inline const juce::Colour neutralArc { 0xffd8dbe0 }, slot { 0xff000000 },
     capTop { 0xff4a4d53 }, capBottom { 0xff2b2d31 }, bodyTop { 0xff3a3d42 }, bodyBottom { 0xff222428 };
 /** A meter's ground: StemDeck's meters are black wells in the card. */
 inline const juce::Colour meterWell { 0xff000000 };
