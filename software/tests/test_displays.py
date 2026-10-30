@@ -148,13 +148,14 @@ class WhatIsDrawn(unittest.TestCase):
 
     def test_the_return_shows_its_one_meter(self):
         """P47: one meter, no arrow and no bracket; with the delay list the
-        return has two sections, AUX (the meter) and DELAY (the rows)."""
+        return has two sections, the meter alone and DELAY over the rows (no
+        AUX heading, maintainer 2026-10-30)."""
         rig = Rig()
         displays = rig.displays()
         displays.show_return_cue(False)
         displays.drain()
         _, picture = rig.drawn[-1]
-        self.assertEqual([h.text for h in picture.headings], ["AUX", "DELAY"])
+        self.assertEqual([h.text for h in picture.headings], ["DELAY"])
         self.assertEqual(len(picture.meters), 1)
         self.assertIsNone(picture.active)
         self.assertIsNone(picture.cursor)
@@ -641,11 +642,11 @@ class WhatPlaysWhere(unittest.TestCase):
         return [h.text for h in picture.headings]
 
     def test_the_return_is_the_same_with_and_without_the_engine(self):
-        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
+        self.assertEqual(self.return_names(), ["DELAY"])
         self.displays.show_source(0, 1)
-        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
+        self.assertEqual(self.return_names(), ["DELAY"])
         self.displays.forget_engine()
-        self.assertEqual(self.return_names(), ["AUX", "DELAY"])
+        self.assertEqual(self.return_names(), ["DELAY"])
 
     def test_a_channel_has_no_toggle(self):
         self.displays.show_channel(2, stem(3))
@@ -1262,21 +1263,21 @@ class OneTextSize(unittest.TestCase):
         heights = {name: self.ink_height(picture) for name, picture in self.pictures().items()}
         self.assertEqual(len(set(heights.values())), 1, heights)
 
-    def test_the_two_return_headings_share_size_and_top(self):
+    def test_delay_keeps_the_size_of_every_other_heading(self):
+        # Maintainer, 2026-10-30: on the hardware DELAY's size stays, only its font is the desk's.
         from display_panel import return_picture
         delay = return_picture(False, 0.5, 128, 64, delay=("select", 0, {}))
         ring = self.pictures()["ring"]
         names = {}
-        for name, picture in (("AUX", delay._replace(headings=delay.headings[:1])),
-                              ("DELAY", delay._replace(headings=delay.headings[1:])),
+        for name, picture in (("DELAY", delay),
                               ("A", ring._replace(headings=ring.headings[:1]))):
             from PIL import Image
             image = Image.new("1", (128, 64))
             paint(image, picture._replace(meters=(), marks=(), dividers=(), cursor=None,
                                           active=None, toggle=None, rows=()))
             rows = [y for y in range(64) if any(image.getpixel((x, y)) for x in range(128))]
-            names[name] = (rows[0], rows[-1])
-        self.assertEqual(len(set(names.values())), 1, names)
+            names[name] = rows[-1] - rows[0] + 1
+        self.assertLessEqual(abs(names["DELAY"] - names["A"]), 1, names)
 
     def test_the_return_name_is_whole_inside_its_box(self):
         from PIL import Image
@@ -1464,3 +1465,28 @@ class TheDelayListIsHandedOver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DelayHeadingPaint(unittest.TestCase):
+    """DELAY in the virtual desk's font (DejaVu Sans, JUCE's sans-serif on
+    the rig) at the size the hardware's headings have."""
+
+    def test_delay_is_the_size_of_every_heading(self):
+        from PIL import Image
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer-set-display"))
+        from display_panel import channel_picture, return_picture
+        heights = {}
+        for name, picture in (("DELAY", return_picture(False, 0.5, 128, 64, delay=("select", 0, {}))),
+                              ("A", channel_picture(0, 0, (0, 0, 0), 0, 128, 64))):
+            image = Image.new("1", (128, 64))
+            paint(image, picture._replace(headings=picture.headings[:1], meters=(), marks=(),
+                                          dividers=(), cursor=None, active=None, toggle=None, rows=()))
+            rows = [y for y in range(64) if any(image.getpixel((x, y)) for x in range(128))]
+            heights[name] = rows[-1] - rows[0] + 1
+        self.assertLessEqual(abs(heights["DELAY"] - heights["A"]), 1, heights)
+
+    def test_the_font_is_the_desks_where_the_pi_has_it(self):
+        import a3_mixer_displays as displays
+        if not Path(displays.DESK_FONT).exists():
+            self.skipTest("no DejaVu Sans here")
+        self.assertEqual(displays._desk_font(12).getname()[0], "DejaVu Sans")

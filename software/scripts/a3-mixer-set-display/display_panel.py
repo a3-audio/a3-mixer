@@ -174,7 +174,7 @@ def playing_slot(index, mask):
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
 #: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29 (with the
-#: delay list: AUX over the meter | DELAY over the rows, round 3), and its CUE field. It has no
+#: delay list: the meter | DELAY over the rows, round 3; no AUX heading since 2026-10-30), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
 RETURN_NAME = "DELAY"
 CUE_TEXT = "CUE"
@@ -279,7 +279,9 @@ def pixel_key(picture):
 #: What a panel shows: headings over meters, the cursor -- the box of the
 #: down arrow over the selected slot --, divider lines, a channel's toggle,
 #: and the box of the active bracket over the meter that plays, or None.
-Heading = namedtuple("Heading", "box text")
+#: `desk_font`: set in the virtual desk's font (the return's DELAY over the
+#: delay list, maintainer 2026-10-30) at the size every heading has.
+Heading = namedtuple("Heading", "box text desk_font", defaults=(False,))
 #: The mode of the delay list in which the whole cursor row is inverted; the
 #: other mode inverts its value only. The same word as the desk logic's SELECT
 #: (a test says so): the display does not import the desk's logic.
@@ -552,14 +554,13 @@ DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread":
 LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
 LIST_VALUE_SAMPLES = ("HP 10", "LP 10", "100%", "180\u00b0", "1/8", "3/4", "OFF")
 #: The two sections of the return with a delay list (round 3, 2026-10-29):
-#: AUX (heading and meter) | DELAY (heading and rows), a vertical divider
-#: between. The divider's column as a share of the width: 33 of 128, which
-#: leaves AUX (28 columns at the displays' text size) and the 22-column meter
-#: with its marks on the left, and 92 columns on the right -- the rows'
+#: the meter | DELAY (heading and rows), a vertical divider between (the AUX
+#: heading over the meter is gone since 2026-10-30). The divider's column as a
+#: share of the width: 33 of 128, which leaves the 22-column meter with its
+#: marks on the left, and 92 columns on the right -- the rows'
 #: widest name and value (SPREAD ... HP 10) still fit them at the size the
 #: rows had when they stood beside the meter, 10 rows high.
 RETURN_SECTION_OF_WIDTH = 0.26
-AUX_NAME = "AUX"
 #: Dark columns between the divider and the list.
 LIST_GAP = 2
 #: Dark rows between the heading and the first row.
@@ -611,9 +612,11 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     """The FX Return: DELAY (once AUX-RTN) at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
-    `delay` = (mode, cursor, values) makes two sections instead: AUX with the
-    meter at the left, a divider, DELAY with the four rows -- no CUE field and
-    no CUE row (the cue is a key of its own) -- at the right."""
+    `delay` = (mode, cursor, values) makes two sections instead: the meter
+    alone at the left, the panel's whole height (no AUX heading: the meter is
+    the delay's return and DELAY covers it -- maintainer, 2026-10-30), a
+    divider, and DELAY in the virtual desk's font over the four rows -- no CUE field and no CUE
+    row (the cue is a key of its own) -- at the right."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -629,18 +632,16 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     # Not at x0 itself: the scale marks stand in the column left of the bar.
     stem_width = channel[0][1] - channel[0][0] + 1
     left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
-    meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
-    headings = (Heading((x0, h0, x1, h1), RETURN_NAME),)
     if delay is not None:
-        # Two sections, the same band and the same text size for both
-        # headings (the rule of every other heading of the desk).
         divider = round(width * RETURN_SECTION_OF_WIDTH)
         first = divider + 1 + LIST_GAP
-        aux = Heading((x0, h0, divider - 2, h1), AUX_NAME)
-        delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME)
+        delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME, True)
         rows = _rows(*delay, h1, height - 1, (first, width - 1))
-        return Picture((aux, delay_heading), meters, None, ((divider, 0, divider, height - 1),),
-                       None, None, _marks(meters), rows)
+        whole = _meters([(left, 0, left + meter - 1, height - 1)], (level,), (clip,), (hold,))
+        return Picture((delay_heading,), whole, None, ((divider, 0, divider, height - 1),),
+                       None, None, _marks(whole), rows)
+    meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
+    headings = (Heading((x0, h0, x1, h1), RETURN_NAME),)
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)
     divider = _divider(last_meter, toggle_slot, (m0, m1))
     return Picture(headings, meters, None, (divider,), toggle, None, _marks(meters))

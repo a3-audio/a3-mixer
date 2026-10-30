@@ -51,7 +51,7 @@ class ListFixture(unittest.TestCase):
 
     def edit(self, row):
         """Select `row` and press into edit mode, sending nothing."""
-        self.list.turn(delay.ROWS.index(row))
+        self.list.turn(-delay.ROWS.index(row))
         self.list.press()
         self.sent.clear()
         self.views.clear()
@@ -67,25 +67,26 @@ class Select(ListFixture):
         self.assertEqual(delay.DELAY_ROWS, delay.ROWS)
 
     def test_a_turn_moves_the_cursor_and_sends_nothing(self):
-        self.list.turn(1)
-        self.assertEqual(self.list.cursor, 1)
-        self.list.turn(1)
-        self.assertEqual(self.list.cursor, 2)
+        # Maintainer, 2026-10-30: left (counter-clockwise) moves down the list, right moves up.
         self.list.turn(-1)
+        self.assertEqual(self.list.cursor, 1)
+        self.list.turn(-1)
+        self.assertEqual(self.list.cursor, 2)
+        self.list.turn(1)
         self.assertEqual(self.list.cursor, 1)
         self.assertEqual(self.sent, [])
         self.assertEqual(self.views, [(delay.SELECT, 1), (delay.SELECT, 2), (delay.SELECT, 1)])
 
     def test_the_cursor_stops_at_beat_and_at_spread_it_does_not_wrap(self):
-        self.list.turn(-1)
-        self.assertEqual(self.list.cursor, 0)
-        self.list.turn(9)
-        self.assertEqual(self.list.cursor, 3)
         self.list.turn(1)
+        self.assertEqual(self.list.cursor, 0)
+        self.list.turn(-9)
+        self.assertEqual(self.list.cursor, 3)
+        self.list.turn(-1)
         self.assertEqual(self.list.cursor, 3)
 
     def test_a_turn_that_moves_nothing_shows_nothing(self):
-        self.list.turn(-1)
+        self.list.turn(1)
         self.assertEqual(self.views, [])
 
     def test_no_clicks_no_change(self):
@@ -93,7 +94,7 @@ class Select(ListFixture):
         self.assertEqual((self.views, self.sent), ([], []))
 
     def test_select_never_falls_back_or_cues(self):
-        self.list.turn(2)
+        self.list.turn(-2)
         self.views.clear()
         self.time.advance(60)
         self.assertEqual((self.views, self.sent), ([], []))
@@ -101,7 +102,7 @@ class Select(ListFixture):
 
 class Toggle(ListFixture):
     def test_a_press_goes_into_edit_and_the_next_back(self):
-        self.list.turn(2)
+        self.list.turn(-2)
         self.list.press()
         self.assertEqual((self.list.mode, self.list.cursor), (delay.EDIT, 2))
         self.list.press()
@@ -115,7 +116,7 @@ class Toggle(ListFixture):
         self.assertEqual(self.list.mode, delay.EDIT)
 
     def test_edit_falls_back_to_select_after_four_seconds_cursor_stays(self):
-        self.list.turn(3)
+        self.list.turn(-3)
         self.list.press()
         self.time.advance(3.9)
         self.assertEqual(self.list.mode, delay.EDIT)

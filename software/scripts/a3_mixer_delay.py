@@ -20,7 +20,8 @@ encoder has two modes, toggled by a press (the press edge PushHoldOff
 accepts; there is no hold timing):
 
 - select, the start mode, the cursor on BEAT: a turn moves the cursor, which
-  stops at BEAT and at SPREAD (R24, no wrap);
+  stops at BEAT and at SPREAD (R24, no wrap); left moves down the list,
+  right up (maintainer, 2026-10-30);
 - edit: a turn changes the row under the cursor. A row's turn goes to Core
   as clicks (Core steps it and announces it, so the desk keeps what Core
   says).
@@ -110,8 +111,10 @@ class DelayList:
             self._show(self.mode, self.cursor)
 
     def _move(self, clicks):
-        """Select: the cursor, clamped. Under the lock."""
-        cursor = min(len(ROWS) - 1, max(0, self.cursor + clicks))
+        """Select: the cursor, clamped. Left (negative clicks) moves down the
+        list, right up (maintainer, 2026-10-30); a value in edit keeps right
+        = more. Under the lock."""
+        cursor = min(len(ROWS) - 1, max(0, self.cursor - clicks))
         if cursor == self.cursor:
             return
         self.cursor = cursor

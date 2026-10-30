@@ -54,7 +54,8 @@ said a value. On a truth without the delay words (R25) the return is as it
 always was: DELAY, the meter, the CUE field, and the push cues at once.
 
 Round 3 (2026-10-29, "passt" for round 2, then): the return with the list is
-two sections with a vertical divider -- left AUX over the meter, right DELAY
+two sections with a vertical divider -- left the meter (AUX over it until
+2026-10-30, now gone: DELAY covers it), right DELAY
 over the rows -- both headings in the band and size of every other heading of
 the desk, top-aligned with them (a test compares their ink). The divider runs
 the panel's whole height so the headings are separated too. The rows kept
@@ -172,13 +173,13 @@ def _font(size):
         return ImageFont.load_default()
 
 
-def _fit(draw, box, text, size):
+def _fit(draw, box, text, size, typeface=_font):
     """(font, at) of `text` centred in `box`, one TEXT_STEP below `size`
     and no larger than fits."""
     x0, y0, x1, y1 = box
     size = max(6, round(size * TEXT_STEP))
     while True:
-        font = _font(size)
+        font = typeface(size)
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
         if size == 6 or (right - left <= x1 - x0 + 1 and bottom - top <= y1 - y0 + 1):
             break
@@ -186,6 +187,22 @@ def _fit(draw, box, text, size):
     at = (x0 + (x1 - x0 + 1 - (right - left)) // 2 - left,
           y0 + (y1 - y0 + 1 - (bottom - top)) // 2 - top)
     return font, at
+
+
+#: The virtual desk's font, for the return's DELAY (maintainer, 2026-10-30):
+#: JUCE's sans-serif on the rig is DejaVu Sans, and the Pi has the same file
+#: from fonts-dejavu-core (Bitstream Vera licence). Without it, the displays'
+#: own font stands in.
+DESK_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+
+@functools.lru_cache(maxsize=32)
+def _desk_font(size):
+    from PIL import ImageFont
+    try:
+        return ImageFont.truetype(DESK_FONT, size)
+    except OSError:
+        return _font(size)
 
 
 @functools.lru_cache(maxsize=16)
@@ -197,7 +214,8 @@ def headings_image(headings, width, height):
     draw = ImageDraw.Draw(image)
     for heading in headings:
         x0, y0, x1, y1 = heading.box
-        font, at = _fit(draw, heading.box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING))
+        typeface = _desk_font if getattr(heading, "desk_font", False) else _font
+        font, at = _fit(draw, heading.box, heading.text, round((y1 - y0 + 1) * TEXT_OF_HEADING), typeface)
         draw.text(at, heading.text, fill="white", font=font)
     return image
 

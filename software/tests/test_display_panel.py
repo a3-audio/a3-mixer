@@ -456,7 +456,8 @@ class ReturnMeter(unittest.TestCase):
 
     def test_the_headings_are_plain(self):
         from display_panel import Heading
-        self.assertEqual(Heading._fields, ("box", "text"))
+        self.assertEqual(Heading._fields, ("box", "text", "desk_font"))
+        self.assertFalse(Heading((0, 0, 1, 1), "A").desk_font)
 
     def test_the_meter_stands_inside_the_panel(self):
         x0, y0, x1, y1 = self.picture().meters[0].box
@@ -532,29 +533,27 @@ class DelayList(unittest.TestCase):
         values = self.VALUES if values is None else values
         return return_picture(cue, 0.5, W, height, delay=(mode, cursor, values))
 
-    def test_two_sections_aux_left_delay_right(self):
+    def test_two_sections_the_meter_left_delay_right(self):
+        # No AUX heading (maintainer, 2026-10-30): the meter is the delay's
+        # return, DELAY covers it; the meter takes the freed height.
         p = self.picture()
-        self.assertEqual([h.text for h in p.headings], ["AUX", "DELAY"])
-        aux, delay = p.headings
-        # Same band: the same top and height, as every other heading of the desk.
-        self.assertEqual((aux.box[1], aux.box[3]), (delay.box[1], delay.box[3]))
-        self.assertEqual(aux.box[1], 0)
+        self.assertEqual([h.text for h in p.headings], ["DELAY"])
+        (delay,) = p.headings
+        self.assertEqual(delay.box[1], 0)
         (divider,) = p.dividers
         self.assertEqual(divider[0], divider[2])
         self.assertEqual((divider[1], divider[3]), (0, H - 1))
-        self.assertLess(aux.box[2], divider[0])
         self.assertGreater(delay.box[0], divider[0])
         meter = p.meters[0].box
         self.assertLess(meter[2], divider[0])
-        self.assertLess(aux.box[0], meter[0])
+        self.assertEqual((meter[1], meter[3]), (0, H - 1))
 
-    def test_the_meter_keeps_its_size_and_its_scale_marks(self):
+    def test_the_meter_keeps_its_columns_and_takes_the_whole_height(self):
         from display_panel import return_picture
         plain = return_picture(False, 0.5, W, H)
         p = self.picture()
-        self.assertEqual([m.box for m in p.meters], [m.box for m in plain.meters])
-        self.assertEqual(p.meters[0].box, (7, 19, 28, 63))
-        self.assertEqual(p.marks, plain.marks)
+        self.assertEqual(plain.meters[0].box, (7, 19, 28, 63))
+        self.assertEqual(p.meters[0].box, (7, 0, 28, 63))
         self.assertEqual(len(p.marks), 2)
 
     def test_the_rows_start_right_of_the_divider_and_are_twelve_rows_high(self):
@@ -566,7 +565,7 @@ class DelayList(unittest.TestCase):
 
     def test_the_delay_heading_stands_over_the_names_of_the_rows(self):
         p = self.picture()
-        self.assertLessEqual(abs(p.headings[1].box[0] - p.rows[0].box[0]), 2)
+        self.assertLessEqual(abs(p.headings[0].box[0] - p.rows[0].box[0]), 2)
 
     def test_no_delay_is_todays_return_with_no_rows(self):
         from display_panel import return_picture
@@ -591,7 +590,7 @@ class DelayList(unittest.TestCase):
         for row in p.rows:
             self.assertGreater(row.box[0], meter[2] + 1)
             self.assertEqual(row.box[2], W - 1)
-            self.assertGreater(row.box[1], p.headings[1].box[3])
+            self.assertGreater(row.box[1], p.headings[0].box[3])
 
     def test_unknown_reads_dashes_and_the_cue_is_no_part_of_the_picture(self):
         p = self.picture(values={})
@@ -954,3 +953,23 @@ class StemAnnouncements(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DelayHeadingInTheDesksFont(unittest.TestCase):
+    """Maintainer, 2026-10-30: DELAY in the virtual desk's font; its size on
+    the hardware stays as it was (the band of every heading)."""
+
+    def test_delay_is_set_in_the_desks_font_in_the_heading_band(self):
+        from display_panel import return_picture
+        plain = return_picture(False, 0.5, W, H)
+        p = return_picture(False, 0.5, W, H, delay=("select", 0, {}))
+        self.assertEqual([h.text for h in p.headings], ["DELAY"])
+        (heading,) = p.headings
+        self.assertTrue(heading.desk_font)
+        self.assertEqual((heading.box[1], heading.box[3]), (plain.headings[0].box[1], plain.headings[0].box[3]))
+
+    def test_every_other_heading_keeps_the_displays_font(self):
+        from display_panel import channel_picture, return_picture
+        for p in (return_picture(False, 0.5, W, H), channel_picture(0, 0, (0, 0, 0), 0, W, H)):
+            for heading in p.headings:
+                self.assertFalse(heading.desk_font, heading.text)

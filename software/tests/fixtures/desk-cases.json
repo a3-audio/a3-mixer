@@ -11282,6 +11282,58 @@
    "width": 128
   }
  ],
+ "delay_cursor": [
+  {
+   "cursor": 0,
+   "turns": [
+    1
+   ]
+  },
+  {
+   "cursor": 1,
+   "turns": [
+    -1
+   ]
+  },
+  {
+   "cursor": 1,
+   "turns": [
+    -2,
+    1
+   ]
+  },
+  {
+   "cursor": 3,
+   "turns": [
+    -9
+   ]
+  },
+  {
+   "cursor": 1,
+   "turns": [
+    -9,
+    1,
+    1
+   ]
+  },
+  {
+   "cursor": 1,
+   "turns": [
+    3,
+    -1
+   ]
+  },
+  {
+   "cursor": 1,
+   "turns": [
+    -1,
+    -1,
+    -1,
+    -1,
+    2
+   ]
+  }
+ ],
  "delay_texts": [
   {
    "row": "beat",
