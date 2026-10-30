@@ -5,19 +5,19 @@ Source: https://github.com/a3-audio/a3-mixer
 Comment: https://a3-audio.com
 
 Files: hardware/*
-Copyright: 2023 A3 Audio <contact@a3-audio.com>
+Copyright: 2023 Raphael Eismann
 License: CERN-OHL-S-2.0
 
 Files: software/*
-Copyright: 2023 A3 Audio <contact@a3-audio.com>
+Copyright: 2023 Raphael Eismann
 License: GPL-3.0-or-later
 
 Files: platform-config/*
-Copyright: 2023 A3 Audio <contact@a3-audio.com>
+Copyright: 2023 Raphael Eismann
 License: CC-BY-SA-4.0
 
 Files: README.md
-Copyright: 2023 A3 Audio <contact@a3-audio.com>
+Copyright: 2023 Raphael Eismann
 License: CC-BY-SA-4.0
 
 Files: hardware/mainboard/pcb/library/MCP3208T_CI_SL/*
@@ -26,9 +26,9 @@ License: LicenseRef-SnapMagic
 Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Search (SnapEDA); the terms are in License.txt next to the files.
 
 Files: app/* packaging/*
-Copyright: 2026 A3 Audio <contact@a3-audio.com>
+Copyright: 2026 Raphael Eismann
 License: GPL-3.0-or-later
 
 Files: docs/a3-setup.jpg
-Copyright: 2023 A3 Audio <contact@a3-audio.com>
+Copyright: 2023 Raphael Eismann
 License: CC-BY-SA-4.0
