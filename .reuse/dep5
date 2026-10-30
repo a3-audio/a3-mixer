@@ -28,3 +28,7 @@ Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Se
 Files: app/* packaging/*
 Copyright: 2026 A3 Audio <contact@a3-audio.com>
 License: GPL-3.0-or-later
+
+Files: docs/a3-setup.jpg
+Copyright: 2023 A3 Audio <contact@a3-audio.com>
+License: CC-BY-SA-4.0
