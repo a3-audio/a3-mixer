@@ -34,23 +34,22 @@ The return's encoder carries the delay's four parameters (2026-10-29, spec
 delay-params). First design: one parameter at a time, a page, its name over
 a big value beside the meter, a CUE field behind a divider. Round 2, the same
 day, after the maintainer had it on the rig: the four stand one under the
-other and CUE is a fifth row (a3_mixer_delay, rulings R22-R25): BEAT, FEEDBK,
+other and CUE was a fifth row (a3_mixer_delay, rulings R22-R25): BEAT, FEEDBK,
 COLOR, SPREAD, CUE, each its name at the left and its value at the right, in
 the room right of the meter. A press of the encoder toggles select and edit,
 and the display says which at a glance by what is lit: selecting, the whole
 row under the cursor (a bar, as a menu's highlight); editing, only its value
 -- what the turn changes is what is lit. DELAY and the meter stay in their
 boxes (a test pins them); the CUE field and its divider are gone with the
-CUE row. The rows are 10 of the panel's 64 rows high and set in one size,
-the one the longest name beside the longest value fits (a digit does not
-grow or shrink between clicks) -- smaller than the page's big value (R14
-wanted it read from the booth), the price of five rows under a heading;
-without the heading and with a thin meter they would be 12 rows high, the
-alternative left as a picture (smoke-test/delay-params/list-layout-*). The
+CUE row. 2026-10-30, the hardware follows the virtual desk: the CUE row is
+gone too (the cue is the third strip's first key, DELAY CUE, a3_mixer_panel),
+so four rows of 12 of the panel's 64 rows high, set in one size, the one the
+longest name beside the longest value fits (a digit does not grow or shrink
+between clicks). The
 texts are those of a deck's controls: BEAT as the fractions 1/8 1/4 1/2 3/4 1
 2 (what Core announces plays, whatever the tempo), FEEDBK as a percentage,
 COLOR as filter steps from the centre (0, HP 1-10 left, LP 1-10 right -- the
-knob's own direction), SPREAD in degrees, CUE ON or OFF; "--" until Core has
+knob's own direction), SPREAD in degrees; "--" until Core has
 said a value. On a truth without the delay words (R25) the return is as it
 always was: DELAY, the meter, the CUE field, and the push cues at once.
 

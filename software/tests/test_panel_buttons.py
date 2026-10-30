@@ -25,14 +25,34 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from a3_mixer_panel import (CHANNEL_BUTTONS, LED_COLOUR, TAP,
+from a3_mixer_panel import (CHANNEL_BUTTONS, DELAY_CUE, DELAY_CUE_CHANNEL,
+                            DELAY_CUE_COLOUR, LED_COLOUR, TAP, TAP_CHANNEL,
                             TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
-                            channel_button, led_colour)
+                            channel_button, led_colour, strip_button)
 
 
 class WhatTheKeysDo(unittest.TestCase):
-    def test_the_first_key_taps(self):
-        self.assertEqual(TAP, channel_button("0"))
+    # 2026-10-30, "the hardware should follow" the virtual desk: of the four
+    # first keys only the fourth taps, the third is DELAY CUE, the first two
+    # are empty (maintainer: leave them empty).
+    def test_only_the_fourth_strips_first_key_taps(self):
+        self.assertEqual([strip_button(ch, "0") for ch in range(4)],
+                         [None, None, DELAY_CUE, TAP])
+        self.assertEqual((TAP_CHANNEL, DELAY_CUE_CHANNEL), (3, 2))
+
+    def test_the_other_keys_are_the_same_on_every_strip(self):
+        for ch in range(4):
+            self.assertEqual(strip_button(ch, "1"), "fx")
+            self.assertEqual(strip_button(ch, "2"), "cue")
+            self.assertIsNone(strip_button(ch, "7"))
+
+    def test_the_delay_cue_lamp_sits_on_its_keys_own_red_line(self):
+        self.assertEqual(DELAY_CUE_COLOUR, 0)
+        self.assertEqual(DELAY_CUE_COLOUR, TAP_FLASH_COLOUR)
+        self.assertNotIn(DELAY_CUE_COLOUR, LED_COLOUR.values())
+
+    def test_the_shared_table_has_no_first_key(self):
+        self.assertIsNone(channel_button("0"))
 
     def test_the_second_key_is_fx(self):
         self.assertEqual("fx", channel_button("1"))
@@ -41,9 +61,6 @@ class WhatTheKeysDo(unittest.TestCase):
     # 2026-09-12 wegfiel, und traegt jetzt PFL.
     def test_the_third_key_is_cue(self):
         self.assertEqual("cue", channel_button("2"))
-
-    def test_cue_is_not_on_the_first_key(self):
-        self.assertNotEqual("cue", channel_button("0"))
 
     # Genau der Fehler, der am 2026-09-12 das ganze Pult taub gemacht hat:
     # eine Taste ohne Eintrag war ein blanker dict-Zugriff und damit ein
@@ -56,7 +73,7 @@ class WhatTheKeysDo(unittest.TestCase):
         # Die Tabelle ist nach dem Tastenindex geschluesselt, nicht nach Kanal
         # -- "alle 4 die gleiche Funktion" ist damit keine Absprache, sondern
         # Bauart.
-        self.assertEqual(sorted(CHANNEL_BUTTONS), ["0", "1", "2"])
+        self.assertEqual(sorted(CHANNEL_BUTTONS), ["1", "2"])
 
 
 class WhichLampLights(unittest.TestCase):
@@ -83,9 +100,6 @@ class WhichLampLights(unittest.TestCase):
         self.assertIsNone(led_colour(TAP))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TheTapLampBlinksWithTheBeat(unittest.TestCase):
     """Und sie blinkt auf der Linie, die sonst niemand benutzt.
@@ -109,10 +123,38 @@ class TheTapLampBlinksWithTheBeat(unittest.TestCase):
         # Die Lampe, die blitzt, gehört zu der Taste, die man drückt --
         # sonst blinkt ein Knopf für einen anderen.
         self.assertEqual(0, TAP_FLASH_COLOUR)
-        self.assertEqual(TAP, channel_button("0"))
+        self.assertEqual(TAP, strip_button(TAP_CHANNEL, "0"))
 
     # Lang genug, um im Dunkeln aufzufallen, kurz genug, um bei 200 BPM
     # (300 ms Abstand) nicht zum Dauerlicht zu werden.
     def test_the_flash_is_shorter_than_a_beat_at_any_tempo(self):
         self.assertLess(TAP_FLASH_SECONDS, 60.0 / 200.0)
         self.assertGreater(TAP_FLASH_SECONDS, 0.02)
+
+
+class TheDeskWiresIt(unittest.TestCase):
+    """a3-mixer.py cannot be imported off the Pi: its source is read."""
+
+    def setUp(self):
+        self.source = (Path(__file__).resolve().parents[1] / "scripts" / "a3-mixer.py").read_text()
+
+    def test_the_beat_flashes_only_the_tap_keys_strip(self):
+        body = self.source.split("def _set_tap_lamps(", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("range(num_channel)", body)
+        self.assertIn("TAP_CHANNEL", body)
+
+    def test_a_press_of_delay_cue_sends_the_return_push_as_int_one(self):
+        branch = self.source.split("if function == DELAY_CUE", 1)[1].split("elif ", 1)[0]
+        self.assertIn('osc.address("aux-return.stem.push"), 1', branch)
+        self.assertIn('value == "1"', branch)
+
+    def test_the_keys_are_looked_up_per_strip(self):
+        self.assertIn("strip_button(int(track), index)", self.source)
+
+    def test_the_cue_lamp_lights_the_delay_cue_key(self):
+        handler = self.source.split("def cue_handler_return(", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("send_button_leds_data(DELAY_CUE_CHANNEL, on, DELAY_CUE_COLOUR)", handler)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Raphael Eismann
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The AUX-RTN encoder's delay list: five rows, a push toggles select and edit,
+"""The AUX-RTN encoder's delay list: four rows, a push toggles select and edit,
 a turn moves the cursor (select) or changes the row (edit), four quiet seconds
-leave edit (rulings R22-R25)."""
+leave edit (rulings R22-R25; the CUE row went 2026-10-30, DELAY CUE is a key)."""
 
 import sys
 import unittest
@@ -44,13 +44,10 @@ class ListFixture(unittest.TestCase):
         self.time = FakeTime()
         self.sent = []
         self.views = []
-        self.cue = [False]
-        self.answers = [0]    # lamp announcements seen so far
         self.list = delay.DelayList(
             made_up(), lambda *message: self.sent.append(message),
             lambda mode, cursor: self.views.append((mode, cursor)),
-            lambda: self.cue[0], clock=self.time.clock, later=self.time.later,
-            cue_answers=lambda: self.answers[0])
+            clock=self.time.clock, later=self.time.later)
 
     def edit(self, row):
         """Select `row` and press into edit mode, sending nothing."""
@@ -65,9 +62,9 @@ class Select(ListFixture):
         self.assertEqual((self.list.mode, self.list.cursor), (delay.SELECT, 0))
         self.assertEqual(delay.ROWS[0], "beat")
 
-    def test_the_rows_are_the_four_parameters_and_cue(self):
-        self.assertEqual(delay.ROWS, ("beat", "feedback", "color", "spread", "cue"))
-        self.assertEqual(delay.DELAY_ROWS, delay.ROWS[:4])
+    def test_the_rows_are_the_four_parameters_and_no_cue(self):
+        self.assertEqual(delay.ROWS, ("beat", "feedback", "color", "spread"))
+        self.assertEqual(delay.DELAY_ROWS, delay.ROWS)
 
     def test_a_turn_moves_the_cursor_and_sends_nothing(self):
         self.list.turn(1)
@@ -79,13 +76,13 @@ class Select(ListFixture):
         self.assertEqual(self.sent, [])
         self.assertEqual(self.views, [(delay.SELECT, 1), (delay.SELECT, 2), (delay.SELECT, 1)])
 
-    def test_the_cursor_stops_at_beat_and_at_cue_it_does_not_wrap(self):
+    def test_the_cursor_stops_at_beat_and_at_spread_it_does_not_wrap(self):
         self.list.turn(-1)
         self.assertEqual(self.list.cursor, 0)
         self.list.turn(9)
-        self.assertEqual(self.list.cursor, 4)
+        self.assertEqual(self.list.cursor, 3)
         self.list.turn(1)
-        self.assertEqual(self.list.cursor, 4)
+        self.assertEqual(self.list.cursor, 3)
 
     def test_a_turn_that_moves_nothing_shows_nothing(self):
         self.list.turn(-1)
@@ -158,7 +155,7 @@ class Edit(ListFixture):
         for row in delay.DELAY_ROWS:
             self.list = delay.DelayList(
                 made_up(), lambda *m: self.sent.append(m), lambda *v: None,
-                lambda: False, clock=self.time.clock, later=self.time.later)
+                clock=self.time.clock, later=self.time.later)
             self.edit(row)
             self.list.turn(2)
             self.list.turn(-1)
@@ -174,85 +171,6 @@ class Edit(ListFixture):
     def test_no_clicks_send_nothing(self):
         self.edit("beat")
         self.list.turn(0)
-        self.assertEqual(self.sent, [])
-
-
-class CueRow(ListFixture):
-    PUSH = ("/t/aux-return.stem.push", 1)
-
-    def test_a_right_turn_cues_a_cue_that_is_off(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.assertEqual(self.sent, [self.PUSH])
-
-    def test_a_right_turn_on_a_cue_that_is_on_sends_nothing(self):
-        self.edit("cue")
-        self.cue[0] = True
-        self.list.turn(1)
-        self.assertEqual(self.sent, [])
-
-    def test_a_left_turn_uncues_a_cue_that_is_on(self):
-        self.edit("cue")
-        self.cue[0] = True
-        self.list.turn(-1)
-        self.assertEqual(self.sent, [self.PUSH])
-
-    def test_a_left_turn_on_a_cue_that_is_off_sends_nothing(self):
-        self.edit("cue")
-        self.list.turn(-2)
-        self.assertEqual(self.sent, [])
-
-    def test_a_fast_turn_before_the_lamp_answers_sends_one_push(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.time.advance(0.05)
-        self.list.turn(1)
-        self.list.turn(2)
-        self.assertEqual(self.sent, [self.PUSH])
-
-    def test_once_the_lamp_answered_the_other_way_works(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.cue[0] = True
-        self.time.advance(0.2)
-        self.list.turn(-1)
-        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
-
-    def test_a_toggle_is_never_resent_blind(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.time.advance(60)
-        self.list.turn(1)
-        self.assertEqual(self.sent, [self.PUSH])
-
-    def test_a_lost_push_is_recovered_by_turning_back_and_forth(self):
-        self.edit("cue")
-        self.list.turn(1)            # the push is lost, the lamp stays off
-        self.list.turn(-1)           # the other way: lamp says off already
-        self.list.turn(1)
-        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
-
-    def test_a_cue_changed_elsewhere_after_an_answered_push_does_not_swallow_a_turn(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.cue[0] = True           # the lamp answers
-        self.answers[0] += 1
-        self.cue[0] = False          # the virtual desk uncues
-        self.answers[0] += 1
-        self.list.turn(1)
-        self.assertEqual(self.sent, [self.PUSH, self.PUSH])
-
-    def test_an_unanswered_push_is_still_not_resent_across_a_new_edit_visit(self):
-        self.edit("cue")
-        self.list.turn(1)
-        self.list.press()
-        self.list.press()
-        self.list.turn(1)
-        self.assertEqual(self.sent, [self.PUSH])
-
-    def test_a_press_in_edit_on_cue_sends_nothing(self):
-        self.edit("cue")
-        self.list.press()
         self.assertEqual(self.sent, [])
 
 
@@ -349,10 +267,8 @@ class TheDeskUsesIt(unittest.TestCase):
         self.assertLess(branch.index("calibration.turned("), branch.index("delay_list.turn("))
         self.assertLess(branch.index("calibration.pushed()"), branch.index("delay_list.press("))
 
-    def test_the_shown_cue_reaches_the_serial_reader(self):
-        handler = self.source.split("def cue_handler_return(", 1)[1].split("\n\n", 1)[0]
-        self.assertIn("cue_shown.value", handler)
-        self.assertIn("cue_shown", self.source.split("def serial_handler(", 1)[1].split(")", 1)[0])
+    def test_the_serial_reader_needs_no_shown_cue_any_more(self):
+        self.assertNotIn("cue_shown", self.source)
 
     def test_a_press_edge_toggles_and_a_release_does_nothing(self):
         branch = self.source.split('if mode == "EB"', 1)[1].split("# Buttons", 1)[0]

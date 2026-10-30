@@ -546,8 +546,7 @@ RETURN_METER_OF_WIDTH = 0.17
 
 
 #: The delay list's row names on the return, in the order they stand.
-DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread": "SPREAD",
-               "cue": "CUE"}
+DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread": "SPREAD"}
 #: What the longest name and the longest values of a row can be: the painter
 #: sizes every row by them, so a digit does not grow or shrink between clicks.
 LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
@@ -577,10 +576,7 @@ def _number(value):
 def delay_text(row, value):
     """What a delay row's value reads on the display; `--` while it is not
     known. Beat in the fractions a deck's loop control shows, colour as
-    filter steps from the centre: HP (high-pass) left of it, LP right. CUE is
-    a switch: ON or OFF."""
-    if row == "cue":
-        return "--" if value is None else "ON" if value else "OFF"
+    filter steps from the centre: HP (high-pass) left of it, LP right."""
     if not _number(value):
         return "--"
     if row == "beat":
@@ -593,8 +589,8 @@ def delay_text(row, value):
     return f"{round(value)}\u00b0"
 
 
-def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
-    """The five rows, equal and stacked up to the panel's last row, under the
+def _rows(mode, cursor, values, heading_bottom, bottom, free):
+    """The four rows, equal and stacked up to the panel's last row, under the
     heading, within `free` = (x0, x1) of columns. The one under the cursor is
     inverted: all of it while selecting, its value while editing."""
     x0, x1 = free
@@ -605,10 +601,9 @@ def _rows(mode, cursor, values, cue, heading_bottom, bottom, free):
     inverted = "row" if mode == SELECT_MODE else "value"
     rows = []
     for index, name in enumerate(names):
-        value = cue if name == "cue" else values.get(name)
         y0 = top + index * height
         rows.append(Row((x0, y0, x1, y0 + height - 1), DELAY_NAMES[name],
-                        delay_text(name, value), inverted if index == cursor else None))
+                        delay_text(name, values.get(name)), inverted if index == cursor else None))
     return tuple(rows)
 
 
@@ -617,8 +612,8 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
     `delay` = (mode, cursor, values) makes two sections instead: AUX with the
-    meter at the left, a divider, DELAY with the five rows -- CUE one of
-    them, so no CUE field -- at the right."""
+    meter at the left, a divider, DELAY with the four rows -- no CUE field and
+    no CUE row (the cue is a key of its own) -- at the right."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -643,7 +638,7 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
         first = divider + 1 + LIST_GAP
         aux = Heading((x0, h0, divider - 2, h1), AUX_NAME)
         delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME)
-        rows = _rows(*delay, cue, h1, height - 1, (first, width - 1))
+        rows = _rows(*delay, h1, height - 1, (first, width - 1))
         return Picture((aux, delay_heading), meters, None, ((divider, 0, divider, height - 1),),
                        None, None, _marks(meters), rows)
     toggle = Toggle((toggle_slot[0], m0, toggle_slot[1], m1), bool(cue), CUE_TEXT)

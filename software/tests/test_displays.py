@@ -804,12 +804,12 @@ class Painting(unittest.TestCase):
             "return-cue-off": return_picture(False, 0.4, 128, 64),
             "return-list-select-beat": return_picture(False, 0.4, 128, 64,
                                                       delay=("select", 0, LIST_VALUES)),
-            "return-list-select-cue": return_picture(True, 0.4, 128, 64,
-                                                     delay=("select", 4, LIST_VALUES)),
+            "return-list-select-spread": return_picture(False, 0.4, 128, 64,
+                                                        delay=("select", 3, LIST_VALUES)),
             "return-list-edit-spread": return_picture(False, 0.4, 128, 64,
                                                       delay=("edit", 3, LIST_VALUES)),
-            "return-list-edit-cue": return_picture(True, 0.4, 128, 64,
-                                                   delay=("edit", 4, LIST_VALUES)),
+            "return-list-edit-beat": return_picture(False, 0.4, 128, 64,
+                                                    delay=("edit", 0, LIST_VALUES)),
             "return-list-unknown": return_picture(False, 0.4, 128, 64,
                                                   delay=("edit", 2, {})),
         }
@@ -884,7 +884,7 @@ class Painting(unittest.TestCase):
         left, right = halves(select, image, 0)
         self.assertGreater(left, 0.35)
         self.assertGreater(right, 0.35)
-        for other in range(1, 5):
+        for other in range(1, 4):
             self.assertLess(max(halves(select, image, other)), 0.3)
 
         edit = self.states()["return-list-edit-spread"]
@@ -1401,42 +1401,25 @@ class TheDelayListIsHandedOver(unittest.TestCase):
         picture = displays._picture_for(return_panel())(128, 64)
         return [(r.name, r.value, r.inverted) for r in picture.rows]
 
-    def test_the_return_shows_the_five_rows(self):
+    def test_the_return_shows_the_four_rows(self):
         displays = Rig().displays()
         displays.show_delay("select", 1, self.ALL)
         self.assertEqual(self.rows(displays), [
             ("BEAT", "1/4", None), ("FEEDBK", "70%", "row"), ("COLOR", "HP 5", None),
-            ("SPREAD", "60\u00b0", None), ("CUE", "OFF", None)])
+            ("SPREAD", "60\u00b0", None)])
 
-    def test_the_cue_row_follows_the_cue_lamp(self):
+    def test_the_cue_is_no_row_and_no_redraw_of_the_list(self):
         displays = Rig().displays()
-        displays.show_delay("edit", 4, self.ALL)
+        displays.show_delay("edit", 3, self.ALL)
         displays.show_return_cue(True)
-        self.assertEqual(self.rows(displays)[4], ("CUE", "ON", "value"))
-        displays.show_return_cue(False)
-        self.assertEqual(self.rows(displays)[4], ("CUE", "OFF", "value"))
+        self.assertEqual(self.rows(displays)[3], ("SPREAD", "60\u00b0", "value"))
+        self.assertEqual(len(self.rows(displays)), 4)
 
-    def test_the_cue_lamp_redraws_the_return(self):
-        rig = Rig()
-        displays = rig.displays()
-        displays.blank_all()
-        displays.drain()
-        rig.drawn.clear()
-        displays.show_return_cue(True)
-        displays.drain()
-        self.assertEqual(len(rig.drawn), 1)
-
-    def test_before_core_speaks_it_shows_dashes_and_cue_off(self):
+    def test_before_core_speaks_it_shows_dashes(self):
         displays = Rig().displays()
         self.assertEqual(self.rows(displays), [
             ("BEAT", "--", "row"), ("FEEDBK", "--", None), ("COLOR", "--", None),
-            ("SPREAD", "--", None), ("CUE", "OFF", None)])
-
-    def test_until_core_speaks_the_cue_row_is_off(self):
-        displays = Rig().displays()
-        displays.show_return_cue(True)
-        displays.blank_all()
-        self.assertEqual(self.rows(displays)[4][:2], ("CUE", "OFF"))
+            ("SPREAD", "--", None)])
 
     def test_a_new_cursor_redraws_the_return_and_only_it(self):
         rig = Rig()

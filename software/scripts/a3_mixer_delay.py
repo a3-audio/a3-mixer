@@ -14,22 +14,20 @@ cued, four quiet seconds went back to BEAT.
 
 2026-10-29, after the maintainer had it on the rig (round 2, rulings
 R22-R25): *"alle 4 delay parameter untereinander ... mit enc push wechselt
-man zwischen parameter/value. CUE ist ein parameter."* The pages, the hold
-and the fall back to BEAT are gone. The return shows five rows -- BEAT,
-FEEDBK, COLOR, SPREAD, CUE -- and the encoder has two modes, toggled by a
-press (the press edge PushHoldOff accepts; there is no hold timing):
+man zwischen parameter/value."* The pages, the hold and the fall back to BEAT
+are gone. The return shows the rows -- BEAT, FEEDBK, COLOR, SPREAD -- and the
+encoder has two modes, toggled by a press (the press edge PushHoldOff
+accepts; there is no hold timing):
 
 - select, the start mode, the cursor on BEAT: a turn moves the cursor, which
-  stops at BEAT and at CUE (R24, no wrap);
-- edit: a turn changes the row under the cursor. A delay row's turn goes to
-  Core as clicks (Core steps it and announces it, so the desk keeps what
-  Core says). The CUE row is a switch: a right turn is on, a left turn off
-  (R23). Core's word is a toggle (aux-return.stem.push), so the desk sends it
-  only when the lamp it shows (aux-return.cue.led) says the cue is the other
-  way -- a fast turn over several detents cannot flicker the cue. The lamp
-  answers a round trip later, so the same direction does not push again
-  until it has; and a toggle word is never resent blind (R26) -- a lost push
-  is recovered by turning the other way and back.
+  stops at BEAT and at SPREAD (R24, no wrap);
+- edit: a turn changes the row under the cursor. A row's turn goes to Core
+  as clicks (Core steps it and announces it, so the desk keeps what Core
+  says).
+
+2026-10-30, "the hardware should follow" the virtual desk: the fifth row, CUE,
+is gone. The return's cue is the third strip's first key, DELAY CUE
+(a3_mixer_panel), which sends Core's toggle on press.
 
 Edit falls back to select after FALLBACK_SECONDS without a turn or press, the
 cursor staying on its row (R22): a hand that walked away must not leave the
@@ -44,10 +42,10 @@ import time
 from a3_mixer_encoders import encoder_message
 
 #: The rows in the order they stand on the display.
-ROWS = ("beat", "feedback", "color", "spread", "cue")
+ROWS = ("beat", "feedback", "color", "spread")
 
-#: The rows Core owns a value of; CUE is a switch on the return.
-DELAY_ROWS = ROWS[:4]
+#: The rows Core owns a value of: all of them.
+DELAY_ROWS = ROWS
 
 #: Core's value words, one per delay row.
 VALUE_KEYS = tuple("aux-return.delay." + row for row in DELAY_ROWS)
@@ -72,27 +70,21 @@ class DelayList:
     """The mode and the cursor of the return encoder.
 
     `send(*message)` goes to Core, `show(mode, cursor)` is told when either
-    changes, `cue_is_on()` is the cue lamp as the desk shows it and
-    `cue_answers()` how many lamp announcements the desk has had (a push is
-    unanswered while that count has not moved since it was sent).
+    changes.
     `later(seconds, then)` runs `then` once after `seconds`; a timer is never
     cancelled -- each carries the number of the activity it belongs to and
     does nothing once there was a newer one."""
 
-    def __init__(self, osc, send, show, cue_is_on, clock=time.monotonic, later=_timer,
-                 cue_answers=lambda: 0):
+    def __init__(self, osc, send, show, clock=time.monotonic, later=_timer):
         self._osc = osc
         self._send = send
         self._show = show
-        self._cue_is_on = cue_is_on
-        self._cue_answers = cue_answers
         self._clock = clock
         self._later = later
         self._lock = threading.Lock()
         self.mode = SELECT
         self.cursor = 0
         self._activity = 0
-        self._cue_asked = None   # (direction, announcements seen) of the last cue push
 
     def turn(self, clicks):
         if clicks == 0:
@@ -103,9 +95,6 @@ class DelayList:
                 return
             self._touch()
             row = ROWS[self.cursor]
-        if row == "cue":
-            self._turn_cue(clicks > 0)
-            return
         message = encoder_message(self._osc, RETURN_ENCODER, clicks, page=row)
         if message is not None:
             self._send(*message)
@@ -127,24 +116,6 @@ class DelayList:
             return
         self.cursor = cursor
         self._show(self.mode, self.cursor)
-
-    def _turn_cue(self, want_on):
-        """Edit on CUE: push Core's toggle only if the lamp shows the cue the
-        other way, and never twice for one direction before the lamp has
-        answered. A toggle word is not resent blind (R26): a push that was
-        lost is recovered by turning the other way and back. Once the lamp
-        has announced anything since the push, it is answered -- a cue changed
-        elsewhere afterwards (the virtual desk, Motion) does not swallow a
-        turn."""
-        with self._lock:
-            answers = self._cue_answers()
-            if bool(self._cue_is_on()) == want_on:
-                self._cue_asked = None
-                return
-            if self._cue_asked == (want_on, answers):
-                return
-            self._cue_asked = (want_on, answers)
-        self._send(self._osc.address("aux-return.stem.push"), 1)
 
     def _touch(self):
         """Activity in edit: the four seconds start over. Under the lock."""

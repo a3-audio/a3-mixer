@@ -16,7 +16,7 @@ import neopixel
 
 import socket
 import threading
-from multiprocessing import Process, Queue, Value
+from multiprocessing import Process, Queue
 
 from pythonosc.udp_client import SimpleUDPClient
 from pythonosc import osc_server
@@ -31,8 +31,9 @@ from a3_mixer_calibration import (calibration_path, counts_of,
 from a3_mixer_calibration_run import DeskCalibration, address_of
 from a3_mixer_recall import (CoreArrival, DeskInFront, ForgetThenAsk, HelloEvery,
                              RecallRequest, StateAsker)
-from a3_mixer_panel import (TAP, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
-                            channel_button, led_colour, panel_fields)
+from a3_mixer_panel import (DELAY_CUE, DELAY_CUE_CHANNEL, DELAY_CUE_COLOUR,
+                            TAP, TAP_CHANNEL, TAP_FLASH_COLOUR, TAP_FLASH_SECONDS,
+                            led_colour, panel_fields, strip_button)
 from a3_mixer_delay import (RETURN_ENCODER, VALUE_KEYS, DelayList,
                              DelayState, value_announcement)
 from a3_mixer_encoders import (Clicks, PushHoldOff, encoder_message,
@@ -308,19 +309,18 @@ def led_handler_fx(address: str,
     #print(button_leds_master)
 
 def _set_tap_lamps(on: bool) -> None:
+    # Only the TAP key's strip: the third strip's red line is DELAY CUE's lamp.
     with _pixels_lock:
-        for channel in range(num_channel):
-            button_leds[channel][TAP_FLASH_COLOUR] = 255 if on else 0
-            pixels[channel] = button_leds[channel]
+        button_leds[TAP_CHANNEL][TAP_FLASH_COLOUR] = 255 if on else 0
+        pixels[TAP_CHANNEL] = button_leds[TAP_CHANNEL]
         pixels.show()
 
 def beat_handler(address: str,
                  *osc_arguments: List[Any]) -> None:
-    """Der Takt blitzt auf den vier Tap-Tastern.
+    """Der Takt blitzt auf dem Tap-Taster.
 
-    Alle vier gleich, weil alle vier dieselbe Taste sind: sie senden denselben
-    /tap, und eine Lampe, die nur auf einem Kanalzug blinkt, sagt etwas
-    Falsches darueber, welcher davon gemeint ist.
+    Seit dem 2026-10-30 gibt es nur noch einen (Kanalzug 4); die dritte
+    erste Taste ist DELAY CUE und zeigt auf ihrer roten Linie die Cue.
 
     Auf der roten Linie, also der des Tap-Tasters selbst -- siehe
     a3_mixer_panel.TAP_FLASH_COLOUR. Die anderen beiden tragen PFL und FX und
@@ -422,16 +422,12 @@ def ask_the_panel():
     sendData(ASK_THE_PANEL)
 
 
-def serial_handler(views, calibrate, delay_views, cue_shown): # dispatch from serial stream and send to osc
+def serial_handler(views, calibrate, delay_views): # dispatch from serial stream and send to osc
 
     global calibration
     # The return encoder's mode and cursor live in this process; the displays,
-    # in the parent, are told through `delay_views`. The cue lamp the displays
-    # show comes back the other way, in the shared `cue_shown`: the CUE row
-    # pushes Core's toggle only when it differs from the way the turn points.
-    delay_list = (DelayList(osc, to_core, lambda mode, cursor: delay_views.put((mode, cursor)),
-                            lambda: bool(cue_shown.value & 1),
-                            cue_answers=lambda: cue_shown.value >> 1)
+    # in the parent, are told through `delay_views`.
+    delay_list = (DelayList(osc, to_core, lambda mode, cursor: delay_views.put((mode, cursor)))
                   if osc.has_delay_page() else None)
     calibration = open_calibration(views)
     ask_the_panel()
@@ -504,9 +500,15 @@ def serial_handler(views, calibrate, delay_views, cue_shown): # dispatch from se
             # the 4 channel strips
             channel_names = map(str, range(5))
             if track in channel_names:
-                function = channel_button(index)
+                function = strip_button(int(track), index)
 
-                if function == TAP:
+                if function == DELAY_CUE:
+                    # A toggle at Core: the press alone, the int the desk
+                    # sends; the lamp follows aux-return.cue.led. Also on a
+                    # truth without the delay words (the push cues there too).
+                    if value == "1":
+                        to_core(osc.address("aux-return.stem.push"), 1)
+                elif function == TAP:
                     # Press only, and the same int the tap key sends -- see
                     # the TAP branch below, which this deliberately mirrors
                     # rather than reimplements.
@@ -566,11 +568,8 @@ if __name__ == '__main__':
     # which this process draws.
     calibration_views = Queue()
     delay_views = Queue()
-    # The shown cue lamp for the serial reader: bit 0 is on/off, the rest counts
-    # announcements (a3_mixer_delay: a push is answered once one has come).
-    cue_shown = Value("i", 0)
     proc1 = Process(target=serial_handler,
-                    args=(calibration_views, args.calibrate, delay_views, cue_shown))
+                    args=(calibration_views, args.calibrate, delay_views))
     proc1.start()
 
     # Stirbt der serielle Leser, geht dieser Prozess mit.
@@ -694,12 +693,12 @@ if __name__ == '__main__':
     dispatcher.map(osc.subscription("channel.stem"), stem_handler_channel)
     dispatcher.map(osc.subscription("channel.stem.cursor"), stem_handler_cursor)
 
-    # Whether the return is cued: its CUE field. A damaged value is ignored.
+    # Whether the return is cued: its CUE field (old truth) and the DELAY CUE key lamp. A damaged value is ignored.
     def cue_handler_return(address, *args):
         on = cue_announcement(args)
         if osc.is_address("aux-return.cue.led", address) and on is not None:
             displays.show_return_cue(on)
-            cue_shown.value = ((cue_shown.value >> 1) + 1) << 1 | (1 if on else 0)
+            send_button_leds_data(DELAY_CUE_CHANNEL, on, DELAY_CUE_COLOUR)
 
     dispatcher.map(osc.subscription("aux-return.cue.led"), cue_handler_return)
 

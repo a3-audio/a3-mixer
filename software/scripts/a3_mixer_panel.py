@@ -36,10 +36,18 @@ TAP = "tap"
 #: Nach dem Tastenindex geschluesselt und nicht nach Kanal: "alle vier gleich"
 #: ist damit Bauart und keine Absprache.
 CHANNEL_BUTTONS = {
-    "0": TAP,
     "1": "fx",
     "2": "cue",
 }
+
+#: Das Pult folgt seit dem 2026-10-30 dem virtuellen Pult (Ansage des
+#: Maintainers): von den vier ersten Tasten tippt nur die des vierten
+#: Kanalzugs, die des dritten ist DELAY CUE, die der ersten beiden bleibt leer.
+DELAY_CUE = "delay-cue"
+TAP_CHANNEL = 3
+DELAY_CUE_CHANNEL = 2
+#: Der Tastenindex, den die Firmware fuer die erste Taste meldet.
+FIRST_KEY = "0"
 
 #: Welche Farbe der einen Lampe des Kanalzugs eine Funktion anzuendet.
 #: 0 rot, 1 gruen, 2 blau.
@@ -66,6 +74,10 @@ LED_COLOUR = {
 #: Die Dauer liegt unter einem Beat auch bei 200 BPM (300 ms), sonst wuerde aus
 #: dem Blitz ein Dauerlicht, und ueber der Wahrnehmungsschwelle im Dunkeln.
 TAP_FLASH_COLOUR = 0
+#: DELAY CUE zeigt seinen Zustand (aux-return.cue.led) auf der Linie seiner
+#: eigenen Taste, der roten wie TAP -- die blaue gehoert dem CUE des Kanals.
+#: Dunkel, aber die einzige Linie dieser Taste.
+DELAY_CUE_COLOUR = 0
 TAP_FLASH_SECONDS = 0.06
 
 
@@ -79,6 +91,14 @@ def channel_button(index):
     als aktiv.
     """
     return CHANNEL_BUTTONS.get(index)
+
+
+def strip_button(channel, index):
+    """Was die Taste `index` des Kanalzugs `channel` (0-3) tut, oder None. Die
+    erste Taste ist je Kanalzug verschieden, die anderen sind bei allen gleich."""
+    if index == FIRST_KEY:
+        return {TAP_CHANNEL: TAP, DELAY_CUE_CHANNEL: DELAY_CUE}.get(channel)
+    return channel_button(index)
 
 
 def led_colour(led_type):

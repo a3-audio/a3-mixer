@@ -557,12 +557,12 @@ class DelayList(unittest.TestCase):
         self.assertEqual(p.marks, plain.marks)
         self.assertEqual(len(p.marks), 2)
 
-    def test_the_rows_start_right_of_the_divider_and_stay_ten_rows_high(self):
+    def test_the_rows_start_right_of_the_divider_and_are_twelve_rows_high(self):
         p = self.picture()
         (divider,) = p.dividers
         for row in p.rows:
             self.assertGreater(row.box[0], divider[0])
-            self.assertEqual(row.box[3] - row.box[1] + 1, 10)
+            self.assertEqual(row.box[3] - row.box[1] + 1, 12)
 
     def test_the_delay_heading_stands_over_the_names_of_the_rows(self):
         p = self.picture()
@@ -574,10 +574,10 @@ class DelayList(unittest.TestCase):
         self.assertEqual(p.rows, ())
         self.assertIsNotNone(p.toggle)
 
-    def test_five_rows_one_under_the_other_in_order(self):
+    def test_four_rows_one_under_the_other_in_order(self):
         p = self.picture(cue=True)
-        self.assertEqual([r.name for r in p.rows], ["BEAT", "FEEDBK", "COLOR", "SPREAD", "CUE"])
-        self.assertEqual([r.value for r in p.rows], ["1/4", "70%", "HP 5", "60\u00b0", "ON"])
+        self.assertEqual([r.name for r in p.rows], ["BEAT", "FEEDBK", "COLOR", "SPREAD"])
+        self.assertEqual([r.value for r in p.rows], ["1/4", "70%", "HP 5", "60\u00b0"])
 
     def test_the_rows_are_equal_stacked_and_clear_of_heading_and_meter(self):
         p = self.picture()
@@ -593,29 +593,28 @@ class DelayList(unittest.TestCase):
             self.assertEqual(row.box[2], W - 1)
             self.assertGreater(row.box[1], p.headings[1].box[3])
 
-    def test_cue_reads_on_or_off_and_unknown_reads_dashes(self):
-        self.assertEqual(self.picture(cue=False).rows[4].value, "OFF")
-        self.assertEqual(self.picture(cue=True).rows[4].value, "ON")
+    def test_unknown_reads_dashes_and_the_cue_is_no_part_of_the_picture(self):
         p = self.picture(values={})
-        self.assertEqual([r.value for r in p.rows[:4]], ["--"] * 4)
+        self.assertEqual([r.value for r in p.rows], ["--"] * 4)
+        from display_panel import pixel_key
+        self.assertEqual(pixel_key(self.picture(cue=True)), pixel_key(self.picture(cue=False)))
 
     def test_select_inverts_the_cursor_row_edit_only_its_value(self):
-        for cursor in range(5):
+        for cursor in range(4):
             select = self.picture("select", cursor)
             edit = self.picture("edit", cursor)
             self.assertEqual([r.inverted for r in select.rows],
-                             ["row" if i == cursor else None for i in range(5)])
+                             ["row" if i == cursor else None for i in range(4)])
             self.assertEqual([r.inverted for r in edit.rows],
-                             ["value" if i == cursor else None for i in range(5)])
+                             ["value" if i == cursor else None for i in range(4)])
 
     def test_the_mode_and_cursor_and_values_are_pixels(self):
         from display_panel import pixel_key
         keys = {pixel_key(self.picture(mode, cursor))
-                for mode in ("select", "edit") for cursor in range(5)}
-        self.assertEqual(len(keys), 10)
+                for mode in ("select", "edit") for cursor in range(4)}
+        self.assertEqual(len(keys), 8)
         self.assertNotEqual(pixel_key(self.picture(values={"beat": 0.5})),
                             pixel_key(self.picture(values={"beat": 0.25})))
-        self.assertNotEqual(pixel_key(self.picture(cue=True)), pixel_key(self.picture(cue=False)))
         self.assertEqual(pixel_key(self.picture()), pixel_key(self.picture()))
 
     def test_it_lays_out_on_a_short_panel_too(self):
@@ -625,7 +624,7 @@ class DelayList(unittest.TestCase):
             self.assertLessEqual(row.box[1], row.box[3])
 
     def test_a_cursor_out_of_range_inverts_nothing(self):
-        self.assertEqual([r.inverted for r in self.picture(cursor=9).rows], [None] * 5)
+        self.assertEqual([r.inverted for r in self.picture(cursor=9).rows], [None] * 4)
 
 
 class DelayText(unittest.TestCase):
@@ -669,15 +668,11 @@ class DelayText(unittest.TestCase):
             self.assertEqual(self.text(page, float("nan")), "--", page)
             self.assertEqual(self.text(page, "x"), "--", page)
 
-    def test_cue_is_on_off_or_unknown(self):
-        self.assertEqual(self.text("cue", True), "ON")
-        self.assertEqual(self.text("cue", False), "OFF")
-        self.assertEqual(self.text("cue", None), "--")
 
     def test_names(self):
         from display_panel import DELAY_NAMES
         self.assertEqual(DELAY_NAMES, {"beat": "BEAT", "feedback": "FEEDBK",
-                                       "color": "COLOR", "spread": "SPREAD", "cue": "CUE"})
+                                       "color": "COLOR", "spread": "SPREAD"})
 
 
 class TheDisplaysHaveNoFallOfTheirOwn(unittest.TestCase):
