@@ -1108,3 +1108,24 @@ TEST (DeskComponent, AFingerDragsAPotOnTheRig)
         window.removeChildComponent (desk.get());
     }
 }
+
+// The rig, 2026-10-30: the desk restarted within a minute, Core still following it, relays arrive before the
+// first ask. The desk still asks for the state, and once Core's recall is in, its pots can be grabbed and the
+// delay rows read Core's values.
+TEST (DeskComponent, ARestartedDeskAsksForTheStateAndItsPotsTakeAHand)
+{
+    Captured c;
+    auto desk = deskAtStart (c);
+    answer (*desk, 0);   // Core's beat, relayed to the host it still follows, before the desk asks
+    desk->step (40);
+    EXPECT_TRUE (c.addresses().contains (osc().address ("state.recall"))) << c.addresses().joinIntoString (" ");
+    const int pot = potIndex ("channel.gain", 2);
+    auto* knob = dynamic_cast<DeskKnob*> (potControl (*desk, pot));
+    ASSERT_NE (knob, nullptr);
+    const auto centre = knob->getLocalBounds().getCentre();
+    EXPECT_FALSE (knob->hitTest (centre.x, centre.y));   // unknown until Core says it
+    desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address ("channel.gain", 2)), 0.6f), 60);
+    desk->receive (juce::OSCMessage (juce::OSCAddressPattern (osc().address ("aux-return.delay.beat")), 0.5f), 60);
+    desk->step (80);
+    EXPECT_TRUE (knob->hitTest (centre.x, centre.y));
+}

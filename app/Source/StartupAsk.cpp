@@ -16,10 +16,17 @@ std::vector<StartupAsk::Send> StartupAsk::due (double nowMs, bool speaksCoresTru
         out.push_back (Send::hello);
         _lastHello = nowMs;
     }
+    // The first ask always recalls: a Core that still follows this host (the desk restarted within a minute)
+    // replays nothing on its hello but keeps relaying to it, and that relay is no state (a3nuc2, 2026-10-30).
+    if (! _askingSince)
+    {
+        _askingSince = nowMs;
+        out.push_back (Send::recall);
+        _lastRecall = nowMs;
+        return out;
+    }
     if (_joined)
         return out;
-    if (! _askingSince)
-        _askingSince = nowMs;
     if (nowMs - *_askingSince <= giveUpAfterMs && (! _lastRecall || nowMs - *_lastRecall >= recallEveryMs))
     {
         out.push_back (Send::recall);

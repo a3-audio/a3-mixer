@@ -240,3 +240,25 @@ TEST (DeskWire, ADelayTurnIsTheRowsTurnWordWithItsClicks)
     EXPECT_TRUE (turn.message[0].isInt32());
     EXPECT_EQ (turn.message[0].getInt32(), -3);
 }
+
+// a3nuc2, 2026-10-30 (03.0+247/+250): a desk restarted within a minute is still followed by Core, which
+// therefore replays nothing on its hello and keeps relaying beats and positions to it. Those arrived before the
+// desk's first ask, counted as the answer, and the desk never asked for the state: its pots stayed unknown
+// (not grabbable) and the delay rows read "--". The first ask always includes the recall.
+TEST (StartupAsk, TheFirstAskRecallsEvenIfSomethingAlreadyArrived)
+{
+    StartupAsk ask;
+    ask.answered();   // Core's relays to a host it still follows
+    EXPECT_EQ (ask.due (0, true), (std::vector<StartupAsk::Send> { StartupAsk::Send::hello, StartupAsk::Send::recall }));
+    EXPECT_TRUE (ask.due (5000, true).empty());   // answered: no more recalls
+}
+
+TEST (StartupAsk, ANewCoreIsRecalledEvenIfSomethingAlreadyArrived)
+{
+    StartupAsk ask;
+    ask.due (0, true);
+    ask.answered();
+    ask.coreRestarted (9000);
+    ask.answered();
+    EXPECT_EQ (ask.due (9000, true), (std::vector<StartupAsk::Send> { StartupAsk::Send::hello, StartupAsk::Send::recall }));
+}

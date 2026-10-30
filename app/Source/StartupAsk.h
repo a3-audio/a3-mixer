@@ -12,7 +12,8 @@
 namespace desk
 {
 /** How the desk asks Core for the room (spec §4.4): hello at start and every
-    30 s, /state/recall every 5 s until anything comes back, for two minutes.
+    30 s, /state/recall at start whatever has arrived, then every 5 s until
+    anything comes back, for two minutes.
     Never a value: the desk does not dump positions (the hardware's
     DeskInFront would overwrite the room with a screen's idea of it). The
     desk takes no hand until Core has answered once. Pure; the caller passes
