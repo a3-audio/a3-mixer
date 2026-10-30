@@ -586,10 +586,14 @@ void DeskComponent::resized()
         const auto slot = slotOf (pot.key);
         _potControl[i]->setBounds ((slot == (size_t) faderSlot ? strip.fader : strip.pots[slot]).toNearestInt());
     }
-    // The master column's knobs are larger than a strip's, not their captions: one caption size for all pots.
+    // The master column's knobs are larger than a strip's, not their captions or their travel: one caption
+    // size and one drag for a full turn (four strip-pot heights) for every pot.
+    const float stripPot = _layout.strips[0].pots[0].getHeight();
+    for (auto& knob : _knobs)
+        knob->setFullTurnDrag (DeskKnob::dragOfKnobForFullTurn * stripPot);
     for (const auto& key : masterPotKeys)
         if (auto* knob = dynamic_cast<DeskKnob*> (controlFor (key, 0)))
-            knob->captionHeight = _layout.strips[0].pots[0].getHeight() * DeskLook::captionOfCell;
+            knob->captionHeight = stripPot * DeskLook::captionOfCell;
     for (size_t i = 0; i < (size_t) numChannels; ++i)
     {
         const auto& s = _layout.strips[i];

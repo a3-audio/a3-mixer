@@ -25,11 +25,23 @@ public:
     /** Only a known value can be grabbed, as with the fader. */
     bool hitTest (int x, int y) override;
 
+    /** Four knob heights of drag for a full turn. */
+    static constexpr float dragOfKnobForFullTurn = 4.f;
+
     juce::String caption;
     juce::Colour arc;
     bool fromMiddle = false, known = false;
     /** In pixels; empty: the cell's share (DeskLook::captionOfCell). */
     std::optional<float> captionHeight;
+
+    /** The drag for a full turn, the same for every pot of the desk (maintainer, 2026-10-30: a big pot has
+        the small ones' travel); until set, four of this knob's heights. */
+    void setFullTurnDrag (float pixels);
+
+private:
+    void applyDragSensitivity();
+
+    std::optional<float> _fullTurnDrag;
 };
 
 /** A fader: grabbed by its cap only, then following the hand; a tap on the

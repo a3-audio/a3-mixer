@@ -1095,7 +1095,9 @@ TEST (DeskComponent, AFingerDragsAPotOnTheRig)
 
         dragTwiceDelivered (*desk, *peer, pot, at, rise, 10000, [] (float sent) { return sent; });
         ASSERT_FALSE (c.sent.empty()) << key;
-        const float expected = juce::jmin (1.f, 0.3f + rise / (4.f * static_cast<float> (control->getHeight())));
+        // A full turn is four strip-pot heights for every pot (2026-10-30).
+        const float stripPot = static_cast<float> (potControl (*desk, potIndex ("channel.gain", 1))->getHeight());
+        const float expected = juce::jmin (1.f, 0.3f + rise / (4.f * stripPot));
         EXPECT_NEAR (c.sent.back().message[0].getFloat32(), expected, 0.02f) << key;
         EXPECT_NEAR (desk->state().value (pot), expected, 0.02f) << key;
         EXPECT_NEAR ((float) control->getValue(), expected, 0.02f) << key;
@@ -1152,4 +1154,29 @@ TEST (DeskComponent, ATouchedPotCarriesNoMarker)
                 differing += touched.getPixelAt (x, y) != fromCore.getPixelAt (x, y) ? 1 : 0;
         EXPECT_EQ (differing, 0) << key;
     }
+}
+
+// Maintainer, 2026-10-30: "the big pots should be more sensitive -- the same travel as the small ones". The
+// same drag moves every pot by the same share of its range, the strip pots' (four strip-pot heights for all).
+TEST (DeskComponent, TheSameDragTurnsEveryPotAlike)
+{
+    Captured c;
+    auto desk = deskJoined (c);
+    desk->setSize (768, 1024);
+    const auto changeOf = [&] (const std::string& key, int channel) {
+        const int pot = potIndex (key, channel);
+        desk->touchPot (pot, 0.2f);
+        auto* control = potControl (*desk, pot);
+        const auto start = control->getLocalBounds().getCentre().toFloat();
+        const auto end = start.translated (0.f, -30.f);
+        control->mouseDown (clickOn (*control, start, start, false));
+        control->mouseDrag (clickOn (*control, end, start, true));
+        control->mouseUp (clickOn (*control, end, start, true));
+        return desk->state().value (pot) - 0.2f;
+    };
+    const float small = changeOf ("channel.gain", 1);
+    EXPECT_GT (small, 0.f);
+    for (const auto& [key, channel] : std::vector<std::pair<std::string, int>> {
+             { "master.volume", 0 }, { "master.booth", 0 }, { "filter.frequency", 0 }, { "master.phones-volume", 0 } })
+        EXPECT_NEAR (changeOf (key, channel), small, 0.005f) << key;
 }

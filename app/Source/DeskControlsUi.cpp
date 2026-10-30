@@ -14,7 +14,6 @@ namespace
 {
 constexpr float startAngle = juce::MathConstants<float>::pi * 1.2f;
 constexpr float endAngle = juce::MathConstants<float>::pi * 2.8f;
-constexpr float dragOfKnobForFullTurn = 4.f;
 }
 
 DeskKnob::DeskKnob (juce::String c, juce::Colour a, bool middle) : caption (std::move (c)), arc (a), fromMiddle (middle)
@@ -28,8 +27,20 @@ DeskKnob::DeskKnob (juce::String c, juce::Colour a, bool middle) : caption (std:
 void DeskKnob::resized()
 {
     juce::Slider::resized();   // the base sets the draw area; without it the knob paints in 0 x 0
+    applyDragSensitivity();
+}
+
+void DeskKnob::setFullTurnDrag (float pixels)
+{
+    _fullTurnDrag = pixels;
+    applyDragSensitivity();
+}
+
+void DeskKnob::applyDragSensitivity()
+{
     // A full turn for four knob heights of drag: the same feel at every window size.
-    setMouseDragSensitivity (juce::jmax (1, juce::roundToInt (dragOfKnobForFullTurn * static_cast<float> (getHeight()))));
+    const float drag = _fullTurnDrag.value_or (dragOfKnobForFullTurn * static_cast<float> (getHeight()));
+    setMouseDragSensitivity (juce::jmax (1, juce::roundToInt (drag)));
 }
 
 bool DeskKnob::hitTest (int x, int y)
