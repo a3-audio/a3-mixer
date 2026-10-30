@@ -533,9 +533,9 @@ class DelayList(unittest.TestCase):
         values = self.VALUES if values is None else values
         return return_picture(cue, 0.5, W, height, delay=(mode, cursor, values))
 
-    def test_two_sections_the_meter_left_delay_right(self):
-        # No AUX heading (maintainer, 2026-10-30): the meter is the delay's
-        # return, DELAY covers it; the meter takes the freed height.
+    def test_two_sections_delay_left_the_meter_right(self):
+        # Maintainer, 2026-10-30: laid out as the virtual desk's return, DELAY
+        # and the rows at the left, the full-height meter at the right.
         p = self.picture()
         self.assertEqual([h.text for h in p.headings], ["DELAY"])
         (delay,) = p.headings
@@ -543,9 +543,10 @@ class DelayList(unittest.TestCase):
         (divider,) = p.dividers
         self.assertEqual(divider[0], divider[2])
         self.assertEqual((divider[1], divider[3]), (0, H - 1))
-        self.assertGreater(delay.box[0], divider[0])
+        self.assertLess(delay.box[2], divider[0])
         meter = p.meters[0].box
-        self.assertLess(meter[2], divider[0])
+        self.assertGreater(meter[0], divider[0] + 1)   # the scale marks stand left of the bar
+        self.assertGreaterEqual(meter[2], W - 8)
         self.assertEqual((meter[1], meter[3]), (0, H - 1))
 
     def test_the_meter_keeps_its_columns_and_takes_the_whole_height(self):
@@ -553,19 +554,21 @@ class DelayList(unittest.TestCase):
         plain = return_picture(False, 0.5, W, H)
         p = self.picture()
         self.assertEqual(plain.meters[0].box, (7, 19, 28, 63))
-        self.assertEqual(p.meters[0].box, (7, 0, 28, 63))
+        self.assertEqual(p.meters[0].box[1::2], (0, 63))
+        self.assertEqual(p.meters[0].box[2] - p.meters[0].box[0] + 1, 22)
         self.assertEqual(len(p.marks), 2)
 
-    def test_the_rows_start_right_of_the_divider_and_are_twelve_rows_high(self):
+    def test_the_rows_stand_left_of_the_divider_and_are_twelve_rows_high(self):
         p = self.picture()
         (divider,) = p.dividers
         for row in p.rows:
-            self.assertGreater(row.box[0], divider[0])
+            self.assertLess(row.box[2], divider[0])
+            self.assertLessEqual(row.box[0], 1)
             self.assertEqual(row.box[3] - row.box[1] + 1, 12)
 
     def test_the_delay_heading_stands_over_the_names_of_the_rows(self):
         p = self.picture()
-        self.assertLessEqual(abs(p.headings[0].box[0] - p.rows[0].box[0]), 2)
+        self.assertEqual(p.headings[0].box[0], p.rows[0].box[0])
 
     def test_no_delay_is_todays_return_with_no_rows(self):
         from display_panel import return_picture
@@ -588,8 +591,7 @@ class DelayList(unittest.TestCase):
         self.assertGreater(p.rows[0].box[1], heading[3])
         self.assertEqual(p.rows[-1].box[3], H - 1)
         for row in p.rows:
-            self.assertGreater(row.box[0], meter[2] + 1)
-            self.assertEqual(row.box[2], W - 1)
+            self.assertLess(row.box[2], meter[0] - 2)
             self.assertGreater(row.box[1], p.headings[0].box[3])
 
     def test_unknown_reads_dashes_and_the_cue_is_no_part_of_the_picture(self):

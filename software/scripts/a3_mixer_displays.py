@@ -54,9 +54,9 @@ said a value. On a truth without the delay words (R25) the return is as it
 always was: DELAY, the meter, the CUE field, and the push cues at once.
 
 Round 3 (2026-10-29, "passt" for round 2, then): the return with the list is
-two sections with a vertical divider -- left the meter (AUX over it until
-2026-10-30, now gone: DELAY covers it), right DELAY
-over the rows -- both headings in the band and size of every other heading of
+two sections with a vertical divider -- left DELAY over the rows, right the
+meter (the other way round until 2026-10-30, with AUX over it; the hardware now
+lays out as the virtual desk, and DELAY covers the meter) -- both headings in the band and size of every other heading of
 the desk, top-aligned with them (a test compares their ink). The divider runs
 the panel's whole height so the headings are separated too. The rows kept
 their 10 px and their size (11): the right section is 92 columns where the

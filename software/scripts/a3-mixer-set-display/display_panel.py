@@ -174,7 +174,7 @@ def playing_slot(index, mask):
 
 #: The FX Return, the master of the delay channel (P47): one mono meter under
 #: its name, AUX-RTN (maintainer, 2026-10-28), DELAY since 2026-10-29 (with the
-#: delay list: the meter | DELAY over the rows, round 3; no AUX heading since 2026-10-30), and its CUE field. It has no
+#: delay list: DELAY over the rows | the meter; no AUX heading since 2026-10-30), and its CUE field. It has no
 #: source to choose, so no cursor and no active bracket.
 RETURN_NAME = "DELAY"
 CUE_TEXT = "CUE"
@@ -553,13 +553,12 @@ DELAY_NAMES = {"beat": "BEAT", "feedback": "FEEDBK", "color": "COLOR", "spread":
 #: sizes every row by them, so a digit does not grow or shrink between clicks.
 LIST_NAME_SAMPLES = ("SPREAD", "FEEDBK")
 LIST_VALUE_SAMPLES = ("HP 10", "LP 10", "100%", "180\u00b0", "1/8", "3/4", "OFF")
-#: The two sections of the return with a delay list (round 3, 2026-10-29):
-#: the meter | DELAY (heading and rows), a vertical divider between (the AUX
-#: heading over the meter is gone since 2026-10-30). The divider's column as a
-#: share of the width: 33 of 128, which leaves the 22-column meter with its
-#: marks on the left, and 92 columns on the right -- the rows'
-#: widest name and value (SPREAD ... HP 10) still fit them at the size the
-#: rows had when they stood beside the meter, 10 rows high.
+#: The two sections of the return with a delay list: DELAY (heading and rows)
+#: | the meter, a vertical divider between (the meter moved to the right on
+#: 2026-10-30, as on the virtual desk; the AUX heading is gone). The meter's
+#: section as a share of the width, counted from the right edge: 33 of 128,
+#: which leaves the 22-column meter with its marks there, and 92 columns on
+#: the left -- the rows' widest name and value (SPREAD ... HP 10) still fit.
 RETURN_SECTION_OF_WIDTH = 0.26
 #: Dark columns between the divider and the list.
 LIST_GAP = 2
@@ -612,11 +611,11 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     """The FX Return: DELAY (once AUX-RTN) at the left margin, one mono meter under it,
     both at the left margin, left of the divider, and the CUE field behind it at the right edge -- on while the
     return is cued. No arrow and no bracket: there is nothing to choose.
-    `delay` = (mode, cursor, values) makes two sections instead: the meter
-    alone at the left, the panel's whole height (no AUX heading: the meter is
-    the delay's return and DELAY covers it -- maintainer, 2026-10-30), a
-    divider, and DELAY in the virtual desk's font over the four rows -- no CUE field and no CUE
-    row (the cue is a key of its own) -- at the right."""
+    `delay` = (mode, cursor, values) makes two sections instead, as the virtual
+    desk lays them out (maintainer, 2026-10-30): DELAY in the desk's font over
+    the four rows at the left -- no CUE field and no CUE row (the cue is a key
+    of its own) --, a divider, and the meter alone at the right, the panel's
+    whole height (no AUX heading: the meter is the delay's return)."""
     (h0, h1), _, (m0, m1) = _bands(height)
     # The CUE field takes the slot of a channel's A, so the two displays
     # side by side carry their last slot in the same place.
@@ -633,11 +632,13 @@ def return_picture(cue, level, width, height, clip=False, hold=0.0, delay=None):
     stem_width = channel[0][1] - channel[0][0] + 1
     left = _centred((channel[0][0], channel[1][1]), stem_width)[0]
     if delay is not None:
-        divider = round(width * RETURN_SECTION_OF_WIDTH)
-        first = divider + 1 + LIST_GAP
-        delay_heading = Heading((first, h0, first + heading - 1, h1), RETURN_NAME, True)
-        rows = _rows(*delay, h1, height - 1, (first, width - 1))
-        whole = _meters([(left, 0, left + meter - 1, height - 1)], (level,), (clip,), (hold,))
+        divider = width - 1 - round(width * RETURN_SECTION_OF_WIDTH)
+        list_right = divider - 1 - LIST_GAP
+        delay_heading = Heading((x0, h0, list_right, h1), RETURN_NAME, True)
+        rows = _rows(*delay, h1, height - 1, (x0, list_right))
+        meter_right = _centred((divider + 1, width - 1), mark_length((0, 0, meter - 1, 0)) + 1 + meter)[1]
+        meter_left = meter_right - meter + 1
+        whole = _meters([(meter_left, 0, meter_right, height - 1)], (level,), (clip,), (hold,))
         return Picture((delay_heading,), whole, None, ((divider, 0, divider, height - 1),),
                        None, None, _marks(whole), rows)
     meters = _meters([(left, m0, left + meter - 1, m1)], (level,), (clip,), (hold,))
