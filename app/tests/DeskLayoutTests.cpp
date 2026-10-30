@@ -214,3 +214,20 @@ TEST (DeskLayout, TheWorkspaceKeyIsAtTheTopRightAndAFingertip)
         EXPECT_LE (l.workspace.getBottom(), l.returnCard.getY() + 0.5f);
     }
 }
+
+// Maintainer, 2026-10-30: in the master column's lower card the phones' pots stand on top, then the filter's
+// pots, and HPF/LPF close the card -- their bottom on the bottom line of the channels' fader cards.
+TEST (DeskLayout, PhonesOnTopThenTheFilterWithItsKeysAtTheBottom)
+{
+    for (const auto& area : { rig, roomy })
+    {
+        const auto l = layOutDesk (area, finger);
+        EXPECT_FLOAT_EQ (l.cueMix.getY(), l.phones.getY());
+        EXPECT_LE (l.cueMix.getBottom(), l.freq.getY() + 0.01f);
+        EXPECT_FLOAT_EQ (l.freq.getY(), l.res.getY());
+        EXPECT_LE (l.freq.getBottom(), l.hpf.getY() + 0.01f);
+        EXPECT_FLOAT_EQ (l.hpf.getY(), l.lpf.getY());
+        EXPECT_NEAR (l.hpf.getBottom(), l.strips[0].caption.getBottom(), 0.01f);
+        EXPECT_NEAR (l.lpf.getBottom(), l.masterCard.getBottom() - (l.strips[0].faderCard.getBottom() - l.strips[0].caption.getBottom()), 0.01f);
+    }
+}

@@ -129,10 +129,12 @@ DeskLayout layOutDesk (Rect area, float fingertip)
     l.matrix = outputs;
 
     l.masterCard = card (mx, mw, bandTop, bandBottom);
-    Rows rows (l.masterCard.reduced (pad), filterPots + filterKeys + monitorPots);
+    // The phones on top, then the filter: HPF/LPF close the card on the fader cards' bottom line
+    // (maintainer, 2026-10-30).
+    Rows rows (l.masterCard.reduced (pad), monitorPots + filterPots + filterKeys);
+    halves (rows.next (monitorPots), l.cueMix, l.phones);
     halves (rows.next (filterPots), l.freq, l.res);
     halves (rows.next (filterKeys), l.hpf, l.lpf);
-    halves (rows.next (monitorPots), l.cueMix, l.phones);
 
     const auto targets = touchTargets (l);
     l.fits = std::all_of (targets.begin(), targets.end(), [fingertip] (const Rect& r) {
