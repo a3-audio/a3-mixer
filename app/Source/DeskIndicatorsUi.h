@@ -74,10 +74,25 @@ public:
         bool offered = false, lit = false, tappable = false;
     };
 
+    /** What the line shows of its texts, and at what font height. */
+    struct Fit
+    {
+        float fontHeight = 0.f;
+        juce::String left, right;
+    };
+
     void setText (juce::String left, juce::String right);
     void setLive (LiveChip chip);
     /** The chip's area in the line's own coordinates; empty when it is not offered. */
     juce::Rectangle<float> liveChip() const;
+    /** Where the texts stand: the line left of the chip. */
+    juce::Rectangle<float> textArea() const;
+    /** `left` and `right` (parts separated by two spaces, most important first) in `area`: the font from the
+        area's height, smaller down to a floor where they do not fit, then whole parts and words dropped from
+        the end (marked with an ellipsis), the left name before anything Core says. Never cut mid-word. */
+    static Fit fit (const juce::String& left, const juce::String& right, juce::Rectangle<float> area);
+    /** The chip's font: from its height, smaller where its words would not fit its width. */
+    static juce::Font chipFont (bool lit, juce::Rectangle<float> chip);
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
 

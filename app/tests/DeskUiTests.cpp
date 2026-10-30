@@ -543,3 +543,56 @@ TEST (DeskUi, AnEncoderTurnsItsCapWithTheClicks)
             differing += before.getPixelAt (x, y) != after.getPixelAt (x, y) ? 1 : 0;
     EXPECT_GT (differing, 10);
 }
+
+namespace
+{
+float widthOf (const juce::Font& font, const juce::String& text) { return juce::GlyphArrangement::getStringWidth (font, text); }
+
+/** Whole words of `full`, in order, ending in "..." where words were dropped. */
+bool isWholeWordsOf (const juce::String& shown, const juce::String& full)
+{
+    const auto bare = shown.endsWith (juce::String::fromUTF8 ("\xe2\x80\xa6")) ? shown.dropLastCharacters (1).trimEnd() : shown;
+    if (bare.isEmpty())
+        return true;
+    return full.startsWith (bare) && (bare.length() == full.length() || full[bare.length()] == ' ');
+}
+}
+
+// Maintainer, 2026-10-30 (03.0+254): the title line's text did not fit. At the rig's size and a narrower one,
+// every text of the line fits its box -- by a smaller font first, then by dropping whole parts, never mid-word
+// -- and the LIVE chip's words fit the chip.
+TEST (DeskUi, EveryTextOfTheStatusLineFitsItsBox)
+{
+    const juce::StringArray rights { "CORE 192.0.2.10  truth differs  126.0 BPM", "CORE 192.0.2.10  truth ok",
+                                     "Core does not answer (four desks already?)", "waiting for Core's answer",
+                                     "Core's truth lacks aux-return.delay.beat, channel.source, stemdeck.present" };
+    for (const int width : { 768, 560 })
+    {
+        const auto layout = layOutDesk ({ 0.f, 0.f, (float) width, 1024.f }, 33.f);
+        StatusLine line;
+        line.setBounds (layout.status.toNearestInt());
+        line.setLive ({ true, true, true });
+        const auto chip = line.liveChip();
+        const auto text = line.textArea();
+        EXPECT_LE (text.getRight(), chip.getX());
+        for (const auto& right : rights)
+        {
+            const auto fit = StatusLine::fit ("A3 DESK", right, text);
+            const juce::Font font (juce::FontOptions { fit.fontHeight });
+            EXPECT_LE (fit.fontHeight, text.getHeight()) << width;
+            EXPECT_GE (fit.fontHeight, 0.35f * text.getHeight()) << width;
+            const float used = widthOf (font, fit.left) + (fit.left.isEmpty() || fit.right.isEmpty() ? 0.f : fit.fontHeight)
+                             + widthOf (font, fit.right);
+            EXPECT_LE (used, text.getWidth()) << width << " " << right;
+            EXPECT_TRUE (isWholeWordsOf (fit.right, right)) << fit.right << " / " << right;
+            EXPECT_TRUE (fit.left.isEmpty() || fit.left == "A3 DESK");
+            EXPECT_FALSE (fit.right.isEmpty()) << right;   // what Core says outranks the name
+        }
+        for (const bool lit : { true, false })
+        {
+            const auto chipFont = StatusLine::chipFont (lit, chip);
+            EXPECT_LE (widthOf (chipFont, lit ? "PRO-DJ LIVE" : "pro-DJ"), chip.getWidth()) << width;
+            EXPECT_LE (chipFont.getHeight(), chip.getHeight());
+        }
+    }
+}

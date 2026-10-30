@@ -182,6 +182,91 @@ juce::Rectangle<float> StatusLine::liveChip() const
     return chip.withSizeKeepingCentre (chip.getWidth(), chip.getHeight() * liveChipHeight);
 }
 
+juce::Rectangle<float> StatusLine::textArea() const
+{
+    auto area = getLocalBounds().toFloat();
+    if (const auto chip = liveChip(); ! chip.isEmpty())
+        area.setRight (chip.getX());
+    return area;
+}
+
+namespace
+{
+// Shares of the line's height: the text's font at most, and the least it shrinks to before parts go.
+constexpr float textOfLine = 0.62f, leastTextOfLine = 0.4f, chipTextOfChip = 0.62f, sizeStep = 0.5f;
+const juce::String partBreak ("  ");
+
+float widthIn (float fontHeight, const juce::String& text)
+{
+    return juce::GlyphArrangement::getStringWidth (juce::Font (juce::FontOptions { fontHeight }), text);
+}
+
+float lineWidth (float fontHeight, const juce::String& left, const juce::String& right)
+{
+    const float gap = left.isEmpty() || right.isEmpty() ? 0.f : fontHeight;
+    return widthIn (fontHeight, left) + gap + widthIn (fontHeight, right);
+}
+
+juce::StringArray partsOf (const juce::String& text)
+{
+    juce::StringArray parts;
+    auto rest = text;
+    for (int at = rest.indexOf (partBreak); at >= 0; at = rest.indexOf (partBreak))
+    {
+        parts.add (rest.substring (0, at));
+        rest = rest.substring (at + partBreak.length()).trimStart();
+    }
+    parts.add (rest);
+    return parts;
+}
+
+/** `text` without its last words, as long as needed, the cut marked with an ellipsis. */
+juce::String wordsThatFit (float fontHeight, const juce::String& text, float width)
+{
+    const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
+    auto words = juce::StringArray::fromTokens (text, " ", "");
+    while (words.size() > 1)
+    {
+        words.remove (words.size() - 1);
+        const auto shown = words.joinIntoString (" ") + ellipsis;
+        if (widthIn (fontHeight, shown) <= width)
+            return shown;
+    }
+    return words.joinIntoString (" ") + ellipsis;
+}
+}
+
+StatusLine::Fit StatusLine::fit (const juce::String& left, const juce::String& right, juce::Rectangle<float> area)
+{
+    const float width = area.getWidth(), least = area.getHeight() * leastTextOfLine;
+    for (float size = area.getHeight() * textOfLine; size >= least; size -= sizeStep)
+        if (lineWidth (size, left, right) <= width)
+            return { size, left, right };
+    // At the least size: whole parts go from the end, then the name, then words of what is left.
+    const auto parts = partsOf (right);
+    for (const auto& name : { left, juce::String() })
+        for (int count = parts.size(); count >= 1; --count)
+        {
+            const auto shown = juce::StringArray (parts.begin(), count).joinIntoString (partBreak);
+            if (lineWidth (least, name, shown) <= width)
+                return { least, name, shown };
+        }
+    return { least, {}, wordsThatFit (least, parts[0], width) };
+}
+
+juce::Font StatusLine::chipFont (bool lit, juce::Rectangle<float> chip)
+{
+    const auto style = lit ? juce::Font::bold : juce::Font::plain;
+    const juce::String words (lit ? "PRO-DJ LIVE" : "pro-DJ");
+    for (float size = chip.getHeight() * chipTextOfChip; size > 1.f; size -= sizeStep)
+    {
+        const juce::Font font (juce::FontOptions (size, style));
+        if (juce::GlyphArrangement::getStringWidth (font, words) <= chip.getWidth())
+            return font;
+    }
+    return juce::Font (juce::FontOptions (1.f, style));
+}
+
 void StatusLine::mouseUp (const juce::MouseEvent& e)
 {
     // One finger arrives as touch#0 and X's emulated mouse#0: only the mouse acts (as Motion does).
@@ -194,14 +279,12 @@ void StatusLine::mouseUp (const juce::MouseEvent& e)
 void StatusLine::paint (juce::Graphics& g)
 {
     g.setColour (theme::caption);
-    g.setFont (juce::FontOptions (static_cast<float> (getHeight()) * 0.75f));
-    const auto chip = liveChip();
-    auto textArea = getLocalBounds();
-    if (! chip.isEmpty())
-        textArea.removeFromRight (getWidth() - juce::roundToInt (chip.getX()));
-    g.drawText (_left, textArea, juce::Justification::centredLeft, true);
-    g.drawText (_right, textArea, juce::Justification::centredRight, true);
-    if (! chip.isEmpty())
+    const auto area = textArea();
+    const auto shown = fit (_left, _right, area);
+    g.setFont (juce::FontOptions (shown.fontHeight));
+    g.drawText (shown.left, area, juce::Justification::centredLeft, false);
+    g.drawText (shown.right, area, juce::Justification::centredRight, false);
+    if (const auto chip = liveChip(); ! chip.isEmpty())
         paintLiveChip (g, chip);
 }
 
@@ -214,7 +297,7 @@ void StatusLine::paintLiveChip (juce::Graphics& g, juce::Rectangle<float> chip) 
     g.setColour (_live.lit ? theme::lampLive : theme::keyFace);
     g.fillRoundedRectangle (chip, corner);
     g.setColour (_live.lit ? theme::background : theme::caption);
-    g.setFont (juce::FontOptions (chip.getHeight() * 0.62f, _live.lit ? juce::Font::bold : juce::Font::plain));
-    g.drawText (_live.lit ? "PRO-DJ LIVE" : "pro-DJ", chip, juce::Justification::centred, true);
+    g.setFont (chipFont (_live.lit, chip));
+    g.drawText (_live.lit ? "PRO-DJ LIVE" : "pro-DJ", chip, juce::Justification::centred, false);
 }
 }
