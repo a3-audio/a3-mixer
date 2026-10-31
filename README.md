@@ -6,7 +6,7 @@ and lamps that come back. This repository holds the control scripts
 (`software/scripts/`), the panel firmware (`hardware/mainboard/firmware/`) and
 the KiCad hardware (`hardware/`). `app/` is the virtual desk (A3 Desk).
 
-![Four StemDecks around the A³ desk and A³ Motion, each deck playing its own track](docs/a3-setup.jpg)
+![Four StemDecks around the A³ desk and A³ Motion, each deck playing its own track](https://a3-audio.github.io/img/a3-setup.jpg)
 
 **Documentation: https://a3-audio.github.io/a3-doc/**
 
