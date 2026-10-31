@@ -38,6 +38,8 @@ Files: hardware/pcb/library/MCP3208T_CI_SL/*
 Copyright: SnapMagic Search, Inc.
 License: LicenseRef-SnapMagic
 Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Search (SnapEDA); the terms are in License.txt next to the files.
+X-A3-Name: SnapMagic
+X-A3-Url: https://www.snapeda.com
 
 Files: hardware/pcb/REVISION hardware/housing/REVISION
 Copyright: 2026 Raphael Eismann
