@@ -5,10 +5,11 @@
 """The shared fixture is what the Python desk computes (spec virtual-desk §6).
 
 The LED scale and the display pictures exist twice now: here, and in the
-virtual desk's C++ (ui/). Both read fixtures/desk-cases.json; this test holds
-the file to the Python, ui/tests hold the C++ to the file. A change here
-without regenerating the file fails; a regenerated file the C++ was not ported
-to fails over there.
+virtual desk's C++ (the submodule a3-mixer-ui). This test holds
+fixtures/desk-cases.json to the Python, and the desk's copy of it
+(a3-mixer-ui/tests/fixtures/desk-cases.json) to this one; a3-mixer-ui's tests
+hold the C++ to the copy. A change here without regenerating the file fails; a regenerated file
+not copied to the desk fails; a copy the C++ was not ported to fails over there.
 """
 
 import json
@@ -17,6 +18,7 @@ import unittest
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+DESK_COPY = Path(__file__).resolve().parents[2] / "a3-mixer-ui" / "tests" / "fixtures" / "desk-cases.json"
 sys.path.insert(0, str(FIXTURES))
 
 import make_desk_cases  # noqa: E402
@@ -27,7 +29,14 @@ class TheFixture(unittest.TestCase):
         committed = json.loads((FIXTURES / "desk-cases.json").read_text())
         fresh = json.loads(make_desk_cases.as_text(make_desk_cases.cases()))
         self.assertEqual(committed, fresh,
-                         "run software/tests/fixtures/make_desk_cases.py and port the change to ui/")
+                         "run software/tests/fixtures/make_desk_cases.py, copy it to a3-mixer-ui/tests/fixtures/ and port the change")
+
+    def test_the_desks_copy_is_this_file(self):
+        if not DESK_COPY.parent.parent.is_dir():
+            self.skipTest("the a3-mixer-ui submodule is not checked out")
+        self.assertEqual(json.loads((FIXTURES / "desk-cases.json").read_text()),
+                         json.loads(DESK_COPY.read_text()),
+                         "copy software/tests/fixtures/desk-cases.json to a3-mixer-ui/tests/fixtures/")
 
     def test_covers_every_cursor_and_the_return(self):
         cases = make_desk_cases.cases()

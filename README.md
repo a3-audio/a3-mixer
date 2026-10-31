@@ -4,8 +4,11 @@ The 4-channel DJ mixer of [A³ Audio](https://github.com/a3-audio/a3-system). It
 sends its faders, knobs and buttons to A³ Core over OSC and shows the meters
 and lamps that come back. This repository holds the control scripts
 (`software/scripts/`), the panel firmware (`firmware/`) and the hardware
-(`hardware/`: the KiCad board in `pcb/`, the enclosure in `housing/`). `ui/` is
-the virtual desk (A3 Desk), with its Debian recipe in `ui/packaging/`.
+(`hardware/`: the KiCad board in `pcb/`, the enclosure in `housing/`). The
+virtual desk (A3 Desk) is the submodule
+[`a3-mixer-ui`](https://github.com/a3-audio/a3-mixer-ui), as a3-motion's app
+is its `a3-motion-ui`. Clone with `--recurse-submodules`, or run
+`git submodule update --init a3-mixer-ui` afterwards.
 
 ![Four StemDecks around the A³ desk and A³ Motion, each deck playing its own track](https://a3-audio.github.io/img/a3-setup.jpg)
 

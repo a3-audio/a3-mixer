@@ -1,0 +1,3 @@
+[submodule "a3-mixer-ui"]
+	path = a3-mixer-ui
+	url = ../a3-mixer-ui.git

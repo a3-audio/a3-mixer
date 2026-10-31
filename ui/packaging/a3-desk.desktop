@@ -1,7 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=A3 Desk
-Comment=The A3 Mixer on a screen: a second operator, or a stand-in for the hardware desk
-Exec=a3-desk --fullscreen
-Terminal=false
-Categories=AudioVideo;Audio;

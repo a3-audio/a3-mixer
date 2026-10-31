@@ -17,6 +17,11 @@ Files: firmware/platformio.ini
 Copyright: 2024 Raphael Eismann
 License: CC0-1.0
 
+Files: .gitmodules
+Copyright: 2026 Raphael Eismann
+License: CC0-1.0
+Comment: a3-mixer-ui is the submodule of that name, the virtual desk, licensed in its own repository.
+
 Files: software/*
 Copyright: 2023 Raphael Eismann
 License: GPL-3.0-or-later
@@ -33,10 +38,6 @@ Files: hardware/pcb/library/MCP3208T_CI_SL/*
 Copyright: SnapMagic Search, Inc.
 License: LicenseRef-SnapMagic
 Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Search (SnapEDA); the terms are in License.txt next to the files.
-
-Files: ui/*
-Copyright: 2026 Raphael Eismann
-License: GPL-3.0-or-later
 
 Files: hardware/pcb/REVISION hardware/housing/REVISION
 Copyright: 2026 Raphael Eismann
