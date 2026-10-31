@@ -11,3 +11,12 @@ __pycache__/
 
 # The one truth's copy, put here at deploy -- see README, "Addresses and ports".
 software/scripts/a3-osc.json
+
+# CAD backups and caches: KiCad and FreeCAD write them on their own, they are not sources
+**/*-backups/
+**/*.kicad_*-bak
+**/fp-info-cache
+**/_autosave-*
+**/~*.lck
+**/*.FCBak
+**/*.FCStd1
