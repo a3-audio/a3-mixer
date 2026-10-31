@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Patric Schmitz, Raphael Eismann
 //
-// SPDX-License-Identifier: CERN-OHL-S-2.0
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Made for A³Mix PCB v0.2
 

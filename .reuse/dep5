@@ -8,6 +8,15 @@ Files: hardware/*
 Copyright: 2023 Raphael Eismann
 License: CERN-OHL-S-2.0
 
+Files: hardware/mainboard/firmware/*
+Copyright: 2024 Patric Schmitz, Raphael Eismann
+License: GPL-3.0-or-later
+Comment: Firmware is code: GPL like the rest of the software; CERN-OHL-S stays for the boards and the 3D-print files.
+
+Files: hardware/mainboard/firmware/platformio.ini
+Copyright: 2024 Raphael Eismann
+License: CC0-1.0
+
 Files: software/*
 Copyright: 2023 Raphael Eismann
 License: GPL-3.0-or-later
