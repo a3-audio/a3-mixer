@@ -1,3 +1,6 @@
 [submodule "a3-mixer-ui"]
 	path = a3-mixer-ui
 	url = ../a3-mixer-ui.git
+[submodule "hardware/pcb/a3-kicad-lib"]
+	path = hardware/pcb/a3-kicad-lib
+	url = ../a3-kicad-lib.git
