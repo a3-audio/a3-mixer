@@ -42,7 +42,7 @@ X-A3-Name: SnapMagic MCP3208
 X-A3-Version: 2025-11
 X-A3-Url: https://www.snapeda.com
 
-Files: hardware/pcb/REVISION hardware/housing/REVISION
+Files: hardware/pcb/*/REVISION hardware/housing/REVISION
 Copyright: 2026 Raphael Eismann
 License: CC0-1.0
 Comment: The hardware revision, one word, read by a3-core's ABOUT page.
