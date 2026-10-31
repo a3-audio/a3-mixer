@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 
 SOFTWARE = Path(__file__).resolve().parents[1]
-FIRMWARE = SOFTWARE.parent / "hardware/mainboard/firmware/src/main.cpp"
+FIRMWARE = SOFTWARE.parent / "firmware/src/main.cpp"
 sys.path.insert(0, str(SOFTWARE / "scripts"))
 sys.path.insert(0, str(SOFTWARE / "scripts" / "a3-mixer-set-display"))
 

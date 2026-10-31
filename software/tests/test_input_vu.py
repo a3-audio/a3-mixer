@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 SOFTWARE = Path(__file__).resolve().parents[1]
-FIRMWARE = SOFTWARE.parent / "hardware/mainboard/firmware/src/main.cpp"
+FIRMWARE = SOFTWARE.parent / "firmware/src/main.cpp"
 LEDS_PER_INPUT = 8
 INPUTS = 4
 
@@ -78,7 +78,7 @@ class TheMainMeterHasAllFourModules(unittest.TestCase):
     the firmware draws 32. Read from both sources, so they cannot drift."""
 
     SOFTWARE = Path(__file__).resolve().parents[1]
-    FIRMWARE = SOFTWARE.parent / "hardware/mainboard/firmware/src/main.cpp"
+    FIRMWARE = SOFTWARE.parent / "firmware/src/main.cpp"
 
     def test_the_desk_scales_the_outputs_to_32(self):
         import sys

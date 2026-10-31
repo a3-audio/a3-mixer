@@ -5,8 +5,8 @@
 """The shared fixture is what the Python desk computes (spec virtual-desk §6).
 
 The LED scale and the display pictures exist twice now: here, and in the
-virtual desk's C++ (app/). Both read fixtures/desk-cases.json; this test holds
-the file to the Python, app/tests hold the C++ to the file. A change here
+virtual desk's C++ (ui/). Both read fixtures/desk-cases.json; this test holds
+the file to the Python, ui/tests hold the C++ to the file. A change here
 without regenerating the file fails; a regenerated file the C++ was not ported
 to fails over there.
 """
@@ -27,7 +27,7 @@ class TheFixture(unittest.TestCase):
         committed = json.loads((FIXTURES / "desk-cases.json").read_text())
         fresh = json.loads(make_desk_cases.as_text(make_desk_cases.cases()))
         self.assertEqual(committed, fresh,
-                         "run software/tests/fixtures/make_desk_cases.py and port the change to app/")
+                         "run software/tests/fixtures/make_desk_cases.py and port the change to ui/")
 
     def test_covers_every_cursor_and_the_return(self):
         cases = make_desk_cases.cases()

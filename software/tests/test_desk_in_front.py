@@ -145,7 +145,7 @@ class AskThePanel(unittest.TestCase):
     the panel to send every pot once (2026-10-14)."""
 
     firmware = (Path(__file__).resolve().parents[2]
-                / "hardware/mainboard/firmware/src/main.cpp").read_text()
+                / "firmware/src/main.cpp").read_text()
 
     def test_an_empty_table_asks_the_panel(self):
         asked = []
