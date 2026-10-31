@@ -37,3 +37,8 @@ Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Se
 Files: app/* packaging/*
 Copyright: 2026 Raphael Eismann
 License: GPL-3.0-or-later
+
+Files: hardware/mainboard/pcb/REVISION hardware/housing/REVISION
+Copyright: 2026 Raphael Eismann
+License: CC0-1.0
+Comment: The hardware revision, one word, read by a3-core's ABOUT page.
