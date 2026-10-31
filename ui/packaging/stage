@@ -20,11 +20,22 @@ usage() {
     exit 2
 }
 
+# The builder keeps <build> between commits. One configured from another
+# source folder (app/, before the desk became ui/ on 2026-10-31) is refused
+# by cmake, so its cache goes; the objects stay for ccache and make.
+forget_other_source() {
+    local build=$1 source=$2
+    [[ -f "$build/CMakeCache.txt" ]] || return 0
+    grep -qxF "CMAKE_HOME_DIRECTORY:INTERNAL=$source" "$build/CMakeCache.txt" && return 0
+    rm -rf "$build/CMakeCache.txt" "$build/CMakeFiles"
+}
+
 build() {
     [[ $# -eq 4 || ( $# -eq 5 && "$5" == --test ) ]] || usage
     local src=$1 build=$2 juce=$3 jobs=$4 test=${5:-}
     local tests=OFF
     [[ "$test" == --test ]] && tests=ON
+    forget_other_source "$build" "$src/ui"
     cmake -S "$src/ui" -B "$build" -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH="$juce" -DA3DESK_TESTS="$tests"
     cmake --build "$build" -j "$jobs"
