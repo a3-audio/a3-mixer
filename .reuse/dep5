@@ -8,12 +8,12 @@ Files: hardware/*
 Copyright: 2023 Raphael Eismann
 License: CERN-OHL-S-2.0
 
-Files: hardware/mainboard/firmware/*
+Files: firmware/*
 Copyright: 2024 Patric Schmitz, Raphael Eismann
 License: GPL-3.0-or-later
 Comment: Firmware is code: GPL like the rest of the software; CERN-OHL-S stays for the boards and the 3D-print files.
 
-Files: hardware/mainboard/firmware/platformio.ini
+Files: firmware/platformio.ini
 Copyright: 2024 Raphael Eismann
 License: CC0-1.0
 
@@ -29,16 +29,16 @@ Files: README.md
 Copyright: 2023 Raphael Eismann
 License: CC-BY-SA-4.0
 
-Files: hardware/mainboard/pcb/library/MCP3208T_CI_SL/*
+Files: hardware/pcb/library/MCP3208T_CI_SL/*
 Copyright: SnapMagic Search, Inc.
 License: LicenseRef-SnapMagic
 Comment: Third-party symbol, footprint and 3D model downloaded from SnapMagic Search (SnapEDA); the terms are in License.txt next to the files.
 
-Files: app/* packaging/*
+Files: ui/*
 Copyright: 2026 Raphael Eismann
 License: GPL-3.0-or-later
 
-Files: hardware/mainboard/pcb/REVISION hardware/housing/REVISION
+Files: hardware/pcb/REVISION hardware/housing/REVISION
 Copyright: 2026 Raphael Eismann
 License: CC0-1.0
 Comment: The hardware revision, one word, read by a3-core's ABOUT page.

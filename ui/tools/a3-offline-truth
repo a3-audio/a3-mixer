@@ -11,7 +11,7 @@ moved to 192.0.2.x, the documentation range that routes nowhere. On the rig
 the installed truth names the live Core, and the suite used to send
 positions and 3D/FREQ/Q there (#67). The test runner refuses every OSC
 sender on its own; this is the second wall. Used by test.sh and by
-packaging/stage build --test.
+ui/packaging/stage build --test.
 """
 
 import copy
